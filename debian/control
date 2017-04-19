@@ -8,7 +8,7 @@ Build-Depends:
  dh-autoreconf,
  dh-systemd (>= 1.18~),
  dh-apparmor [linux-any],
- libxml2-dev (>= 2.9.2+really2.9.1+dfsg1-0.2),
+ libxml2-dev (>= 2.9.1+dfsg1-5+deb8u3),
  libncurses5-dev,
  libreadline-dev,
  zlib1g-dev,
@@ -34,7 +34,6 @@ Build-Depends:
  libyajl-dev,
  libpcap0.8-dev,
  libnuma-dev [amd64 arm64 i386 ia64 mips mipsel powerpc ppc64 ppc64el],
- numad [amd64 arm64 i386 ia64 mips mipsel powerpc ppc64 ppc64el],
  radvd [linux-any],
  libnetcf-dev (>= 1:0.2.3-3~) [linux-any],
  libsanlock-dev [linux-any],
@@ -108,7 +107,6 @@ Recommends:
  netcat-openbsd,
 Suggests:
  libvirt-daemon-system,
- numad,
 Description: Virtualization daemon
  Libvirt is a C toolkit to interact with the virtualization capabilities
  of recent versions of Linux (and other OSes). The library aims at providing
@@ -142,8 +140,7 @@ Recommends:
 Section: admin
 Suggests: radvd, auditd, systemtap, systemd, apparmor,
  nfs-common, zfsutils, pm-utils
-Breaks: avahi-daemon (<< 0.6.31-3~),
- systemd-sysv (<< 224-1~)
+Breaks: avahi-daemon (<< 0.6.31-3~)
 Replaces: libvirt-bin (<< 1.2.7-4~)
 Conflicts: libvirt-bin (<< 1.2.6-1~)
 Description: Libvirt daemon configuration files
