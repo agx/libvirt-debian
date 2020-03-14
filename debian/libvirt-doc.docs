@@ -1,12 +1,1 @@
-docs/*.rng
-docs/*.png
-docs/*.xml
-docs/*.html
-docs/*.gif
-docs/*.css
-docs/html/
-docs/devhelp/
-docs/internals/
-docs/kbase/
-docs/logos/
-examples/
+/usr/share/doc/libvirt/*

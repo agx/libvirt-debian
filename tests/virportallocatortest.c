@@ -37,7 +37,7 @@
 
 VIR_LOG_INIT("tests.portallocatortest");
 
-static int testAllocAll(const void *args ATTRIBUTE_UNUSED)
+static int testAllocAll(const void *args G_GNUC_UNUSED)
 {
     virPortAllocatorRangePtr ports = virPortAllocatorRangeNew("test", 5900, 5909);
     int ret = -1;
@@ -109,7 +109,7 @@ static int testAllocAll(const void *args ATTRIBUTE_UNUSED)
 
 
 
-static int testAllocReuse(const void *args ATTRIBUTE_UNUSED)
+static int testAllocReuse(const void *args G_GNUC_UNUSED)
 {
     virPortAllocatorRangePtr ports = virPortAllocatorRangeNew("test", 5900, 5910);
     int ret = -1;
@@ -171,7 +171,7 @@ mymain(void)
     if (virTestRun("Test alloc reuse", testAllocReuse, NULL) < 0)
         ret = -1;
 
-    setenv("LIBVIRT_TEST_IPV4ONLY", "really", 1);
+    g_setenv("LIBVIRT_TEST_IPV4ONLY", "really", TRUE);
 
     if (virTestRun("Test IPv4-only alloc all", testAllocAll, NULL) < 0)
         ret = -1;
@@ -182,7 +182,7 @@ mymain(void)
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virportallocatormock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virportallocator"))
 #else /* defined(__linux__) && defined(RTLD_NEXT) */
 int
 main(void)

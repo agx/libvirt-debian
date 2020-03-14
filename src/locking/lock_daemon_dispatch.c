@@ -36,9 +36,9 @@ VIR_LOG_INIT("locking.lock_daemon_dispatch");
 #include "lock_daemon_dispatch_stubs.h"
 
 static int
-virLockSpaceProtocolDispatchAcquireResource(virNetServerPtr server ATTRIBUTE_UNUSED,
+virLockSpaceProtocolDispatchAcquireResource(virNetServerPtr server G_GNUC_UNUSED,
                                             virNetServerClientPtr client,
-                                            virNetMessagePtr msg ATTRIBUTE_UNUSED,
+                                            virNetMessagePtr msg G_GNUC_UNUSED,
                                             virNetMessageErrorPtr rerr,
                                             virLockSpaceProtocolAcquireResourceArgs *args)
 {
@@ -96,9 +96,9 @@ virLockSpaceProtocolDispatchAcquireResource(virNetServerPtr server ATTRIBUTE_UNU
 
 
 static int
-virLockSpaceProtocolDispatchCreateResource(virNetServerPtr server ATTRIBUTE_UNUSED,
+virLockSpaceProtocolDispatchCreateResource(virNetServerPtr server G_GNUC_UNUSED,
                                            virNetServerClientPtr client,
-                                           virNetMessagePtr msg ATTRIBUTE_UNUSED,
+                                           virNetMessagePtr msg G_GNUC_UNUSED,
                                            virNetMessageErrorPtr rerr,
                                            virLockSpaceProtocolCreateResourceArgs *args)
 {
@@ -145,9 +145,9 @@ virLockSpaceProtocolDispatchCreateResource(virNetServerPtr server ATTRIBUTE_UNUS
 
 
 static int
-virLockSpaceProtocolDispatchDeleteResource(virNetServerPtr server ATTRIBUTE_UNUSED,
+virLockSpaceProtocolDispatchDeleteResource(virNetServerPtr server G_GNUC_UNUSED,
                                            virNetServerClientPtr client,
-                                           virNetMessagePtr msg ATTRIBUTE_UNUSED,
+                                           virNetMessagePtr msg G_GNUC_UNUSED,
                                            virNetMessageErrorPtr rerr,
                                            virLockSpaceProtocolDeleteResourceArgs *args)
 {
@@ -194,9 +194,9 @@ virLockSpaceProtocolDispatchDeleteResource(virNetServerPtr server ATTRIBUTE_UNUS
 
 
 static int
-virLockSpaceProtocolDispatchNew(virNetServerPtr server ATTRIBUTE_UNUSED,
+virLockSpaceProtocolDispatchNew(virNetServerPtr server G_GNUC_UNUSED,
                                 virNetServerClientPtr client,
-                                virNetMessagePtr msg ATTRIBUTE_UNUSED,
+                                virNetMessagePtr msg G_GNUC_UNUSED,
                                 virNetMessageErrorPtr rerr,
                                 virLockSpaceProtocolNewArgs *args)
 {
@@ -250,9 +250,9 @@ virLockSpaceProtocolDispatchNew(virNetServerPtr server ATTRIBUTE_UNUSED,
 
 
 static int
-virLockSpaceProtocolDispatchRegister(virNetServerPtr server ATTRIBUTE_UNUSED,
+virLockSpaceProtocolDispatchRegister(virNetServerPtr server G_GNUC_UNUSED,
                                      virNetServerClientPtr client,
-                                     virNetMessagePtr msg ATTRIBUTE_UNUSED,
+                                     virNetMessagePtr msg G_GNUC_UNUSED,
                                      virNetMessageErrorPtr rerr,
                                      virLockSpaceProtocolRegisterArgs *args)
 {
@@ -277,8 +277,7 @@ virLockSpaceProtocolDispatchRegister(virNetServerPtr server ATTRIBUTE_UNUSED,
         goto cleanup;
     }
 
-    if (VIR_STRDUP(priv->ownerName, args->owner.name) < 0)
-        goto cleanup;
+    priv->ownerName = g_strdup(args->owner.name);
     memcpy(priv->ownerUUID, args->owner.uuid, VIR_UUID_BUFLEN);
     priv->ownerId = args->owner.id;
     priv->ownerPid = args->owner.pid;
@@ -296,9 +295,9 @@ virLockSpaceProtocolDispatchRegister(virNetServerPtr server ATTRIBUTE_UNUSED,
 
 
 static int
-virLockSpaceProtocolDispatchReleaseResource(virNetServerPtr server ATTRIBUTE_UNUSED,
+virLockSpaceProtocolDispatchReleaseResource(virNetServerPtr server G_GNUC_UNUSED,
                                             virNetServerClientPtr client,
-                                            virNetMessagePtr msg ATTRIBUTE_UNUSED,
+                                            virNetMessagePtr msg G_GNUC_UNUSED,
                                             virNetMessageErrorPtr rerr,
                                             virLockSpaceProtocolReleaseResourceArgs *args)
 {
@@ -347,9 +346,9 @@ virLockSpaceProtocolDispatchReleaseResource(virNetServerPtr server ATTRIBUTE_UNU
 
 
 static int
-virLockSpaceProtocolDispatchRestrict(virNetServerPtr server ATTRIBUTE_UNUSED,
+virLockSpaceProtocolDispatchRestrict(virNetServerPtr server G_GNUC_UNUSED,
                                      virNetServerClientPtr client,
-                                     virNetMessagePtr msg ATTRIBUTE_UNUSED,
+                                     virNetMessagePtr msg G_GNUC_UNUSED,
                                      virNetMessageErrorPtr rerr,
                                      virLockSpaceProtocolRestrictArgs *args)
 {
@@ -386,9 +385,9 @@ virLockSpaceProtocolDispatchRestrict(virNetServerPtr server ATTRIBUTE_UNUSED,
 
 
 static int
-virLockSpaceProtocolDispatchCreateLockSpace(virNetServerPtr server ATTRIBUTE_UNUSED,
+virLockSpaceProtocolDispatchCreateLockSpace(virNetServerPtr server G_GNUC_UNUSED,
                                             virNetServerClientPtr client,
-                                            virNetMessagePtr msg ATTRIBUTE_UNUSED,
+                                            virNetMessagePtr msg G_GNUC_UNUSED,
                                             virNetMessageErrorPtr rerr,
                                             virLockSpaceProtocolCreateLockSpaceArgs *args)
 {

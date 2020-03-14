@@ -35,13 +35,13 @@ static int testCompareXMLToArgvFiles(const char *xml,
     if (!(conn = virGetConnect()))
         goto out;
 
-    if (!(vmdef = virDomainDefParseFile(xml, driver.caps, driver.xmlopt,
+    if (!(vmdef = virDomainDefParseFile(xml, driver.xmlopt,
                                         NULL, VIR_DOMAIN_DEF_PARSE_INACTIVE))) {
         if (flags & FLAG_EXPECT_PARSE_ERROR) {
             ret = 0;
         } else if (flags & FLAG_EXPECT_FAILURE) {
             ret = 0;
-            VIR_TEST_DEBUG("Got expected error: %s\n",
+            VIR_TEST_DEBUG("Got expected error: %s",
                     virGetLastErrorMessage());
             virResetLastError();
         }
@@ -61,7 +61,7 @@ static int testCompareXMLToArgvFiles(const char *xml,
     if ((cmd == NULL) || (ldcmd == NULL)) {
         if (flags & FLAG_EXPECT_FAILURE) {
             ret = 0;
-            VIR_TEST_DEBUG("Got expected error: %s\n",
+            VIR_TEST_DEBUG("Got expected error: %s",
                     virGetLastErrorMessage());
             virResetLastError();
         }
@@ -119,19 +119,17 @@ testCompareXMLToArgvHelper(const void *data)
     char *xml = NULL;
     char *args = NULL, *ldargs = NULL, *dmargs = NULL;
 
-    if (virAsprintf(&xml, "%s/bhyvexml2argvdata/bhyvexml2argv-%s.xml",
-                    abs_srcdir, info->name) < 0 ||
-        virAsprintf(&args, "%s/bhyvexml2argvdata/bhyvexml2argv-%s.args",
-                    abs_srcdir, info->name) < 0 ||
-        virAsprintf(&ldargs, "%s/bhyvexml2argvdata/bhyvexml2argv-%s.ldargs",
-                    abs_srcdir, info->name) < 0 ||
-        virAsprintf(&dmargs, "%s/bhyvexml2argvdata/bhyvexml2argv-%s.devmap",
-                    abs_srcdir, info->name) < 0)
-        goto cleanup;
+    xml = g_strdup_printf("%s/bhyvexml2argvdata/bhyvexml2argv-%s.xml",
+                          abs_srcdir, info->name);
+    args = g_strdup_printf("%s/bhyvexml2argvdata/bhyvexml2argv-%s.args",
+                           abs_srcdir, info->name);
+    ldargs = g_strdup_printf("%s/bhyvexml2argvdata/bhyvexml2argv-%s.ldargs",
+                             abs_srcdir, info->name);
+    dmargs = g_strdup_printf("%s/bhyvexml2argvdata/bhyvexml2argv-%s.devmap",
+                             abs_srcdir, info->name);
 
     ret = testCompareXMLToArgvFiles(xml, args, ldargs, dmargs, info->flags);
 
- cleanup:
     VIR_FREE(xml);
     VIR_FREE(args);
     VIR_FREE(ldargs);
@@ -258,7 +256,7 @@ mymain(void)
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/bhyvexml2argvmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("bhyvexml2argv"))
 
 #else
 

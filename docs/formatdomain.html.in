@@ -175,7 +175,11 @@
         and <a id="attributeOSTypeMachine"><code>machine</code></a> referring
         to the machine type. The <a href="formatcaps.html">Capabilities XML</a>
         provides details on allowed values for
-        these. <span class="since">Since 0.0.1</span></dd>
+        these. If <code>arch</code> is omitted then for most hypervisor
+        drivers, the host native arch will be chosen. For the <code>test</code>,
+        <code>ESX</code> and <code>VMWare</code> hypervisor drivers, however,
+        the <code>i686</code> arch will always be chosen even on an
+        <code>x86_64</code> host. <span class="since">Since 0.0.1</span></dd>
       <dt><a id="elementLoader"><code>loader</code></a></dt>
       <dd>The optional <code>loader</code> tag refers to a firmware blob,
         which is specified by absolute path,
@@ -363,7 +367,8 @@
       <dd>The <code>table</code> element contains a fully-qualified path
         to the ACPI table. The <code>type</code> attribute contains the
         ACPI table type (currently only <code>slic</code> is supported)
-        <span class="since">Since 1.3.5 (QEMU only)</span></dd>
+        <span class="since">Since 1.3.5 (QEMU)</span>
+        <span class="since">Since 5.9.0 (Xen)</span></dd>
     </dl>
 
     <h4><a id="elementsOSContainer">Container boot</a></h4>
@@ -1590,8 +1595,8 @@
           hand, the ABI provided to the guest is reproducible. During
           migration, complete CPU model definition is transferred to the
           destination host so the migrated guest will see exactly the same CPU
-          model even if the destination host contains more capable CPUs for
-          the running instance of the guest; but shutting down and restarting
+          model for the running instance of the guest, even if the destination
+          host contains more capable CPUs or newer kernel; but shutting down and restarting
           the guest may present different hardware to the guest according to
           the capabilities of the new host. Prior to libvirt 3.2.0 and QEMU
           2.9.0 detection of the host CPU model via QEMU is not supported.
@@ -1625,10 +1630,10 @@
           environment cannot be reproduced on different hardware. Thus, if you
           hit any bugs, you are on your own. Further details of that CPU can
           be changed using <code>feature</code> elements. Migration of a guest
-          using host-passthrough is dangerous if the source and destination
-          hosts are not identical in both hardware and configuration. If such
-          a migration is attempted then the guest may hang or crash upon
-          resuming execution on the destination host.</dd>
+          using host-passthrough is dangerous if the source and destination hosts
+          are not identical in both hardware, QEMU version, microcode version
+          and configuration. If such a migration is attempted then the guest may
+          hang or crash upon resuming execution on the destination host.</dd>
         </dl>
 
         Both <code>host-model</code> and <code>host-passthrough</code> modes
@@ -2033,7 +2038,9 @@
     &lt;vpindex state='on'/&gt;
     &lt;runtime state='on'/&gt;
     &lt;synic state='on'/&gt;
-    &lt;stimer state='on'/&gt;
+    &lt;stimer state='on'&gt;
+      &lt;direct state='on'/&gt;
+    &lt;/stimer&gt;
     &lt;reset state='on'/&gt;
     &lt;vendor_id state='on' value='KVM Hv'/&gt;
     &lt;frequencies state='on'/&gt;
@@ -2044,6 +2051,7 @@
   &lt;/hyperv&gt;
   &lt;kvm&gt;
     &lt;hidden state='on'/&gt;
+    &lt;hint-dedicated state='on'/&gt;
   &lt;/kvm&gt;
   &lt;pvspinlock state='on'/&gt;
   &lt;gic version='2'/&gt;
@@ -2056,6 +2064,7 @@
     &lt;tseg unit='MiB'&gt;48&lt;/tseg&gt;
   &lt;/smm&gt;
   &lt;htm state='on'/&gt;
+  &lt;ccf-assist state='on'/&gt;
   &lt;msrs unknown='ignore'/&gt;
 &lt;/features&gt;
 ...</pre>
@@ -2148,9 +2157,9 @@
         </tr>
         <tr>
           <td>stimer</td>
-          <td>Enable SynIC timers</td>
-          <td>on, off</td>
-          <td><span class="since">1.3.3 (QEMU 2.6)</span></td>
+          <td>Enable SynIC timers, optionally with Direct Mode support</td>
+          <td>on, off; direct - on,off</td>
+          <td><span class="since">1.3.3 (QEMU 2.6), direct mode 5.7.0 (QEMU 4.1)</span></td>
         </tr>
         <tr>
           <td>reset</td>
@@ -2216,6 +2225,12 @@
           <td>Hide the KVM hypervisor from standard MSR based discovery</td>
           <td>on, off</td>
           <td><span class="since">1.2.8 (QEMU 2.1.0)</span></td>
+        </tr>
+        <tr>
+          <td>hint-dedicated</td>
+          <td>Allows a guest to enable optimizations when running on dedicated vCPUs</td>
+          <td>on, off</td>
+          <td><span class="since">5.7.0 (QEMU 2.12.0)</span></td>
         </tr>
       </table>
       </dd>
@@ -2347,6 +2362,14 @@
           not defined, or set to <code>fault</code>, unknown reads and writes
           will not be ignored.
           <span class="since">Since 5.1.0</span> (bhyve only)
+      </dd>
+      <dt><code>ccf-assist</code></dt>
+      <dd>Configure ccf-assist (Count Cache Flush Assist) availability for
+          pSeries guests.
+          Possible values for the <code>state</code> attribute
+          are <code>on</code> and <code>off</code>. If the attribute is not
+          defined, the hypervisor default will be used.
+          <span class="since">Since 5.9.0</span> (QEMU/KVM only)
       </dd>
     </dl>
 
@@ -2925,6 +2948,13 @@
     &lt;/backingStore&gt;
     &lt;target dev='vdd' bus='virtio'/&gt;
   &lt;/disk&gt;
+  &lt;disk type='nvme' device='disk'&gt;
+    &lt;driver name='qemu' type='raw'/&gt;
+    &lt;source type='pci' managed='yes' namespace='1'&gt;
+      &lt;address domain='0x0000' bus='0x01' slot='0x00' function='0x0'/&gt;
+    &lt;/source&gt;
+    &lt;target dev='vde' bus='virtio'/&gt;
+  &lt;/disk&gt;
 &lt;/devices&gt;
 ...</pre>
 
@@ -2938,7 +2968,8 @@
             Valid values are "file", "block",
             "dir" (<span class="since">since 0.7.5</span>),
             "network" (<span class="since">since 0.8.7</span>), or
-            "volume" (<span class="since">since 1.0.5</span>)
+            "volume" (<span class="since">since 1.0.5</span>), or
+            "nvme" (<span class="since">since 6.0.0</span>)
             and refer to the underlying source for the disk.
             <span class="since">Since 0.0.3</span>
             </dd>
@@ -3121,6 +3152,43 @@
               <span class="since">Since 1.0.5</span>
               </p>
               </dd>
+            <dt><code>nvme</code></dt>
+              <dd>
+              To specify disk source for NVMe disk the <code>source</code>
+              element has the following attributes:
+              <dl>
+                <dt><code>type</code></dt>
+                <dd>The type of address specified in <code>address</code>
+                sub-element. Currently, only <code>pci</code> value is
+                accepted.
+                </dd>
+
+                <dt><code>managed</code></dt>
+                <dd>This attribute instructs libvirt to detach NVMe
+                controller automatically on domain startup (<code>yes</code>)
+                or expect the controller to be detached by system
+                administrator (<code>no</code>).
+                </dd>
+
+                <dt><code>namespace</code></dt>
+                <dd>The namespace ID which should be assigned to the domain.
+                According to NVMe standard, namespace numbers start from 1,
+                including.
+                </dd>
+              </dl>
+
+              The difference between <code>&lt;disk type='nvme'&gt;</code>
+              and <code>&lt;hostdev/&gt;</code> is that the latter is plain
+              host device assignment with all its limitations (e.g. no live
+              migration), while the former makes hypervisor to run the NVMe
+              disk through hypervisor's block layer thus enabling all
+              features provided by the layer (e.g. snapshots, domain
+              migration, etc.). Moreover, since the NVMe disk is unbinded
+              from its PCI driver, the host kernel storage stack is not
+              involved (compared to passing say <code>/dev/nvme0n1</code> via
+              <code>&lt;disk type='block'&gt;</code> and therefore lower
+              latencies can be achieved.
+              </dd>
           </dl>
         With "file", "block", and "volume", one or more optional
         sub-elements <code>seclabel</code>, <a href="#seclabel">described
@@ -3283,6 +3351,12 @@
             initiator IQN needed to access the source via mandatory
             attribute <code>name</code>.
           </dd>
+          <dt><code>address</code></dt>
+          <dd>For disk of type <code>nvme</code> this element
+            specifies the PCI address of the host NVMe
+            controller.
+            <span class="since">Since 6.0.0</span>
+          </dd>
         </dl>
 
         <p>
@@ -3321,15 +3395,26 @@
       <dt><code>backingStore</code></dt>
       <dd>
         This element describes the backing store used by the disk
-        specified by sibling <code>source</code> element. It is
-        currently ignored on input and only used for output to
-        describe the detected backing chains of running
-        domains <span class="since">since 1.2.4</span> (although a
-        future version of libvirt may start accepting chains on input,
-        or output information for offline domains). An
-        empty <code>backingStore</code> element means the sibling
-        source is self-contained and is not based on any backing
-        store. For backing chain information to be accurate, the
+        specified by sibling <code>source</code> element.
+        <span class="since">Since 1.2.4.</span>
+
+        If the hypervisor driver does not support the
+        <a href='formatdomaincaps.html#featureBackingStoreInput'>
+        <code>backingStoreInput</code></a>
+        (<span class='since'>Since 5.10.0</span>)
+        domain feature the <code>backingStore</code> is ignored on
+        input and only used for output to describe the detected
+        backing chains of running domains.
+
+        If <code>backingStoreInput</code> is supported
+        the <code>backingStore</code> is used as the backing image of
+        <code>source</code> or other <code>backingStore</code> overriding
+        any backing image information recorded in the image metadata.
+
+        An empty <code>backingStore</code> element means the sibling
+        source is self-contained and is not based on any backing store.
+
+        For the detected backing chain information to be accurate, the
         backing format must be correctly specified in the metadata of
         each file of the chain (files created by libvirt satisfy this
         property, but using existing external files for snapshot or
@@ -3828,7 +3913,7 @@
     &lt;readonly/&gt;
   &lt;/filesystem&gt;
   &lt;filesystem type='file' accessmode='passthrough'&gt;
-    &lt;driver name='loop' type='raw'/&gt;
+    &lt;driver type='loop' format='raw'/&gt;
     &lt;driver type='path' wrpolicy='immediate'/&gt;
     &lt;source file='/export/to/guest.img'/&gt;
     &lt;target dir='/import/from/host'/&gt;
@@ -3894,7 +3979,7 @@
           <span class="since"> (since 0.9.13)</span></dd>
         </dl>
 
-      The filesystem block has an optional attribute <code>accessmode</code>
+      The filesystem element has an optional attribute <code>accessmode</code>
       which specifies the security mode for accessing the source
       <span class="since">(since 0.8.5)</span>. Currently this only works
       with <code>type='mount'</code> for the QEMU/KVM driver. The possible
@@ -4117,6 +4202,16 @@
       <dd>ISA addresses have the following additional
         attributes: <code>iobase</code> and <code>irq</code>.
         <span class="since">Since 1.2.1</span>
+      </dd>
+      <dt><code>unassigned</code></dt>
+      <dd>For PCI hostdevs, <code>&lt;address type='unassigned'/&gt;</code>
+        allows the admin to include a PCI hostdev in the domain XML definition,
+        without making it available for the guest. This allows for configurations
+        in which Libvirt manages the device as a regular PCI hostdev,
+        regardless of whether the guest will have access to it.
+        <code>&lt;address type='unassigned'/&gt;</code> is an invalid address
+        type for all other device types.
+        <span class="since">Since 6.0.0</span>
       </dd>
     </dl>
 
@@ -4828,6 +4923,14 @@
           <a href="#elementsGraphics">graphical framebuffer</a> in order to
           use this attribute, currently only supported with VNC, Spice and
           egl-headless graphics devices.
+
+          <span class="since">Since version 5.10.0</span>, there is an optional
+          <code>ramfb</code> attribute for devices with
+          <code>model='vfio-pci'</code>. Supported values are either
+          <code>on</code> or <code>off</code> (default is 'off').  When
+          enabled, this attribute provides a memory framebuffer device to the
+          guest.  This framebuffer will be used as a boot display when a vgpu
+          device is the primary display.
           <p>
             Note: There are also some implications on the usage of guest's
             address type depending on the <code>model</code> attribute,
@@ -5502,23 +5605,51 @@
     <h5><a id="elementsNICSEthernet">Generic ethernet connection</a></h5>
 
     <p>
-      Provides a means for the administrator to execute an arbitrary script
-      to connect the guest's network to the LAN. The guest will have a tun
-      device created with a name of vnetN, which can also be overridden with the
-      &lt;target&gt; element. After creating the tun device a shell script will
-      be run which is expected to do whatever host network integration is
-      required. By default this script is called /etc/qemu-ifup but can be
-      overridden.
+      Provides a means to use a new or existing tap device (or veth
+      device pair, depening on the needs of the hypervisor driver)
+      that is partially or wholly setup external to libvirt (either
+      prior to the guest starting, or while the guest is being started
+      via an optional script specified in the config).
+    </p>
+    <p>
+      The name of the tap device can optionally be specified with
+      the <code>dev</code> attribute of the
+      <code>&lt;target&gt;</code> element. If no target dev is
+      specified, libvirt will create a new standard tap device with a
+      name of the pattern "vnetN", where "N" is replaced with a
+      number. If a target dev is specified and that device doesn't
+      exist, then a new standard tap device will be created with the
+      exact dev name given. If the specified target dev does exist,
+      then that existing device will be used. Usually some basic setup
+      of the device is done by libvirt, including setting a MAC
+      address, and the IFF_UP flag, but if the <code>dev</code> is a
+      pre-existing device, and the <code>managed</code> attribute of
+      the <code>target</code> element is also set to "no" (the default
+      value is "yes"), even this basic setup will not be performed -
+      libvirt will simply pass the device on to the hypervisor with no
+      setup at all. <span class="since">Since 5.7.0</span> Using
+      managed='no' with a pre-created tap device is useful because
+      it permits a virtual machine managed by an unprivileged libvirtd
+      to have emulated network devices based on tap devices.
+    </p>
+    <p>
+      After creating/opening the tap device, an optional shell script
+      (given in the <code>path</code> attribute of
+      the <code>&lt;script&gt;</code> element) will be run; this can
+      be used to do whatever extra host network integration is
+      required.
     </p>
 
 <pre>
 ...
 &lt;devices&gt;
-  &lt;interface type='ethernet'/&gt;
+  &lt;interface type='ethernet'&gt;
+    &lt;script path='/etc/qemu-ifup-mynet'/&gt;
+  &lt;/interface&gt;
   ...
   &lt;interface type='ethernet'&gt;
-    &lt;target dev='vnet7'/&gt;
-    &lt;script path='/etc/qemu-ifup-mynet'/&gt;
+    &lt;target dev='mytap1' managed='no'/&gt;
+    &lt;model type='virtio'/&gt;
   &lt;/interface&gt;
 &lt;/devices&gt;
 ...</pre>
@@ -6960,6 +7091,7 @@ qemu-kvm -net nic,model=? /dev/null
     &lt;model type='vga' vram='16384' heads='1'&gt;
       &lt;acceleration accel3d='yes' accel2d='yes'/&gt;
     &lt;/model&gt;
+    &lt;driver name='qemu'/&gt;
   &lt;/video&gt;
 &lt;/devices&gt;
 ...</pre>
@@ -6994,9 +7126,10 @@ qemu-kvm -net nic,model=? /dev/null
           "vbox", "qxl" (<span class="since">since 0.8.6</span>),
           "virtio" (<span class="since">since 1.3.0</span>),
           "gop" (<span class="since">since 3.2.0</span>),
-          "none" (<span class="since">since 4.6.0</span>, or "bochs"
-          (<span class="since">since 5.6.0</span>)
-          depending on the hypervisor features available.
+          "bochs" (<span class="since">since 5.6.0</span>), "ramfb"
+          (<span class="since">since 5.9.0</span>), or "none"
+          (<span class="since">since 4.6.0</span>,  depending on the hypervisor
+          features available.
           The purpose of the type <code>none</code> is to instruct libvirt not
           to add a default video device in the guest (see the paragraph above).
           This legacy behaviour can be inconvenient in cases where GPU mediated
@@ -7030,6 +7163,13 @@ qemu-kvm -net nic,model=? /dev/null
           Attribute <code>vram64</code> (<span class="since">since 1.3.3</span>)
           extends secondary bar and makes it addressable as 64bit memory.
         </p>
+        <p><span class="since">Since 5.9.0</span>, the <code>model</code>
+        element may also have an optional <code>resolution</code> sub-element.
+        The <code>resolution</code> element has attributes <code>x</code> and
+        <code>y</code> to set the minimum resolution for the video device. This
+        sub-element is valid for model types "vga", "qxl", "bochs", and
+        "virtio".
+        </p>
       </dd>
 
       <dt><code>acceleration</code></dt>
@@ -7044,6 +7184,12 @@ qemu-kvm -net nic,model=? /dev/null
         <dd>Enable 3D acceleration (for vbox driver
         <span class="since">since 0.7.1</span>, qemu driver
         <span class="since">since 1.3.0</span>)</dd>
+
+        <dt><code>rendernode</code></dt>
+        <dd>Absolute path to a host's DRI device to be used for
+        rendering (for 'vhostuser' driver only, <span
+        class="since">since 5.8.0</span>). If none is specified,
+        libvirt will pick one available.</dd>
         </dl>
       </dd>
 
@@ -7060,7 +7206,16 @@ qemu-kvm -net nic,model=? /dev/null
       <dd>
         The subelement <code>driver</code> can be used to tune the device:
         <dl>
-          <dt>virtio options</dt>
+          <dt><code>name</code></dt>
+          <dd>
+            Specify the backend driver to use, either "qemu" or
+            "vhostuser" depending on the hypervisor features available
+            (<span class="since">since 5.8.0</span>).  "qemu" is the
+            default QEMU backend. "vhostuser" will use a separate
+            vhost-user process backend (for <code>virtio</code>
+            device).
+          </dd>
+        <dt>virtio options</dt>
           <dd>
           <a href="#elementsVirtio">Virtio-specific options</a> can also be
           set (<span class="since">Since 3.5.0</span>)
@@ -8496,7 +8651,6 @@ qemu-kvm -net nic,model=? /dev/null
   &lt;memory model='nvdimm'&gt;
     &lt;source&gt;
       &lt;path&gt;/tmp/nvdimm&lt;/path&gt;
-      &lt;alignsize unit='KiB'&gt;2048&lt;/alignsize&gt;
     &lt;/source&gt;
     &lt;target&gt;
       &lt;size unit='KiB'&gt;524288&lt;/size&gt;
@@ -8507,9 +8661,10 @@ qemu-kvm -net nic,model=? /dev/null
       &lt;readonly/&gt;
     &lt;/target&gt;
   &lt;/memory&gt;
-  &lt;memory model='nvdimm'&gt;
+  &lt;memory model='nvdimm' access='shared'&gt;
     &lt;source&gt;
       &lt;path&gt;/dev/dax0.0&lt;/path&gt;
+      &lt;alignsize unit='KiB'&gt;2048&lt;/alignsize&gt;
       &lt;pmem/&gt;
     &lt;/source&gt;
     &lt;target&gt;
@@ -8543,6 +8698,8 @@ qemu-kvm -net nic,model=? /dev/null
           module basis. Values are the same as
           <a href="#elementsMemoryBacking">Memory Backing</a>:
           <code>shared</code> and <code>private</code>.
+          For <code>nvdimm</code> model, if using real NVDIMM DAX device as
+          backend, <code>shared</code> is required.
         </p>
       </dd>
 
@@ -8606,7 +8763,8 @@ qemu-kvm -net nic,model=? /dev/null
               alignment used to mmap the address range for the backend
               <code>path</code>. If not supplied the host page size is used.
               For example, to mmap a real NVDIMM device a 2M-aligned page may
-              be required.
+              be required, and host page size is 4KB, then we need to set this
+              element to 2MB.
               <span class="since">Since 5.0.0</span>
             </p>
           </dd>
@@ -8853,7 +9011,8 @@ qemu-kvm -net nic,model=? /dev/null
       </dd>
       <dt><code>model</code></dt>
       <dd>A valid security model name, matching the currently
-        activated security model
+      activated security model. Model <code>dac</code> is not available
+      when guest is run by unprivileged user.
       </dd>
       <dt><code>relabel</code></dt>
       <dd>Either <code>yes</code> or <code>no</code>. This must always

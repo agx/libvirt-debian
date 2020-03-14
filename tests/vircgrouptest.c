@@ -187,12 +187,9 @@ testCgroupDetectMounts(const void *args)
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     size_t i;
 
-    setenv("VIR_CGROUP_MOCK_FILENAME", data->file, 1);
+    g_setenv("VIR_CGROUP_MOCK_FILENAME", data->file, TRUE);
 
-    if (virAsprintf(&parsed, "%s/vircgroupdata/%s.parsed",
-                    abs_srcdir, data->file) < 0) {
-        goto cleanup;
-    }
+    parsed = g_strdup_printf("%s/vircgroupdata/%s.parsed", abs_srcdir, data->file);
 
     if (virCgroupNewSelf(&group) < 0) {
         if (data->fail)
@@ -210,8 +207,6 @@ testCgroupDetectMounts(const void *args)
     }
     virBufferAsprintf(&buf, "%-12s %s\n",
                       "unified", NULLSTR(group->unified.mountPoint));
-    if (virBufferCheckError(&buf) < 0)
-        goto cleanup;
 
     actual = virBufferCurrentContent(&buf);
     if (virTestCompareToFile(actual, parsed) < 0)
@@ -220,7 +215,7 @@ testCgroupDetectMounts(const void *args)
     result = 0;
 
  cleanup:
-    unsetenv("VIR_CGROUP_MOCK_FILENAME");
+    g_unsetenv("VIR_CGROUP_MOCK_FILENAME");
     VIR_FREE(parsed);
     virCgroupFree(&group);
     virBufferFreeAndReset(&buf);
@@ -228,7 +223,7 @@ testCgroupDetectMounts(const void *args)
 }
 
 
-static int testCgroupNewForSelf(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForSelf(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     int ret = -1;
@@ -268,7 +263,7 @@ static int testCgroupNewForSelf(const void *args ATTRIBUTE_UNUSED)
     /* Asking for impossible combination since CPU is co-mounted */
 
 
-static int testCgroupNewForPartition(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForPartition(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     int ret = -1;
@@ -342,7 +337,7 @@ static int testCgroupNewForPartition(const void *args ATTRIBUTE_UNUSED)
 }
 
 
-static int testCgroupNewForPartitionNested(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForPartitionNested(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     int ret = -1;
@@ -392,7 +387,7 @@ static int testCgroupNewForPartitionNested(const void *args ATTRIBUTE_UNUSED)
 }
 
 
-static int testCgroupNewForPartitionNestedDeep(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForPartitionNestedDeep(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     int ret = -1;
@@ -449,7 +444,7 @@ static int testCgroupNewForPartitionNestedDeep(const void *args ATTRIBUTE_UNUSED
 
 
 
-static int testCgroupNewForPartitionDomain(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForPartitionDomain(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr partitioncgroup = NULL;
     virCgroupPtr domaincgroup = NULL;
@@ -484,7 +479,7 @@ static int testCgroupNewForPartitionDomain(const void *args ATTRIBUTE_UNUSED)
     return ret;
 }
 
-static int testCgroupNewForPartitionDomainEscaped(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForPartitionDomainEscaped(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr partitioncgroup1 = NULL;
     virCgroupPtr partitioncgroup2 = NULL;
@@ -537,7 +532,7 @@ static int testCgroupNewForPartitionDomainEscaped(const void *args ATTRIBUTE_UNU
     return ret;
 }
 
-static int testCgroupNewForSelfAllInOne(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForSelfAllInOne(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     int ret = -1;
@@ -564,7 +559,7 @@ static int testCgroupNewForSelfAllInOne(const void *args ATTRIBUTE_UNUSED)
 }
 
 
-static int testCgroupNewForSelfLogind(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForSelfLogind(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
 
@@ -578,7 +573,7 @@ static int testCgroupNewForSelfLogind(const void *args ATTRIBUTE_UNUSED)
 }
 
 
-static int testCgroupNewForSelfUnified(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForSelfUnified(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     int ret = -1;
@@ -587,6 +582,7 @@ static int testCgroupNewForSelfUnified(const void *args ATTRIBUTE_UNUSED)
         (1 << VIR_CGROUP_CONTROLLER_CPU) |
         (1 << VIR_CGROUP_CONTROLLER_CPUACCT) |
         (1 << VIR_CGROUP_CONTROLLER_MEMORY) |
+        (1 << VIR_CGROUP_CONTROLLER_DEVICES) |
         (1 << VIR_CGROUP_CONTROLLER_BLKIO);
 
     if (virCgroupNewSelf(&cgroup) < 0) {
@@ -602,21 +598,19 @@ static int testCgroupNewForSelfUnified(const void *args ATTRIBUTE_UNUSED)
 }
 
 
-static int testCgroupNewForSelfHybrid(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupNewForSelfHybrid(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     int ret = -1;
     const char *empty[VIR_CGROUP_CONTROLLER_LAST] = { 0 };
     const char *mounts[VIR_CGROUP_CONTROLLER_LAST] = {
         [VIR_CGROUP_CONTROLLER_CPUSET] = "/not/really/sys/fs/cgroup/cpuset",
-        [VIR_CGROUP_CONTROLLER_DEVICES] = "/not/really/sys/fs/cgroup/devices",
         [VIR_CGROUP_CONTROLLER_FREEZER] = "/not/really/sys/fs/cgroup/freezer",
         [VIR_CGROUP_CONTROLLER_NET_CLS] = "/not/really/sys/fs/cgroup/net_cls",
         [VIR_CGROUP_CONTROLLER_PERF_EVENT] = "/not/really/sys/fs/cgroup/perf_event",
     };
     const char *placement[VIR_CGROUP_CONTROLLER_LAST] = {
         [VIR_CGROUP_CONTROLLER_CPUSET] = "/",
-        [VIR_CGROUP_CONTROLLER_DEVICES] = "/",
         [VIR_CGROUP_CONTROLLER_FREEZER] = "/",
         [VIR_CGROUP_CONTROLLER_NET_CLS] = "/",
         [VIR_CGROUP_CONTROLLER_PERF_EVENT] = "/",
@@ -625,6 +619,7 @@ static int testCgroupNewForSelfHybrid(const void *args ATTRIBUTE_UNUSED)
         (1 << VIR_CGROUP_CONTROLLER_CPU) |
         (1 << VIR_CGROUP_CONTROLLER_CPUACCT) |
         (1 << VIR_CGROUP_CONTROLLER_MEMORY) |
+        (1 << VIR_CGROUP_CONTROLLER_DEVICES) |
         (1 << VIR_CGROUP_CONTROLLER_BLKIO);
 
     if (virCgroupNewSelf(&cgroup) < 0) {
@@ -655,7 +650,7 @@ static int testCgroupAvailable(const void *args)
     return 0;
 }
 
-static int testCgroupControllerAvailable(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupControllerAvailable(const void *args G_GNUC_UNUSED)
 {
     int ret = 0;
 
@@ -683,7 +678,7 @@ static int testCgroupControllerAvailable(const void *args ATTRIBUTE_UNUSED)
     return ret;
 }
 
-static int testCgroupGetPercpuStats(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupGetPercpuStats(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     size_t i;
@@ -768,7 +763,7 @@ static int testCgroupGetPercpuStats(const void *args ATTRIBUTE_UNUSED)
     return ret;
 }
 
-static int testCgroupGetMemoryUsage(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupGetMemoryUsage(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     int rv, ret = -1;
@@ -802,7 +797,7 @@ static int testCgroupGetMemoryUsage(const void *args ATTRIBUTE_UNUSED)
 
 
 static int
-testCgroupGetMemoryStat(const void *args ATTRIBUTE_UNUSED)
+testCgroupGetMemoryStat(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     int rv;
@@ -825,7 +820,7 @@ testCgroupGetMemoryStat(const void *args ATTRIBUTE_UNUSED)
         "inactive_file",
         "unevictable"
     };
-    unsigned long long values[ARRAY_CARDINALITY(expected_values)];
+    unsigned long long values[G_N_ELEMENTS(expected_values)];
 
     if ((rv = virCgroupNewPartition("/virtualmachines", true,
                                     (1 << VIR_CGROUP_CONTROLLER_MEMORY),
@@ -842,7 +837,7 @@ testCgroupGetMemoryStat(const void *args ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    for (i = 0; i < ARRAY_CARDINALITY(expected_values); i++) {
+    for (i = 0; i < G_N_ELEMENTS(expected_values); i++) {
         /* NB: virCgroupGetMemoryStat returns a KiB scaled value */
         if ((expected_values[i] >> 10) != values[i]) {
             fprintf(stderr,
@@ -861,7 +856,7 @@ testCgroupGetMemoryStat(const void *args ATTRIBUTE_UNUSED)
 }
 
 
-static int testCgroupGetBlkioIoServiced(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupGetBlkioIoServiced(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     size_t i;
@@ -879,7 +874,7 @@ static int testCgroupGetBlkioIoServiced(const void *args ATTRIBUTE_UNUSED)
         "requests read",
         "requests written"
     };
-    long long values[ARRAY_CARDINALITY(expected_values)];
+    long long values[G_N_ELEMENTS(expected_values)];
 
     if ((rv = virCgroupNewPartition("/virtualmachines", true,
                                     (1 << VIR_CGROUP_CONTROLLER_BLKIO),
@@ -895,7 +890,7 @@ static int testCgroupGetBlkioIoServiced(const void *args ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    for (i = 0; i < ARRAY_CARDINALITY(expected_values); i++) {
+    for (i = 0; i < G_N_ELEMENTS(expected_values); i++) {
         if (expected_values[i] != values[i]) {
             fprintf(stderr,
                     "Wrong value for %s from virCgroupBlkioIoServiced (expected %lld)\n",
@@ -911,7 +906,7 @@ static int testCgroupGetBlkioIoServiced(const void *args ATTRIBUTE_UNUSED)
     return ret;
 }
 
-static int testCgroupGetBlkioIoDeviceServiced(const void *args ATTRIBUTE_UNUSED)
+static int testCgroupGetBlkioIoDeviceServiced(const void *args G_GNUC_UNUSED)
 {
     virCgroupPtr cgroup = NULL;
     size_t i;
@@ -934,7 +929,7 @@ static int testCgroupGetBlkioIoDeviceServiced(const void *args ATTRIBUTE_UNUSED)
         "requests read",
         "requests written"
     };
-    long long values[ARRAY_CARDINALITY(expected_values0)];
+    long long values[G_N_ELEMENTS(expected_values0)];
 
     if ((rv = virCgroupNewPartition("/virtualmachines", true,
                                     (1 << VIR_CGROUP_CONTROLLER_BLKIO),
@@ -951,7 +946,7 @@ static int testCgroupGetBlkioIoDeviceServiced(const void *args ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    for (i = 0; i < ARRAY_CARDINALITY(expected_values0); i++) {
+    for (i = 0; i < G_N_ELEMENTS(expected_values0); i++) {
         if (expected_values0[i] != values[i]) {
             fprintf(stderr,
                     "Wrong value for %s from virCgroupGetBlkioIoDeviceServiced (expected %lld)\n",
@@ -968,7 +963,7 @@ static int testCgroupGetBlkioIoDeviceServiced(const void *args ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    for (i = 0; i < ARRAY_CARDINALITY(expected_values1); i++) {
+    for (i = 0; i < G_N_ELEMENTS(expected_values1); i++) {
         if (expected_values1[i] != values[i]) {
             fprintf(stderr,
                     "Wrong value for %s from virCgroupGetBlkioIoDeviceServiced (expected %lld)\n",
@@ -992,23 +987,20 @@ initFakeFS(const char *mode,
 {
     char *fakerootdir;
 
-    if (VIR_STRDUP_QUIET(fakerootdir, FAKEROOTDIRTEMPLATE) < 0) {
-        fprintf(stderr, "Out of memory\n");
-        abort();
-    }
+    fakerootdir = g_strdup(FAKEROOTDIRTEMPLATE);
 
-    if (!mkdtemp(fakerootdir)) {
+    if (!g_mkdtemp(fakerootdir)) {
         fprintf(stderr, "Cannot create fakerootdir");
         abort();
     }
 
-    setenv("LIBVIRT_FAKE_ROOT_DIR", fakerootdir, 1);
+    g_setenv("LIBVIRT_FAKE_ROOT_DIR", fakerootdir, TRUE);
 
     if (mode)
-        setenv("VIR_CGROUP_MOCK_MODE", mode, 1);
+        g_setenv("VIR_CGROUP_MOCK_MODE", mode, TRUE);
 
     if (filename)
-        setenv("VIR_CGROUP_MOCK_FILENAME", filename, 1);
+        g_setenv("VIR_CGROUP_MOCK_FILENAME", filename, TRUE);
 
     return fakerootdir;
 }
@@ -1020,9 +1012,9 @@ cleanupFakeFS(char *fakerootdir)
         virFileDeleteTree(fakerootdir);
 
     VIR_FREE(fakerootdir);
-    unsetenv("LIBVIRT_FAKE_ROOT_DIR");
-    unsetenv("VIR_CGROUP_MOCK_MODE");
-    unsetenv("VIR_CGROUP_MOCK_FILENAME");
+    g_unsetenv("LIBVIRT_FAKE_ROOT_DIR");
+    g_unsetenv("VIR_CGROUP_MOCK_MODE");
+    g_unsetenv("VIR_CGROUP_MOCK_FILENAME");
 }
 
 static int
@@ -1136,7 +1128,7 @@ mymain(void)
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/vircgroupmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("vircgroup"))
 
 #else
 int

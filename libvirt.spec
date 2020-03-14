@@ -4,7 +4,7 @@
 # that's still supported by the vendor. It may work on other distros
 # or versions, but no effort will be made to ensure that going forward.
 %define min_rhel 7
-%define min_fedora 29
+%define min_fedora 30
 
 %if (0%{?fedora} && 0%{?fedora} >= %{min_fedora}) || (0%{?rhel} && 0%{?rhel} >= %{min_rhel})
     %define supported_platform 1
@@ -36,6 +36,11 @@
     %define qemu_kvm_arches x86_64 %{power64} aarch64 s390x
 %endif
 
+# On RHEL 7 and older macro _vpath_builddir is not defined.
+%if 0%{?rhel} <= 7
+    %define _vpath_builddir %{_target_platform}
+%endif
+
 %ifarch %{qemu_kvm_arches}
     %define with_qemu_kvm      %{with_qemu}
 %else
@@ -49,7 +54,6 @@
 # Then the hypervisor drivers that run outside libvirtd, in libvirt.so
 %define with_openvz        0%{!?_without_openvz:1}
 %define with_vmware        0%{!?_without_vmware:1}
-%define with_phyp          0%{!?_without_phyp:1}
 %define with_esx           0%{!?_without_esx:1}
 %define with_hyperv        0%{!?_without_hyperv:1}
 
@@ -60,7 +64,15 @@
 %else
     %define with_storage_sheepdog 0
 %endif
+
 %define with_storage_gluster 0%{!?_without_storage_gluster:1}
+%ifnarch %{qemu_kvm_arches}
+    # gluster is only built where qemu driver is enabled on RHEL 8
+    %if 0%{?rhel} >= 8
+        %define with_storage_gluster 0
+    %endif
+%endif
+
 %define with_numactl          0%{!?_without_numactl:1}
 
 # F25+ has zfs-fuse
@@ -118,14 +130,12 @@
 %endif
 
 # RHEL doesn't ship OpenVZ, VBox, PowerHypervisor,
-# VMware, libxenserver (xenapi), libxenlight (Xen 4.1 and newer),
+# VMware, libxenlight (Xen 4.1 and newer),
 # or HyperV.
 %if 0%{?rhel}
     %define with_openvz 0
     %define with_vbox 0
-    %define with_phyp 0
     %define with_vmware 0
-    %define with_xenapi 0
     %define with_libxl 0
     %define with_hyperv 0
     %define with_vz 0
@@ -176,14 +186,6 @@
 
 %define with_bash_completion  0%{!?_without_bash_completion:1}
 
-# Use Python 3 when possible, Python 2 otherwise
-%if 0%{?fedora} || 0%{?rhel} > 7
-    %define python python3
-%else
-    %define python python2
-%endif
-
-
 %if %{with_qemu} || %{with_lxc}
 # numad is used to manage the CPU and memory placement dynamically,
 # it's not available on many non-x86 architectures.
@@ -215,7 +217,7 @@
 
 Summary: Library providing a simple virtualization API
 Name: libvirt
-Version: 5.6.0
+Version: 6.0.0
 Release: 1%{?dist}
 License: LGPLv2+
 URL: https://libvirt.org/
@@ -260,7 +262,11 @@ BuildRequires: autoconf
 BuildRequires: automake
 BuildRequires: gettext-devel
 BuildRequires: libtool
-BuildRequires: /usr/bin/pod2man
+%endif
+%if 0%{?rhel} == 7
+BuildRequires: python36-docutils
+%else
+BuildRequires: python3-docutils
 %endif
 BuildRequires: gcc
 BuildRequires: git
@@ -269,11 +275,12 @@ BuildRequires: perl-interpreter
 %else
 BuildRequires: perl
 %endif
-BuildRequires: %{python}
+BuildRequires: python3
 BuildRequires: systemd-units
 %if %{with_libxl}
 BuildRequires: xen-devel
 %endif
+BuildRequires: glib2-devel >= 2.48
 BuildRequires: libxml2-devel
 BuildRequires: libxslt
 BuildRequires: readline-devel
@@ -328,8 +335,13 @@ BuildRequires: device-mapper-devel
 # For XFS reflink clone support
 BuildRequires: xfsprogs-devel
 %if %{with_storage_rbd}
+    %if 0%{?fedora} || 0%{?rhel} > 7
+BuildRequires: librados-devel
+BuildRequires: librbd-devel
+    %else
 BuildRequires: librados2-devel
 BuildRequires: librbd1-devel
+    %endif
 %endif
 %if %{with_storage_gluster}
 BuildRequires: glusterfs-api-devel >= 3.4.1
@@ -352,7 +364,7 @@ BuildRequires: libcap-ng-devel >= 0.5.0
 %if %{with_fuse}
 BuildRequires: fuse-devel >= 2.8.6
 %endif
-%if %{with_phyp} || %{with_libssh2}
+%if %{with_libssh2}
 BuildRequires: libssh2-devel >= 1.3.0
 %endif
 
@@ -424,6 +436,9 @@ Summary: Server side daemon and supporting files for libvirt library
 
 # The client side, i.e. shared libs are in a subpackage
 Requires: %{name}-libs = %{version}-%{release}
+
+# (client invokes 'nc' against the UNIX socket on the server)
+Requires: /usr/bin/nc
 
 # for modprobe of pci devices
 Requires: module-init-tools
@@ -899,8 +914,6 @@ capabilities of recent versions of Linux (and other OSes).
 %package libs
 Summary: Client side libraries
 # So remote clients can access libvirt over SSH tunnel
-# (client invokes 'nc' against the UNIX socket on the server)
-Requires: nc
 Requires: cyrus-sasl
 # Needed by default sasl.conf - no onerous extra deps, since
 # 100's of other things on a system already pull in krb5-libs
@@ -1021,12 +1034,6 @@ exit 1
     %define arg_libxl --without-libxl
 %endif
 
-%if %{with_phyp}
-    %define arg_phyp --with-phyp
-%else
-    %define arg_phyp --without-phyp
-%endif
-
 %if %{with_esx}
     %define arg_esx --with-esx
 %else
@@ -1125,27 +1132,6 @@ exit 1
 
 %define arg_selinux_mount --with-selinux-mount="/sys/fs/selinux"
 
-%if 0%{?fedora}
-    # Nightly edk2.git-ovmf-x64
-    LOADERS="/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd:/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd"
-    # Nightly edk2.git-ovmf-ia32
-    LOADERS="$LOADERS:/usr/share/edk2.git/ovmf-ia32/OVMF_CODE-pure-efi.fd:/usr/share/edk2.git/ovmf-ia32/OVMF_VARS-pure-efi.fd"
-    # Nightly edk2.git-aarch64
-    LOADERS="$LOADERS:/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw:/usr/share/edk2.git/aarch64/vars-template-pflash.raw"
-    # Nightly edk2.git-arm
-    LOADERS="$LOADERS:/usr/share/edk2.git/arm/QEMU_EFI-pflash.raw:/usr/share/edk2.git/arm/vars-template-pflash.raw"
-
-    # Fedora edk2-ovmf
-    LOADERS="$LOADERS:/usr/share/edk2/ovmf/OVMF_CODE.fd:/usr/share/edk2/ovmf/OVMF_VARS.fd"
-    # Fedora edk2-ovmf-ia32
-    LOADERS="$LOADERS:/usr/share/edk2/ovmf-ia32/OVMF_CODE.fd:/usr/share/edk2/ovmf-ia32/OVMF_VARS.fd"
-    # Fedora edk2-aarch64
-    LOADERS="$LOADERS:/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw:/usr/share/edk2/aarch64/vars-template-pflash.raw"
-    # Fedora edk2-arm
-    LOADERS="$LOADERS:/usr/share/edk2/arm/QEMU_EFI-pflash.raw:/usr/share/edk2/arm/vars-template-pflash.raw"
-    %define arg_loader_nvram --with-loader-nvram="$LOADERS"
-%endif
-
 # place macros above and build commands below this comment
 
 export SOURCE_DATE_EPOCH=$(stat --printf='%Y' %{_specdir}/%{name}.spec)
@@ -1155,7 +1141,14 @@ export SOURCE_DATE_EPOCH=$(stat --printf='%Y' %{_specdir}/%{name}.spec)
 %endif
 
 rm -f po/stamp-po
-%configure %{?arg_qemu} \
+
+%define _configure ../configure
+mkdir %{_vpath_builddir}
+cd %{_vpath_builddir}
+
+%configure --enable-dependency-tracking \
+           --with-runstatedir=%{_rundir} \
+           %{?arg_qemu} \
            %{?arg_openvz} \
            %{?arg_lxc} \
            %{?arg_vbox} \
@@ -1163,13 +1156,12 @@ rm -f po/stamp-po
            --with-sasl \
            --with-polkit \
            --with-libvirtd \
-           %{?arg_phyp} \
            %{?arg_esx} \
            %{?arg_hyperv} \
            %{?arg_vmware} \
-           --without-xenapi \
            --without-vz \
            --without-bhyve \
+           --with-remote-default-mode=legacy \
            --with-interface \
            --with-network \
            --with-storage-fs \
@@ -1211,19 +1203,18 @@ rm -f po/stamp-po
            --with-qemu-user=%{qemu_user} \
            --with-qemu-group=%{qemu_group} \
            --with-tls-priority=%{tls_priority} \
-           %{?arg_loader_nvram} \
            %{?enable_werror} \
            --enable-expensive-tests \
            --with-init-script=systemd \
            %{?arg_login_shell}
 make %{?_smp_mflags} V=1
-gzip -9 ChangeLog
 
 %install
 rm -fr %{buildroot}
 
 export SOURCE_DATE_EPOCH=$(stat --printf='%Y' %{_specdir}/%{name}.spec)
 
+cd %{_vpath_builddir}
 %make_install %{?_smp_mflags} SYSTEMD_UNIT_DIR=%{_unitdir} V=1
 
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
@@ -1305,18 +1296,10 @@ mv $RPM_BUILD_ROOT%{_datadir}/systemtap/tapset/libvirt_qemu_probes.stp \
 %endif
 
 %check
-cd tests
-# These tests don't current work in a mock build root
-for i in nodeinfotest seclabeltest
-do
-  rm -f $i
-  printf 'int main(void) { return 0; }' > $i.c
-  printf '#!/bin/sh\nexit 0\n' > $i
-  chmod +x $i
-done
+cd %{_vpath_builddir}
 if ! make %{?_smp_mflags} check VIR_TEST_DEBUG=1
 then
-  cat test-suite.log || true
+  cat tests/test-suite.log || true
   exit 1
 fi
 
@@ -1378,19 +1361,37 @@ fi
 
 %posttrans daemon
 if [ -f %{_localstatedir}/lib/rpm-state/libvirt/restart ]; then
-    # Old libvirtd owns the sockets and will delete them on
-    # shutdown. Can't use a try-restart as libvirtd will simply
-    # own the sockets again when it comes back up. Thus we must
-    # do this particular ordering
-    /bin/systemctl is-active libvirtd.service 1>/dev/null 2>&1
-    if test $? = 0 ; then
-        /bin/systemctl stop libvirtd.service >/dev/null 2>&1 || :
+    # See if user has previously modified their install to
+    # tell libvirtd to use --listen
+    grep -E '^LIBVIRTD_ARGS=.*--listen' /etc/sysconfig/libvirtd 1>/dev/null 2>&1
+    if test $? = 0
+    then
+        # Then lets keep honouring --listen and *not* use
+        # systemd socket activation, because switching things
+        # might confuse mgmt tool like puppet/ansible that
+        # expect the old style libvirtd
+        /bin/systemctl mask libvirtd.socket >/dev/null 2>&1 || :
+        /bin/systemctl mask libvirtd-ro.socket >/dev/null 2>&1 || :
+        /bin/systemctl mask libvirtd-admin.socket >/dev/null 2>&1 || :
+        /bin/systemctl mask libvirtd-tls.socket >/dev/null 2>&1 || :
+        /bin/systemctl mask libvirtd-tcp.socket >/dev/null 2>&1 || :
+    else
+        # Old libvirtd owns the sockets and will delete them on
+        # shutdown. Can't use a try-restart as libvirtd will simply
+        # own the sockets again when it comes back up. Thus we must
+        # do this particular ordering, so that we get libvirtd
+        # running with socket activation in use
+        /bin/systemctl is-active libvirtd.service 1>/dev/null 2>&1
+        if test $? = 0
+        then
+            /bin/systemctl stop libvirtd.service >/dev/null 2>&1 || :
 
-        /bin/systemctl try-restart libvirtd.socket >/dev/null 2>&1 || :
-        /bin/systemctl try-restart libvirtd-ro.socket >/dev/null 2>&1 || :
-        /bin/systemctl try-restart libvirtd-admin.socket >/dev/null 2>&1 || :
+            /bin/systemctl try-restart libvirtd.socket >/dev/null 2>&1 || :
+            /bin/systemctl try-restart libvirtd-ro.socket >/dev/null 2>&1 || :
+            /bin/systemctl try-restart libvirtd-admin.socket >/dev/null 2>&1 || :
 
-        /bin/systemctl start libvirtd.service >/dev/null 2>&1 || :
+            /bin/systemctl start libvirtd.service >/dev/null 2>&1 || :
+        fi
     fi
 fi
 rm -rf %{_localstatedir}/lib/rpm-state/libvirt || :
@@ -1506,16 +1507,8 @@ exit 0
 %files
 
 %files docs
-%doc AUTHORS ChangeLog.gz NEWS README README.md
-%doc libvirt-docs/*
-
-# API docs
-%dir %{_datadir}/gtk-doc/html/libvirt/
-%doc %{_datadir}/gtk-doc/html/libvirt/*.devhelp
-%doc %{_datadir}/gtk-doc/html/libvirt/*.html
-%doc %{_datadir}/gtk-doc/html/libvirt/*.png
-%doc %{_datadir}/gtk-doc/html/libvirt/*.css
-
+%doc AUTHORS ChangeLog NEWS README README.md
+%doc %{_vpath_builddir}/libvirt-docs/*
 
 %files daemon
 
@@ -1527,6 +1520,12 @@ exit 0
 %{_unitdir}/libvirtd-admin.socket
 %{_unitdir}/libvirtd-tcp.socket
 %{_unitdir}/libvirtd-tls.socket
+%{_unitdir}/virtproxyd.service
+%{_unitdir}/virtproxyd.socket
+%{_unitdir}/virtproxyd-ro.socket
+%{_unitdir}/virtproxyd-admin.socket
+%{_unitdir}/virtproxyd-tcp.socket
+%{_unitdir}/virtproxyd-tls.socket
 %{_unitdir}/virt-guest-shutdown.target
 %{_unitdir}/virtlogd.service
 %{_unitdir}/virtlogd.socket
@@ -1538,6 +1537,7 @@ exit 0
 %config(noreplace) %{_sysconfdir}/sysconfig/virtlogd
 %config(noreplace) %{_sysconfdir}/sysconfig/virtlockd
 %config(noreplace) %{_sysconfdir}/libvirt/libvirtd.conf
+%config(noreplace) %{_sysconfdir}/libvirt/virtproxyd.conf
 %config(noreplace) %{_sysconfdir}/libvirt/virtlogd.conf
 %config(noreplace) %{_sysconfdir}/libvirt/virtlockd.conf
 %config(noreplace) %{_sysconfdir}/sasl2/libvirt.conf
@@ -1546,7 +1546,7 @@ exit 0
 %config(noreplace) %{_sysconfdir}/logrotate.d/libvirtd
 %dir %{_datadir}/libvirt/
 
-%ghost %dir %{_localstatedir}/run/libvirt/
+%ghost %dir %{_rundir}/libvirt/
 
 %dir %attr(0711, root, root) %{_localstatedir}/lib/libvirt/images/
 %dir %attr(0711, root, root) %{_localstatedir}/lib/libvirt/filesystems/
@@ -1565,6 +1565,8 @@ exit 0
 %{_datadir}/augeas/lenses/tests/test_virtlogd.aug
 %{_datadir}/augeas/lenses/virtlockd.aug
 %{_datadir}/augeas/lenses/tests/test_virtlockd.aug
+%{_datadir}/augeas/lenses/virtproxyd.aug
+%{_datadir}/augeas/lenses/tests/test_virtproxyd.aug
 %{_datadir}/augeas/lenses/libvirt_lockd.aug
 %if %{with_qemu}
 %{_datadir}/augeas/lenses/tests/test_libvirt_lockd.aug
@@ -1579,6 +1581,7 @@ exit 0
 %attr(0755, root, root) %{_libexecdir}/libvirt_iohelper
 
 %attr(0755, root, root) %{_sbindir}/libvirtd
+%attr(0755, root, root) %{_sbindir}/virtproxyd
 %attr(0755, root, root) %{_sbindir}/virtlogd
 %attr(0755, root, root) %{_sbindir}/virtlockd
 
@@ -1599,13 +1602,29 @@ exit 0
 %ghost %{_sysconfdir}/libvirt/nwfilter/*.xml
 
 %files daemon-driver-interface
+%config(noreplace) %{_sysconfdir}/libvirt/virtinterfaced.conf
+%{_datadir}/augeas/lenses/virtinterfaced.aug
+%{_datadir}/augeas/lenses/tests/test_virtinterfaced.aug
+%{_unitdir}/virtinterfaced.service
+%{_unitdir}/virtinterfaced.socket
+%{_unitdir}/virtinterfaced-ro.socket
+%{_unitdir}/virtinterfaced-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtinterfaced
 %{_libdir}/%{name}/connection-driver/libvirt_driver_interface.so
 
 %files daemon-driver-network
+%config(noreplace) %{_sysconfdir}/libvirt/virtnetworkd.conf
+%{_datadir}/augeas/lenses/virtnetworkd.aug
+%{_datadir}/augeas/lenses/tests/test_virtnetworkd.aug
+%{_unitdir}/virtnetworkd.service
+%{_unitdir}/virtnetworkd.socket
+%{_unitdir}/virtnetworkd-ro.socket
+%{_unitdir}/virtnetworkd-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtnetworkd
 %dir %attr(0700, root, root) %{_sysconfdir}/libvirt/qemu/
 %dir %attr(0700, root, root) %{_sysconfdir}/libvirt/qemu/networks/
 %dir %attr(0700, root, root) %{_sysconfdir}/libvirt/qemu/networks/autostart
-%ghost %dir %{_localstatedir}/run/libvirt/network/
+%ghost %dir %{_rundir}/libvirt/network/
 %dir %attr(0700, root, root) %{_localstatedir}/lib/libvirt/network/
 %dir %attr(0755, root, root) %{_localstatedir}/lib/libvirt/dnsmasq/
 %attr(0755, root, root) %{_libexecdir}/libvirt_leaseshelper
@@ -1616,19 +1635,51 @@ exit 0
 %endif
 
 %files daemon-driver-nodedev
+%config(noreplace) %{_sysconfdir}/libvirt/virtnodedevd.conf
+%{_datadir}/augeas/lenses/virtnodedevd.aug
+%{_datadir}/augeas/lenses/tests/test_virtnodedevd.aug
+%{_unitdir}/virtnodedevd.service
+%{_unitdir}/virtnodedevd.socket
+%{_unitdir}/virtnodedevd-ro.socket
+%{_unitdir}/virtnodedevd-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtnodedevd
 %{_libdir}/%{name}/connection-driver/libvirt_driver_nodedev.so
 
 %files daemon-driver-nwfilter
+%config(noreplace) %{_sysconfdir}/libvirt/virtnwfilterd.conf
+%{_datadir}/augeas/lenses/virtnwfilterd.aug
+%{_datadir}/augeas/lenses/tests/test_virtnwfilterd.aug
+%{_unitdir}/virtnwfilterd.service
+%{_unitdir}/virtnwfilterd.socket
+%{_unitdir}/virtnwfilterd-ro.socket
+%{_unitdir}/virtnwfilterd-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtnwfilterd
 %dir %attr(0700, root, root) %{_sysconfdir}/libvirt/nwfilter/
-%ghost %dir %{_localstatedir}/run/libvirt/network/
+%ghost %dir %{_rundir}/libvirt/network/
 %{_libdir}/%{name}/connection-driver/libvirt_driver_nwfilter.so
 
 %files daemon-driver-secret
+%config(noreplace) %{_sysconfdir}/libvirt/virtsecretd.conf
+%{_datadir}/augeas/lenses/virtsecretd.aug
+%{_datadir}/augeas/lenses/tests/test_virtsecretd.aug
+%{_unitdir}/virtsecretd.service
+%{_unitdir}/virtsecretd.socket
+%{_unitdir}/virtsecretd-ro.socket
+%{_unitdir}/virtsecretd-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtsecretd
 %{_libdir}/%{name}/connection-driver/libvirt_driver_secret.so
 
 %files daemon-driver-storage
 
 %files daemon-driver-storage-core
+%config(noreplace) %{_sysconfdir}/libvirt/virtstoraged.conf
+%{_datadir}/augeas/lenses/virtstoraged.aug
+%{_datadir}/augeas/lenses/tests/test_virtstoraged.aug
+%{_unitdir}/virtstoraged.service
+%{_unitdir}/virtstoraged.socket
+%{_unitdir}/virtstoraged-ro.socket
+%{_unitdir}/virtstoraged-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtstoraged
 %attr(0755, root, root) %{_libexecdir}/libvirt_parthelper
 %{_libdir}/%{name}/connection-driver/libvirt_driver_storage.so
 %{_libdir}/%{name}/storage-backend/libvirt_storage_backend_fs.so
@@ -1677,12 +1728,20 @@ exit 0
 
 %if %{with_qemu}
 %files daemon-driver-qemu
+%config(noreplace) %{_sysconfdir}/libvirt/virtqemud.conf
+%{_datadir}/augeas/lenses/virtqemud.aug
+%{_datadir}/augeas/lenses/tests/test_virtqemud.aug
+%{_unitdir}/virtqemud.service
+%{_unitdir}/virtqemud.socket
+%{_unitdir}/virtqemud-ro.socket
+%{_unitdir}/virtqemud-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtqemud
 %dir %attr(0700, root, root) %{_sysconfdir}/libvirt/qemu/
 %dir %attr(0700, root, root) %{_localstatedir}/log/libvirt/qemu/
 %config(noreplace) %{_sysconfdir}/libvirt/qemu.conf
 %config(noreplace) %{_sysconfdir}/libvirt/qemu-lockd.conf
 %config(noreplace) %{_sysconfdir}/logrotate.d/libvirtd.qemu
-%ghost %dir %{_localstatedir}/run/libvirt/qemu/
+%ghost %dir %{_rundir}/libvirt/qemu/
 %dir %attr(0751, %{qemu_user}, %{qemu_group}) %{_localstatedir}/lib/libvirt/qemu/
 %dir %attr(0750, %{qemu_user}, %{qemu_group}) %{_localstatedir}/cache/libvirt/qemu/
 %{_datadir}/augeas/lenses/libvirtd_qemu.aug
@@ -1694,10 +1753,18 @@ exit 0
 
 %if %{with_lxc}
 %files daemon-driver-lxc
+%config(noreplace) %{_sysconfdir}/libvirt/virtlxcd.conf
+%{_datadir}/augeas/lenses/virtlxcd.aug
+%{_datadir}/augeas/lenses/tests/test_virtlxcd.aug
+%{_unitdir}/virtlxcd.service
+%{_unitdir}/virtlxcd.socket
+%{_unitdir}/virtlxcd-ro.socket
+%{_unitdir}/virtlxcd-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtlxcd
 %dir %attr(0700, root, root) %{_localstatedir}/log/libvirt/lxc/
 %config(noreplace) %{_sysconfdir}/libvirt/lxc.conf
 %config(noreplace) %{_sysconfdir}/logrotate.d/libvirtd.lxc
-%ghost %dir %{_localstatedir}/run/libvirt/lxc/
+%ghost %dir %{_rundir}/libvirt/lxc/
 %dir %attr(0700, root, root) %{_localstatedir}/lib/libvirt/lxc/
 %{_datadir}/augeas/lenses/libvirtd_lxc.aug
 %{_datadir}/augeas/lenses/tests/test_libvirtd_lxc.aug
@@ -1707,19 +1774,35 @@ exit 0
 
 %if %{with_libxl}
 %files daemon-driver-libxl
+%config(noreplace) %{_sysconfdir}/libvirt/virtxend.conf
+%{_datadir}/augeas/lenses/virtxend.aug
+%{_datadir}/augeas/lenses/tests/test_virtxend.aug
+%{_unitdir}/virtxend.service
+%{_unitdir}/virtxend.socket
+%{_unitdir}/virtxend-ro.socket
+%{_unitdir}/virtxend-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtxend
 %config(noreplace) %{_sysconfdir}/libvirt/libxl.conf
 %config(noreplace) %{_sysconfdir}/logrotate.d/libvirtd.libxl
 %config(noreplace) %{_sysconfdir}/libvirt/libxl-lockd.conf
 %{_datadir}/augeas/lenses/libvirtd_libxl.aug
 %{_datadir}/augeas/lenses/tests/test_libvirtd_libxl.aug
 %dir %attr(0700, root, root) %{_localstatedir}/log/libvirt/libxl/
-%ghost %dir %{_localstatedir}/run/libvirt/libxl/
+%ghost %dir %{_rundir}/libvirt/libxl/
 %dir %attr(0700, root, root) %{_localstatedir}/lib/libvirt/libxl/
 %{_libdir}/%{name}/connection-driver/libvirt_driver_libxl.so
 %endif
 
 %if %{with_vbox}
 %files daemon-driver-vbox
+%config(noreplace) %{_sysconfdir}/libvirt/virtvboxd.conf
+%{_datadir}/augeas/lenses/virtvboxd.aug
+%{_datadir}/augeas/lenses/tests/test_virtvboxd.aug
+%{_unitdir}/virtvboxd.service
+%{_unitdir}/virtvboxd.socket
+%{_unitdir}/virtvboxd-ro.socket
+%{_unitdir}/virtvboxd-admin.socket
+%attr(0755, root, root) %{_sbindir}/virtvboxd
 %{_libdir}/%{name}/connection-driver/libvirt_driver_vbox.so
 %endif
 
@@ -1785,7 +1868,7 @@ exit 0
 %config(noreplace) %{_sysconfdir}/sysconfig/libvirt-guests
 %attr(0755, root, root) %{_libexecdir}/libvirt-guests.sh
 
-%files libs -f %{name}.lang
+%files libs -f %{_vpath_builddir}/%{name}.lang
 %license COPYING COPYING.LESSER
 %config(noreplace) %{_sysconfdir}/libvirt/libvirt.conf
 %config(noreplace) %{_sysconfdir}/libvirt/libvirt-admin.conf
@@ -1801,6 +1884,7 @@ exit 0
 %{_datadir}/libvirt/schemas/capability.rng
 %{_datadir}/libvirt/schemas/cputypes.rng
 %{_datadir}/libvirt/schemas/domain.rng
+%{_datadir}/libvirt/schemas/domainbackup.rng
 %{_datadir}/libvirt/schemas/domaincaps.rng
 %{_datadir}/libvirt/schemas/domaincheckpoint.rng
 %{_datadir}/libvirt/schemas/domaincommon.rng
@@ -1847,6 +1931,7 @@ exit 0
 %if %{with_lxc}
 %files login-shell
 %attr(4750, root, virtlogin) %{_bindir}/virt-login-shell
+%{_libexecdir}/virt-login-shell-helper
 %config(noreplace) %{_sysconfdir}/libvirt/virt-login-shell.conf
 %{_mandir}/man1/virt-login-shell.1*
 %endif

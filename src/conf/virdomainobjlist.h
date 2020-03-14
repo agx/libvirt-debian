@@ -66,7 +66,6 @@ int virDomainObjListLoadAllConfigs(virDomainObjListPtr doms,
                                    const char *configDir,
                                    const char *autostartDir,
                                    bool liveStatus,
-                                   virCapsPtr caps,
                                    virDomainXMLOptionPtr xmlopt,
                                    virDomainLoadConfigNotify notify,
                                    void *opaque);
@@ -91,6 +90,7 @@ typedef int (*virDomainObjListIterator)(virDomainObjPtr dom,
                                         void *opaque);
 
 int virDomainObjListForEach(virDomainObjListPtr doms,
+                            bool modify,
                             virDomainObjListIterator callback,
                             void *opaque);
 

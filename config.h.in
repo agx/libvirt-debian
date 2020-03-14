@@ -39,9 +39,6 @@
 /* Define to 1 if gcc -Wlogical-op reports false positive 'or' equal expr */
 #undef BROKEN_GCC_WLOGICALOP_EQUAL_EXPR
 
-/* Define to 1 if gcc -Wlogical-op reports false positives on strchr */
-#undef BROKEN_GCC_WLOGICALOP_STRCHR
-
 /* Define to 1 if chown fails to change ctime when at least one argument was
    not -1. */
 #undef CHOWN_CHANGE_TIME_BUG
@@ -63,21 +60,12 @@
 /* Define to 1 if using `alloca.c'. */
 #undef C_ALLOCA
 
-/* Define to 1 if the C locale may have encoding errors. */
-#undef C_LOCALE_MAYBE_EILSEQ
-
 /* Define as the bit index in the word where to find bit 0 of the exponent of
    'double'. */
 #undef DBL_EXPBIT0_BIT
 
 /* Define as the word index where to find the exponent of 'double'. */
 #undef DBL_EXPBIT0_WORD
-
-/* Define as the bit index in the word where to find the sign of 'double'. */
-#undef DBL_SIGNBIT_BIT
-
-/* Define as the word index where to find the sign of 'double'. */
-#undef DBL_SIGNBIT_WORD
 
 /* Default editor to use */
 #undef DEFAULT_EDITOR
@@ -103,28 +91,6 @@
 /* Define this to 1 if F_DUPFD behavior does not match POSIX */
 #undef FCNTL_DUPFD_BUGGY
 
-/* Define to nothing if C supports flexible array members, and to 1 if it does
-   not. That way, with a declaration like 'struct s { int n; double
-   d[FLEXIBLE_ARRAY_MEMBER]; };', the struct hack can be used with pre-C99
-   compilers. When computing the size of such an object, don't use 'sizeof
-   (struct s)' as it overestimates the size. Use 'offsetof (struct s, d)'
-   instead. Don't use 'offsetof (struct s, d[0])', as this doesn't work with
-   MSVC and with C++ compilers. */
-#undef FLEXIBLE_ARRAY_MEMBER
-
-/* Define as the bit index in the word where to find bit 0 of the exponent of
-   'float'. */
-#undef FLT_EXPBIT0_BIT
-
-/* Define as the word index where to find the exponent of 'float'. */
-#undef FLT_EXPBIT0_WORD
-
-/* Define as the bit index in the word where to find the sign of 'float'. */
-#undef FLT_SIGNBIT_BIT
-
-/* Define as the word index where to find the sign of 'float'. */
-#undef FLT_SIGNBIT_WORD
-
 /* Enable compile-time and run-time bounds-checking, and some warnings,
         without upsetting newer glibc. */
      #if !defined _FORTIFY_SOURCE && defined __OPTIMIZE__ && __OPTIMIZE__
@@ -132,26 +98,8 @@
      #endif
     
 
-/* Define to 1 if the system's ftello function has the Solaris bug. */
-#undef FTELLO_BROKEN_AFTER_SWITCHING_FROM_READ_TO_WRITE
-
-/* Define to 1 if fflush is known to work on stdin as per POSIX.1-2008, 0 if
-   fflush is known to not work, -1 if unknown. */
-#undef FUNC_FFLUSH_STDIN
-
-/* Define to 1 if mkdir mistakenly creates a directory given with a trailing
-   dot component. */
-#undef FUNC_MKDIR_DOT_BUG
-
-/* Define to 1 if nl_langinfo (YESEXPR) returns a non-empty string. */
-#undef FUNC_NL_LANGINFO_YESEXPR_WORKS
-
 /* Define to 1 if pthread_sigmask is not a real function */
 #undef FUNC_PTHREAD_SIGMASK_BROKEN
-
-/* Define to 1 if realpath() can malloc memory, always gives an absolute path,
-   and handles trailing slash correctly. */
-#undef FUNC_REALPATH_WORKS
 
 /* Define to 1 if ungetc is broken when used on arbitrary bytes. */
 #undef FUNC_UNGETC_BROKEN
@@ -172,28 +120,12 @@
 #undef GETTIMEOFDAY_TIMEZONE
 
 /* Define to a C preprocessor expression that evaluates to 1 or 0, depending
-   whether the gnulib module canonicalize-lgpl shall be considered present. */
-#undef GNULIB_CANONICALIZE_LGPL
-
-/* Define to a C preprocessor expression that evaluates to 1 or 0, depending
-   whether the gnulib module fflush shall be considered present. */
-#undef GNULIB_FFLUSH
-
-/* Define to a C preprocessor expression that evaluates to 1 or 0, depending
    whether the gnulib module fscanf shall be considered present. */
 #undef GNULIB_FSCANF
 
 /* Define to a C preprocessor expression that evaluates to 1 or 0, depending
    whether the gnulib module lock shall be considered present. */
 #undef GNULIB_LOCK
-
-/* Define to a C preprocessor expression that evaluates to 1 or 0, depending
-   whether the gnulib module mkostemp shall be considered present. */
-#undef GNULIB_MKOSTEMP
-
-/* Define to a C preprocessor expression that evaluates to 1 or 0, depending
-   whether the gnulib module mkostemps shall be considered present. */
-#undef GNULIB_MKOSTEMPS
 
 /* Define to a C preprocessor expression that evaluates to 1 or 0, depending
    whether the gnulib module msvc-nothrow shall be considered present. */
@@ -206,10 +138,6 @@
 /* Define to 1 if printf and friends should be labeled with attribute
    "__gnu_printf__" instead of "__printf__" */
 #undef GNULIB_PRINTF_ATTRIBUTE_FLAVOR_GNU
-
-/* Define to a C preprocessor expression that evaluates to 1 or 0, depending
-   whether the gnulib module pthread shall be considered present. */
-#undef GNULIB_PTHREAD
 
 /* Define to a C preprocessor expression that evaluates to 1 or 0, depending
    whether the gnulib module scanf shall be considered present. */
@@ -237,16 +165,6 @@
 /* Define to 1 when the gnulib module bind should be tested. */
 #undef GNULIB_TEST_BIND
 
-/* Define to 1 when the gnulib module btowc should be tested. */
-#undef GNULIB_TEST_BTOWC
-
-/* Define to 1 when the gnulib module calloc-posix should be tested. */
-#undef GNULIB_TEST_CALLOC_POSIX
-
-/* Define to 1 when the gnulib module canonicalize_file_name should be tested.
-   */
-#undef GNULIB_TEST_CANONICALIZE_FILE_NAME
-
 /* Define to 1 when the gnulib module chown should be tested. */
 #undef GNULIB_TEST_CHOWN
 
@@ -268,29 +186,11 @@
 /* Define to 1 when the gnulib module environ should be tested. */
 #undef GNULIB_TEST_ENVIRON
 
-/* Define to 1 when the gnulib module fclose should be tested. */
-#undef GNULIB_TEST_FCLOSE
-
 /* Define to 1 when the gnulib module fcntl should be tested. */
 #undef GNULIB_TEST_FCNTL
 
-/* Define to 1 when the gnulib module fdatasync should be tested. */
-#undef GNULIB_TEST_FDATASYNC
-
 /* Define to 1 when the gnulib module fdopen should be tested. */
 #undef GNULIB_TEST_FDOPEN
-
-/* Define to 1 when the gnulib module fflush should be tested. */
-#undef GNULIB_TEST_FFLUSH
-
-/* Define to 1 when the gnulib module ffsl should be tested. */
-#undef GNULIB_TEST_FFSL
-
-/* Define to 1 when the gnulib module fnmatch should be tested. */
-#undef GNULIB_TEST_FNMATCH
-
-/* Define to 1 when the gnulib module fpurge should be tested. */
-#undef GNULIB_TEST_FPURGE
 
 /* Define to 1 when the gnulib module fseek should be tested. */
 #undef GNULIB_TEST_FSEEK
@@ -300,15 +200,6 @@
 
 /* Define to 1 when the gnulib module fstat should be tested. */
 #undef GNULIB_TEST_FSTAT
-
-/* Define to 1 when the gnulib module fsync should be tested. */
-#undef GNULIB_TEST_FSYNC
-
-/* Define to 1 when the gnulib module ftell should be tested. */
-#undef GNULIB_TEST_FTELL
-
-/* Define to 1 when the gnulib module ftello should be tested. */
-#undef GNULIB_TEST_FTELLO
 
 /* Define to 1 when the gnulib module ftruncate should be tested. */
 #undef GNULIB_TEST_FTRUNCATE
@@ -367,9 +258,6 @@
 /* Define to 1 when the gnulib module localeconv should be tested. */
 #undef GNULIB_TEST_LOCALECONV
 
-/* Define to 1 when the gnulib module localename should be tested. */
-#undef GNULIB_TEST_LOCALENAME
-
 /* Define to 1 when the gnulib module lseek should be tested. */
 #undef GNULIB_TEST_LSEEK
 
@@ -379,38 +267,11 @@
 /* Define to 1 when the gnulib module malloc-posix should be tested. */
 #undef GNULIB_TEST_MALLOC_POSIX
 
-/* Define to 1 when the gnulib module mbrtowc should be tested. */
-#undef GNULIB_TEST_MBRTOWC
-
-/* Define to 1 when the gnulib module mbsinit should be tested. */
-#undef GNULIB_TEST_MBSINIT
-
-/* Define to 1 when the gnulib module mbsrtowcs should be tested. */
-#undef GNULIB_TEST_MBSRTOWCS
-
-/* Define to 1 when the gnulib module mbtowc should be tested. */
-#undef GNULIB_TEST_MBTOWC
-
 /* Define to 1 when the gnulib module memchr should be tested. */
 #undef GNULIB_TEST_MEMCHR
 
-/* Define to 1 when the gnulib module mkdtemp should be tested. */
-#undef GNULIB_TEST_MKDTEMP
-
-/* Define to 1 when the gnulib module mkostemp should be tested. */
-#undef GNULIB_TEST_MKOSTEMP
-
-/* Define to 1 when the gnulib module mkostemps should be tested. */
-#undef GNULIB_TEST_MKOSTEMPS
-
-/* Define to 1 when the gnulib module mktime should be tested. */
-#undef GNULIB_TEST_MKTIME
-
 /* Define to 1 when the gnulib module nanosleep should be tested. */
 #undef GNULIB_TEST_NANOSLEEP
-
-/* Define to 1 when the gnulib module nl_langinfo should be tested. */
-#undef GNULIB_TEST_NL_LANGINFO
 
 /* Define to 1 when the gnulib module nonblocking should be tested. */
 #undef GNULIB_TEST_NONBLOCKING
@@ -478,6 +339,9 @@
 /* Define to 1 when the gnulib module pthread_sigmask should be tested. */
 #undef GNULIB_TEST_PTHREAD_SIGMASK
 
+/* Define to 1 when the gnulib module pthread-thread should be tested. */
+#undef GNULIB_TEST_PTHREAD_THREAD
+
 /* Define to 1 when the gnulib module ptsname should be tested. */
 #undef GNULIB_TEST_PTSNAME
 
@@ -496,20 +360,11 @@
 /* Define to 1 when the gnulib module read should be tested. */
 #undef GNULIB_TEST_READ
 
-/* Define to 1 when the gnulib module readlink should be tested. */
-#undef GNULIB_TEST_READLINK
-
 /* Define to 1 when the gnulib module realloc-posix should be tested. */
 #undef GNULIB_TEST_REALLOC_POSIX
 
-/* Define to 1 when the gnulib module realpath should be tested. */
-#undef GNULIB_TEST_REALPATH
-
 /* Define to 1 when the gnulib module recv should be tested. */
 #undef GNULIB_TEST_RECV
-
-/* Define to 1 when the gnulib module secure_getenv should be tested. */
-#undef GNULIB_TEST_SECURE_GETENV
 
 /* Define to 1 when the gnulib module select should be tested. */
 #undef GNULIB_TEST_SELECT
@@ -517,20 +372,11 @@
 /* Define to 1 when the gnulib module send should be tested. */
 #undef GNULIB_TEST_SEND
 
-/* Define to 1 when the gnulib module setenv should be tested. */
-#undef GNULIB_TEST_SETENV
-
-/* Define to 1 when the gnulib module setlocale should be tested. */
-#undef GNULIB_TEST_SETLOCALE
-
 /* Define to 1 when the gnulib module setsockopt should be tested. */
 #undef GNULIB_TEST_SETSOCKOPT
 
 /* Define to 1 when the gnulib module sigaction should be tested. */
 #undef GNULIB_TEST_SIGACTION
-
-/* Define to 1 when the gnulib module signbit should be tested. */
-#undef GNULIB_TEST_SIGNBIT
 
 /* Define to 1 when the gnulib module sigprocmask should be tested. */
 #undef GNULIB_TEST_SIGPROCMASK
@@ -547,9 +393,6 @@
 /* Define to 1 when the gnulib module stat should be tested. */
 #undef GNULIB_TEST_STAT
 
-/* Define to 1 when the gnulib module stpcpy should be tested. */
-#undef GNULIB_TEST_STPCPY
-
 /* Define to 1 when the gnulib module strchrnul should be tested. */
 #undef GNULIB_TEST_STRCHRNUL
 
@@ -562,26 +405,11 @@
 /* Define to 1 when the gnulib module strerror_r should be tested. */
 #undef GNULIB_TEST_STRERROR_R
 
-/* Define to 1 when the gnulib module strndup should be tested. */
-#undef GNULIB_TEST_STRNDUP
-
-/* Define to 1 when the gnulib module strnlen should be tested. */
-#undef GNULIB_TEST_STRNLEN
-
-/* Define to 1 when the gnulib module strptime should be tested. */
-#undef GNULIB_TEST_STRPTIME
-
-/* Define to 1 when the gnulib module strsep should be tested. */
-#undef GNULIB_TEST_STRSEP
-
 /* Define to 1 when the gnulib module strtok_r should be tested. */
 #undef GNULIB_TEST_STRTOK_R
 
 /* Define to 1 when the gnulib module symlink should be tested. */
 #undef GNULIB_TEST_SYMLINK
-
-/* Define to 1 when the gnulib module timegm should be tested. */
-#undef GNULIB_TEST_TIMEGM
 
 /* Define to 1 when the gnulib module time_r should be tested. */
 #undef GNULIB_TEST_TIME_R
@@ -598,23 +426,11 @@
 /* Define to 1 when the gnulib module usleep should be tested. */
 #undef GNULIB_TEST_USLEEP
 
-/* Define to 1 when the gnulib module vasprintf should be tested. */
-#undef GNULIB_TEST_VASPRINTF
-
 /* Define to 1 when the gnulib module vsnprintf should be tested. */
 #undef GNULIB_TEST_VSNPRINTF
 
 /* Define to 1 when the gnulib module waitpid should be tested. */
 #undef GNULIB_TEST_WAITPID
-
-/* Define to 1 when the gnulib module wcrtomb should be tested. */
-#undef GNULIB_TEST_WCRTOMB
-
-/* Define to 1 when the gnulib module wctob should be tested. */
-#undef GNULIB_TEST_WCTOB
-
-/* Define to 1 when the gnulib module wctomb should be tested. */
-#undef GNULIB_TEST_WCTOMB
 
 /* Define to 1 when the gnulib module wcwidth should be tested. */
 #undef GNULIB_TEST_WCWIDTH
@@ -645,38 +461,14 @@
 /* whether using BSD style NSS */
 #undef HAVE_BSD_NSS
 
-/* Define to 1 if you have the `btowc' function. */
-#undef HAVE_BTOWC
-
 /* Define to 1 if nanosleep mishandles large arguments. */
 #undef HAVE_BUG_BIG_NANOSLEEP
-
-/* Define to 1 if you have the <byteswap.h> header file. */
-#undef HAVE_BYTESWAP_H
-
-/* Define if the 'calloc' function is POSIX compliant. */
-#undef HAVE_CALLOC_POSIX
-
-/* Define to 1 if you have the `canonicalize_file_name' function. */
-#undef HAVE_CANONICALIZE_FILE_NAME
 
 /* Define to 1 if you have the `catgets' function. */
 #undef HAVE_CATGETS
 
-/* Define to 1 if you have the Mac OS X function CFLocaleCopyCurrent in the
-   CoreFoundation framework. */
-#undef HAVE_CFLOCALECOPYCURRENT
-
-/* Define to 1 if you have the Mac OS X function
-   CFLocaleCopyPreferredLanguages in the CoreFoundation framework. */
-#undef HAVE_CFLOCALECOPYPREFERREDLANGUAGES
-
 /* Define to 1 if you have the `cfmakeraw' function. */
 #undef HAVE_CFMAKERAW
-
-/* Define to 1 if you have the Mac OS X function CFPreferencesCopyAppValue in
-   the CoreFoundation framework. */
-#undef HAVE_CFPREFERENCESCOPYAPPVALUE
 
 /* Define to 1 if you have the `chown' function. */
 #undef HAVE_CHOWN
@@ -684,26 +476,8 @@
 /* Define to 1 if you have the `chsize' function. */
 #undef HAVE_CHSIZE
 
-/* Define to 1 if you have the `clock_gettime' function. */
-#undef HAVE_CLOCK_GETTIME
-
-/* Define to 1 if you have the `clock_settime' function. */
-#undef HAVE_CLOCK_SETTIME
-
 /* Define to 1 if you have the `confstr' function. */
 #undef HAVE_CONFSTR
-
-/* Define if the copysignf function is declared in <math.h> and available in
-   libc. */
-#undef HAVE_COPYSIGNF_IN_LIBC
-
-/* Define if the copysignl function is declared in <math.h> and available in
-   libc. */
-#undef HAVE_COPYSIGNL_IN_LIBC
-
-/* Define if the copysign function is declared in <math.h> and available in
-   libc. */
-#undef HAVE_COPYSIGN_IN_LIBC
 
 /* Define to 1 if you have the <crtdefs.h> header file. */
 #undef HAVE_CRTDEFS_H
@@ -717,6 +491,14 @@
 /* Define to 1 if you have the declaration of `alarm', and to 0 if you don't.
    */
 #undef HAVE_DECL_ALARM
+
+/* Define to 1 if you have the declaration of `BPF_CGROUP_DEVICE', and to 0 if
+   you don't. */
+#undef HAVE_DECL_BPF_CGROUP_DEVICE
+
+/* Define to 1 if you have the declaration of `BPF_PROG_QUERY', and to 0 if
+   you don't. */
+#undef HAVE_DECL_BPF_PROG_QUERY
 
 /* Define to 1 if you have the declaration of `BRDGADD', and to 0 if you
    don't. */
@@ -737,18 +519,6 @@
 /* Define to 1 if you have the declaration of `clock_serv_t', and to 0 if you
    don't. */
 #undef HAVE_DECL_CLOCK_SERV_T
-
-/* Define to 1 if you have the declaration of `copysign', and to 0 if you
-   don't. */
-#undef HAVE_DECL_COPYSIGN
-
-/* Define to 1 if you have the declaration of `copysignf', and to 0 if you
-   don't. */
-#undef HAVE_DECL_COPYSIGNF
-
-/* Define to 1 if you have the declaration of `copysignl', and to 0 if you
-   don't. */
-#undef HAVE_DECL_COPYSIGNL
 
 /* Define to 1 if you have the declaration of `cpuset_getaffinity', and to 0
    if you don't. */
@@ -798,10 +568,6 @@
    you don't. */
 #undef HAVE_DECL_ETH_FLAG_TXVLAN
 
-/* Define to 1 if you have the declaration of `fdatasync', and to 0 if you
-   don't. */
-#undef HAVE_DECL_FDATASYNC
-
 /* Define to 1 if you have the declaration of `fflush_unlocked', and to 0 if
    you don't. */
 #undef HAVE_DECL_FFLUSH_UNLOCKED
@@ -809,10 +575,6 @@
 /* Define to 1 if you have the declaration of `flockfile', and to 0 if you
    don't. */
 #undef HAVE_DECL_FLOCKFILE
-
-/* Define to 1 if you have the declaration of `fpurge', and to 0 if you don't.
-   */
-#undef HAVE_DECL_FPURGE
 
 /* Define to 1 if you have the declaration of `fputs_unlocked', and to 0 if
    you don't. */
@@ -825,10 +587,6 @@
 /* Define to 1 if you have the declaration of `fseeko', and to 0 if you don't.
    */
 #undef HAVE_DECL_FSEEKO
-
-/* Define to 1 if you have the declaration of `ftello', and to 0 if you don't.
-   */
-#undef HAVE_DECL_FTELLO
 
 /* Define to 1 if you have the declaration of `funlockfile', and to 0 if you
    don't. */
@@ -886,10 +644,6 @@
    don't. */
 #undef HAVE_DECL_INET_PTON
 
-/* Define to 1 if you have the declaration of `isblank', and to 0 if you
-   don't. */
-#undef HAVE_DECL_ISBLANK
-
 /* whether link_addr is available */
 #undef HAVE_DECL_LINK_ADDR
 
@@ -908,18 +662,6 @@
 /* Define to 1 if you have the declaration of `MACVLAN_MODE_PASSTHRU', and to
    0 if you don't. */
 #undef HAVE_DECL_MACVLAN_MODE_PASSTHRU
-
-/* Define to 1 if you have the declaration of `mbrtowc', and to 0 if you
-   don't. */
-#undef HAVE_DECL_MBRTOWC
-
-/* Define to 1 if you have the declaration of `mbsinit', and to 0 if you
-   don't. */
-#undef HAVE_DECL_MBSINIT
-
-/* Define to 1 if you have the declaration of `mbsrtowcs', and to 0 if you
-   don't. */
-#undef HAVE_DECL_MBSRTOWCS
 
 /* Define to 1 if you have the declaration of `openpty', and to 0 if you
    don't. */
@@ -949,10 +691,6 @@
    don't. */
 #undef HAVE_DECL_SEEK_HOLE
 
-/* Define to 1 if you have the declaration of `setenv', and to 0 if you don't.
-   */
-#undef HAVE_DECL_SETENV
-
 /* Define to 1 if you have the declaration of `sleep', and to 0 if you don't.
    */
 #undef HAVE_DECL_SLEEP
@@ -968,18 +706,6 @@
 /* Define to 1 if you have the declaration of `strerror_r', and to 0 if you
    don't. */
 #undef HAVE_DECL_STRERROR_R
-
-/* Define to 1 if you have the declaration of `strncasecmp', and to 0 if you
-   don't. */
-#undef HAVE_DECL_STRNCASECMP
-
-/* Define to 1 if you have the declaration of `strndup', and to 0 if you
-   don't. */
-#undef HAVE_DECL_STRNDUP
-
-/* Define to 1 if you have the declaration of `strnlen', and to 0 if you
-   don't. */
-#undef HAVE_DECL_STRNLEN
 
 /* Define to 1 if you have the declaration of `strtok_r', and to 0 if you
    don't. */
@@ -1004,14 +730,6 @@
 /* Define to 1 if you have the declaration of `vsnprintf', and to 0 if you
    don't. */
 #undef HAVE_DECL_VSNPRINTF
-
-/* Define to 1 if you have the declaration of `wcrtomb', and to 0 if you
-   don't. */
-#undef HAVE_DECL_WCRTOMB
-
-/* Define to 1 if you have the declaration of `wctob', and to 0 if you don't.
-   */
-#undef HAVE_DECL_WCTOB
 
 /* Define to 1 if you have the declaration of `wcwidth', and to 0 if you
    don't. */
@@ -1043,18 +761,11 @@
 /* Define to 1 if you have the 'dup2' function. */
 #undef HAVE_DUP2
 
-/* Define to 1 if you have the `duplocale' function. */
-#undef HAVE_DUPLOCALE
-
 /* Define if you have the declaration of environ. */
 #undef HAVE_ENVIRON_DECL
 
-/* Define to 1 if you have the <execinfo.h> header file. */
-#undef HAVE_EXECINFO_H
-
-/* Define if the locale_t type contains insufficient information, as on
-   OpenBSD. */
-#undef HAVE_FAKE_LOCALES
+/* Define to 1 if ptsname_r() is essentially working. */
+#undef HAVE_ESSENTIALLY_WORKING_PTSNAME_R
 
 /* Define to 1 if you have the `fallocate' function. */
 #undef HAVE_FALLOCATE
@@ -1065,35 +776,14 @@
 /* Define to 1 if you have the `fcntl' function. */
 #undef HAVE_FCNTL
 
-/* Define to 1 if you have the `fdatasync' function. */
-#undef HAVE_FDATASYNC
-
 /* Define to 1 if you have the <features.h> header file. */
 #undef HAVE_FEATURES_H
-
-/* Define to 1 if you have the `ffsl' function. */
-#undef HAVE_FFSL
 
 /* Define to 1 if you have the `flockfile' function. */
 #undef HAVE_FLOCKFILE
 
-/* Define to 1 if you have the `fnmatch' function. */
-#undef HAVE_FNMATCH
-
-/* Define to 1 if you have the <fnmatch.h> header file. */
-#undef HAVE_FNMATCH_H
-
-/* Define to 1 if you have the `fpurge' function. */
-#undef HAVE_FPURGE
-
-/* Define to 1 if you have the `freelocale' function. */
-#undef HAVE_FREELOCALE
-
 /* Define to 1 if fseeko (and presumably ftello) exists and is declared. */
 #undef HAVE_FSEEKO
-
-/* Define to 1 if you have the `fsync' function. */
-#undef HAVE_FSYNC
 
 /* Define to 1 if you have the `ftruncate' function. */
 #undef HAVE_FTRUNCATE
@@ -1101,8 +791,8 @@
 /* Define to 1 if you have the `funlockfile' function. */
 #undef HAVE_FUNLOCKFILE
 
-/* Define to 1 if you have the `getcwd' function. */
-#undef HAVE_GETCWD
+/* Define to 1 if getaddrinfo exists, or to 0 otherwise. */
+#undef HAVE_GETADDRINFO
 
 /* Define to 1 if you have the `getdelim' function. */
 #undef HAVE_GETDELIM
@@ -1137,17 +827,8 @@
 /* Define to 1 if you have the `getifaddrs' function. */
 #undef HAVE_GETIFADDRS
 
-/* Define to 1 if you have the `getlocalename_l' function. */
-#undef HAVE_GETLOCALENAME_L
-
 /* Define to 1 if you have the `getmntent_r' function. */
 #undef HAVE_GETMNTENT_R
-
-/* Define to 1 if you have the <getopt.h> header file. */
-#undef HAVE_GETOPT_H
-
-/* Define to 1 if you have the `getopt_long_only' function. */
-#undef HAVE_GETOPT_LONG_ONLY
 
 /* Define to 1 if you have the `getpass' function. */
 #undef HAVE_GETPASS
@@ -1172,6 +853,9 @@
 
 /* Define to 1 if you have the `getuid' function. */
 #undef HAVE_GETUID
+
+/* Define to 1 if you have the `getutxid' function. */
+#undef HAVE_GETUTXID
 
 /* Define to 1 if you have the <grp.h> header file. */
 #undef HAVE_GRP_H
@@ -1213,32 +897,11 @@
 /* Define to 1 if you have the `isblank' function. */
 #undef HAVE_ISBLANK
 
-/* Define if the isnan(double) function is available in libc. */
-#undef HAVE_ISNAND_IN_LIBC
-
-/* Define if the isnan(float) function is available in libc. */
-#undef HAVE_ISNANF_IN_LIBC
-
-/* Define if the isnan(long double) function is available in libc. */
-#undef HAVE_ISNANL_IN_LIBC
-
-/* Define to 1 if you have the `issetugid' function. */
-#undef HAVE_ISSETUGID
-
 /* Define to 1 if you have the `iswcntrl' function. */
 #undef HAVE_ISWCNTRL
 
-/* Define to 1 if you have the `iswctype' function. */
-#undef HAVE_ISWCTYPE
-
 /* Define if you have <langinfo.h> and nl_langinfo(CODESET). */
 #undef HAVE_LANGINFO_CODESET
-
-/* Define to 1 if you have the <langinfo.h> header file. */
-#undef HAVE_LANGINFO_H
-
-/* Define if your <locale.h> file defines LC_MESSAGES. */
-#undef HAVE_LC_MESSAGES
 
 /* Define to 1 if you have the `apparmor' library (-lapparmor). */
 #undef HAVE_LIBAPPARMOR
@@ -1267,12 +930,6 @@
 /* whether the netlink library is available */
 #undef HAVE_LIBNL
 
-/* whether the netlink v1 library is available */
-#undef HAVE_LIBNL1
-
-/* Use libnl-3.0 */
-#undef HAVE_LIBNL3
-
 /* Define to 1 if you have the `numa' library (-lnuma). */
 #undef HAVE_LIBNUMA
 
@@ -1296,12 +953,6 @@
 
 /* Define to 1 if you have the <libutil.h> header file. */
 #undef HAVE_LIBUTIL_H
-
-/* Define to 1 if you have the `xenlight' library (-lxenlight). */
-#undef HAVE_LIBXENLIGHT
-
-/* Define to 1 if you have the `xenserver' library (-lxenserver). */
-#undef HAVE_LIBXENSERVER
 
 /* Define to 1 if you have the <libxlutil.h> header file. */
 #undef HAVE_LIBXLUTIL_H
@@ -1354,9 +1005,6 @@
 /* whether Mach clock routines are available */
 #undef HAVE_MACH_CLOCK_ROUTINES
 
-/* Define to 1 if you have the <malloc.h> header file. */
-#undef HAVE_MALLOC_H
-
 /* Define if the 'malloc' function is POSIX compliant. */
 #undef HAVE_MALLOC_POSIX
 
@@ -1364,35 +1012,11 @@
    config.h and <sys/mman.h>. */
 #undef HAVE_MAP_ANONYMOUS
 
-/* Define to 1 if you have the <math.h> header file. */
-#undef HAVE_MATH_H
-
 /* Define to 1 if you have the `mbrtowc' function. */
 #undef HAVE_MBRTOWC
 
-/* Define to 1 if you have the `mbsinit' function. */
-#undef HAVE_MBSINIT
-
-/* Define to 1 if you have the `mbsrtowcs' function. */
-#undef HAVE_MBSRTOWCS
-
-/* Define to 1 if <wchar.h> declares mbstate_t. */
-#undef HAVE_MBSTATE_T
-
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
-
-/* Define to 1 if you have the `mempcpy' function. */
-#undef HAVE_MEMPCPY
-
-/* Define to 1 if you have the `mkdtemp' function. */
-#undef HAVE_MKDTEMP
-
-/* Define to 1 if you have the `mkostemp' function. */
-#undef HAVE_MKOSTEMP
-
-/* Define to 1 if you have the `mkostemps' function. */
-#undef HAVE_MKOSTEMPS
 
 /* Define to 1 if you have the `mmap' function. */
 #undef HAVE_MMAP
@@ -1406,13 +1030,6 @@
 /* Define to 1 on MSVC platforms that have the "invalid parameter handler"
    concept. */
 #undef HAVE_MSVC_INVALID_PARAMETER_HANDLER
-
-/* Define if the locale_t type does not contain the name of each locale
-   category. */
-#undef HAVE_NAMELESS_LOCALES
-
-/* we have sufficiently new version of netcf for transaction network API */
-#undef HAVE_NETCF_TRANSACTIONS
 
 /* Define to 1 if you have the <netdb.h> header file. */
 #undef HAVE_NETDB_H
@@ -1431,9 +1048,6 @@
 
 /* Define to 1 if you have the `newlocale' function. */
 #undef HAVE_NEWLOCALE
-
-/* Define to 1 if you have the `nl_langinfo' function. */
-#undef HAVE_NL_LANGINFO
 
 /* Define to 1 if you have the <nss.h> header file. */
 #undef HAVE_NSS_H
@@ -1501,8 +1115,8 @@
 /* Define to 1 if you have the `pstat_getstatic' function. */
 #undef HAVE_PSTAT_GETSTATIC
 
-/* Define to 1 if you have the `pthread_atfork' function. */
-#undef HAVE_PTHREAD_ATFORK
+/* Define if you have the <pthread.h> header and the POSIX threads API. */
+#undef HAVE_PTHREAD_API
 
 /* Define to 1 if you have the <pthread.h> header file. */
 #undef HAVE_PTHREAD_H
@@ -1553,26 +1167,14 @@
 /* Define to 1 if you have the `rbd_list2' function. */
 #undef HAVE_RBD_LIST2
 
-/* Define to 1 if you have the `readlink' function. */
-#undef HAVE_READLINK
-
-/* Define to 1 if you have the `readlinkat' function. */
-#undef HAVE_READLINKAT
-
 /* Define if the 'realloc' function is POSIX compliant. */
 #undef HAVE_REALLOC_POSIX
-
-/* Define to 1 if you have the `realpath' function. */
-#undef HAVE_REALPATH
 
 /* Define to 1 if you have the `recvmsg' function. */
 #undef HAVE_RECVMSG
 
 /* Define to 1 if you have the `revoke' function. */
 #undef HAVE_REVOKE
-
-/* Define to 1 if 'long double' and 'double' have the same representation. */
-#undef HAVE_SAME_LONG_DOUBLE_AS_DOUBLE
 
 /* whether sanlock supports sanlock_inq_lockspace */
 #undef HAVE_SANLOCK_INQ_LOCKSPACE
@@ -1601,15 +1203,6 @@
 /* Define to 1 if you have the `sched_setscheduler' function. */
 #undef HAVE_SCHED_SETSCHEDULER
 
-/* Define to 1 if you have the <search.h> header file. */
-#undef HAVE_SEARCH_H
-
-/* Define to 1 if you have the `secure_getenv' function. */
-#undef HAVE_SECURE_GETENV
-
-/* Define to 1 if you have the <selinux/label.h> header file. */
-#undef HAVE_SELINUX_LABEL_H
-
 /* Define to 1 if you have the `selinux_lxc_contexts_path' function. */
 #undef HAVE_SELINUX_LXC_CONTEXTS_PATH
 
@@ -1621,9 +1214,6 @@
 
 /* Define to 1 if you have the `setegid' function. */
 #undef HAVE_SETEGID
-
-/* Define to 1 if you have the `setenv' function. */
-#undef HAVE_SETENV
 
 /* Define to 1 if you have the `seteuid' function. */
 #undef HAVE_SETEUID
@@ -1681,9 +1271,6 @@
 /* Define to 1 if you have the `socketpair' function. */
 #undef HAVE_SOCKETPAIR
 
-/* Define if the locale_t type is as on Solaris 11.4. */
-#undef HAVE_SOLARIS114_LOCALES
-
 /* Define to 1 if you have the <spawn.h> header file. */
 #undef HAVE_SPAWN_H
 
@@ -1709,12 +1296,6 @@
 /* Define to 1 if you have the <stdlib.h> header file. */
 #undef HAVE_STDLIB_H
 
-/* Define to 1 if you have the `stpcpy' function. */
-#undef HAVE_STPCPY
-
-/* Define to 1 if you have the `strcasecmp' function. */
-#undef HAVE_STRCASECMP
-
 /* Define to 1 if you have the `strchrnul' function. */
 #undef HAVE_STRCHRNUL
 
@@ -1730,20 +1311,8 @@
 /* Define to 1 if you have the <string.h> header file. */
 #undef HAVE_STRING_H
 
-/* Define to 1 if you have the `strncasecmp' function. */
-#undef HAVE_STRNCASECMP
-
-/* Define to 1 if you have the `strndup' function. */
-#undef HAVE_STRNDUP
-
 /* Define to 1 if you have the `strnlen' function. */
 #undef HAVE_STRNLEN
-
-/* Define to 1 if you have the `strptime' function. */
-#undef HAVE_STRPTIME
-
-/* Define to 1 if you have the `strsep' function. */
-#undef HAVE_STRSEP
 
 /* Define to 1 if you have the `strtok_r' function. */
 #undef HAVE_STRTOK_R
@@ -1931,26 +1500,20 @@
 /* Define to 1 if you have the <termios.h> header file. */
 #undef HAVE_TERMIOS_H
 
-/* Define to 1 if you have the `timegm' function. */
-#undef HAVE_TIMEGM
+/* Define to 1 if you have the `thrd_create' function. */
+#undef HAVE_THRD_CREATE
 
-/* Define if struct tm has the tm_gmtoff member. */
-#undef HAVE_TM_GMTOFF
+/* Define to 1 if you have the <threads.h> header file. */
+#undef HAVE_THREADS_H
 
 /* Define to 1 if you have the `towlower' function. */
 #undef HAVE_TOWLOWER
-
-/* Define to 1 if you have the `tsearch' function. */
-#undef HAVE_TSEARCH
 
 /* Define to 1 if you have the `ttyname' function. */
 #undef HAVE_TTYNAME
 
 /* Define to 1 if you have the `ttyname_r' function. */
 #undef HAVE_TTYNAME_R
-
-/* Define to 1 if you have the `tzset' function. */
-#undef HAVE_TZSET
 
 /* Define to 1 if you have the `uname' function. */
 #undef HAVE_UNAME
@@ -1970,9 +1533,6 @@
 /* Define to 1 if the system has the type 'unsigned long long int'. */
 #undef HAVE_UNSIGNED_LONG_LONG_INT
 
-/* Define to 1 if you have the `uselocale' function. */
-#undef HAVE_USELOCALE
-
 /* Define to 1 if you have the `usleep' function. */
 #undef HAVE_USLEEP
 
@@ -1984,9 +1544,6 @@
 
 /* Define to 1 if you have the `vasnprintf' function. */
 #undef HAVE_VASNPRINTF
-
-/* Define to 1 if you have the `vasprintf' function. */
-#undef HAVE_VASPRINTF
 
 /* Define to 1 if you have the `vfork' function. */
 #undef HAVE_VFORK
@@ -2012,14 +1569,15 @@
 /* Define to 1 if you have the `wcsnlen' function. */
 #undef HAVE_WCSNLEN
 
-/* Define to 1 if you have the `wctob' function. */
-#undef HAVE_WCTOB
-
 /* Define to 1 if you have the <wctype.h> header file. */
 #undef HAVE_WCTYPE_H
 
 /* Define to 1 if you have the `wcwidth' function. */
 #undef HAVE_WCWIDTH
+
+/* Define to 1 if the compiler and linker support weak declarations of
+   symbols. */
+#undef HAVE_WEAK_SYMBOLS
 
 /* Define to 1 if you have the <winsock2.h> header file. */
 #undef HAVE_WINSOCK2_H
@@ -2027,23 +1585,11 @@
 /* Define if you have the 'wint_t' type. */
 #undef HAVE_WINT_T
 
-/* Define to 1 if you have the `wmemchr' function. */
-#undef HAVE_WMEMCHR
-
-/* Define to 1 if you have the `wmemcpy' function. */
-#undef HAVE_WMEMCPY
-
-/* Define to 1 if you have the `wmempcpy' function. */
-#undef HAVE_WMEMPCPY
-
 /* Define to 1 if O_NOATIME works. */
 #undef HAVE_WORKING_O_NOATIME
 
 /* Define to 1 if O_NOFOLLOW works. */
 #undef HAVE_WORKING_O_NOFOLLOW
-
-/* Define if the uselocale function exists any may safely be called. */
-#undef HAVE_WORKING_USELOCALE
 
 /* Define to 1 if you have the <ws2tcpip.h> header file. */
 #undef HAVE_WS2TCPIP_H
@@ -2060,17 +1606,11 @@
 /* Define to 1 if you have the <xlocale.h> header file. */
 #undef HAVE_XLOCALE_H
 
-/* Have query_raw field in libxml2 xmlURI structure */
-#undef HAVE_XMLURI_QUERY_RAW
-
 /* Define to 1 if the system has the type `_Bool'. */
 #undef HAVE__BOOL
 
 /* Define to 1 if you have the `_fseeki64' function. */
 #undef HAVE__FSEEKI64
-
-/* Define to 1 if you have the `_ftelli64' function. */
-#undef HAVE__FTELLI64
 
 /* Define to 1 if you have the `_getpty' function. */
 #undef HAVE__GETPTY
@@ -2082,36 +1622,14 @@
    member named physmem. */
 #undef HAVE__SYSTEM_CONFIGURATION
 
-/* Define to 1 if the compiler supports __builtin_expect,
-   and to 2 if <builtins.h> does.  */
-#undef HAVE___BUILTIN_EXPECT
-#ifndef HAVE___BUILTIN_EXPECT
-# define __builtin_expect(e, c) (e)
-#elif HAVE___BUILTIN_EXPECT == 2
-# include <builtins.h>
-#endif
-    
-
-/* Define to 1 if you have the `__fpurge' function. */
-#undef HAVE___FPURGE
-
-/* Define to 1 if you have the `__freading' function. */
-#undef HAVE___FREADING
-
 /* Define to 1 if you have the `__fsetlocking' function. */
 #undef HAVE___FSETLOCKING
-
-/* Define to 1 if the compiler supports the keyword '__inline'. */
-#undef HAVE___INLINE
 
 /* Define to 1 if you have the `__lxstat' function. */
 #undef HAVE___LXSTAT
 
 /* Define to 1 if you have the `__lxstat64' function. */
 #undef HAVE___LXSTAT64
-
-/* Define to 1 if you have the `__secure_getenv' function. */
-#undef HAVE___SECURE_GETENV
 
 /* Define to 1 if you have the `__xpg_strerror_r' function. */
 #undef HAVE___XPG_STRERROR_R
@@ -2142,20 +1660,6 @@
 
 /* Location of iscsiadm program */
 #undef ISCSIADM
-
-/* Define as the bit index in the word where to find bit 0 of the exponent of
-   'long double'. */
-#undef LDBL_EXPBIT0_BIT
-
-/* Define as the word index where to find the exponent of 'long double'. */
-#undef LDBL_EXPBIT0_WORD
-
-/* Define as the bit index in the word where to find the sign of 'long
-   double'. */
-#undef LDBL_SIGNBIT_BIT
-
-/* Define as the word index where to find the sign of 'long double'. */
-#undef LDBL_SIGNBIT_WORD
 
 /* directory containing Xen libexec binaries */
 #undef LIBXL_EXECBIN_DIR
@@ -2199,22 +1703,6 @@
 /* Define to a substitute value for mmap()'s MAP_ANONYMOUS flag. */
 #undef MAP_ANONYMOUS
 
-/* Define if the mbrtowc function does not return (size_t) -2 for empty input.
-   */
-#undef MBRTOWC_EMPTY_INPUT_BUG
-
-/* Define if the mbrtowc function has the NULL pwc argument bug. */
-#undef MBRTOWC_NULL_ARG1_BUG
-
-/* Define if the mbrtowc function has the NULL string argument bug. */
-#undef MBRTOWC_NULL_ARG2_BUG
-
-/* Define if the mbrtowc function does not return 0 for a NUL character. */
-#undef MBRTOWC_NUL_RETVAL_BUG
-
-/* Define if the mbrtowc function returns a wrong return value. */
-#undef MBRTOWC_RETVAL_BUG
-
 /* Use GNU style printf and scanf.  */
 #ifndef __USE_MINGW_ANSI_STDIO
 # undef __USE_MINGW_ANSI_STDIO
@@ -2232,17 +1720,6 @@
 
 /* Location or name of the mount program */
 #undef MOUNT
-
-/* Define if the compilation of mktime.c should define 'mktime_internal'. */
-#undef NEED_MKTIME_INTERNAL
-
-/* Define if the compilation of mktime.c should define 'mktime' with the
-   native Windows TZ workaround. */
-#undef NEED_MKTIME_WINDOWS
-
-/* Define if the compilation of mktime.c should define 'mktime' with the
-   algorithmic workarounds. */
-#undef NEED_MKTIME_WORKING
 
 /* define to 1 if Linux kernel headers require a workaround to avoid
    compilation errors when mixed with glibc netinet headers */
@@ -2297,6 +1774,9 @@
    type mode_t. */
 #undef PROMOTED_MODE_T
 
+/* Define if pthread_create is an inline function. */
+#undef PTHREAD_CREATE_IS_INLINE
+
 /* Define if the pthread_in_use() detection is hard. */
 #undef PTHREAD_IN_USE_DETECTION_HARD
 
@@ -2323,6 +1803,9 @@
 /* Location of pvs program */
 #undef PVS
 
+/* path to python binary */
+#undef PYTHON
+
 /* QEMU bridge helper */
 #undef QEMU_BRIDGE_HELPER
 
@@ -2332,21 +1815,21 @@
 /* QEMU PR helper */
 #undef QEMU_PR_HELPER
 
+/* QEMU slirp helper */
+#undef QEMU_SLIRP_HELPER
+
 /* QEMU user account */
 #undef QEMU_USER
 
 /* Location or name of the radvd program */
 #undef RADVD
 
-/* Define to 1 if readlink fails to recognize a trailing slash. */
-#undef READLINK_TRAILING_SLASH_BUG
+/* Default remote driver mode */
+#undef REMOTE_DRIVER_MODE_DEFAULT
 
 /* Define to 1 if stat needs help when passed a file name with a trailing
    slash */
 #undef REPLACE_FUNC_STAT_FILE
-
-/* Define if nl_langinfo exists but is overridden by gnulib. */
-#undef REPLACE_NL_LANGINFO
 
 /* Define if gnulib uses its own posix_spawn and posix_spawnp functions. */
 #undef REPLACE_POSIX_SPAWN
@@ -2373,9 +1856,11 @@
 #undef SHOWMOUNT
 
 /* File name of the Bourne shell.  */
-#if defined __CYGWIN__
-/* Omit the directory part because for 32-bit Cygwin programs in a
-   64-bit Cygwin environment, the Cygwin mounts are not visible.  */
+#if defined __CYGWIN__ || defined __ANDROID__
+/* Omit the directory part because
+   - For 32-bit Cygwin programs in a 64-bit Cygwin environment, the Cygwin
+     mounts are not visible.
+   - On Android, /bin/sh does not exist. It's /system/bin/sh instead.  */
 # define BOURNE_SHELL "sh"
 #else
 # define BOURNE_SHELL "/bin/sh"
@@ -2421,15 +1906,6 @@
 /* Location or name of the tc program (see iproute2) */
 #undef TC
 
-/* Whether malloc OOM checking is enabled */
-#undef TEST_OOM
-
-/* Whether backtrace() is available */
-#undef TEST_OOM_TRACE
-
-/* Define to 1 if time_t is signed. */
-#undef TIME_T_IS_SIGNED
-
 /* TLS default priority string */
 #undef TLS_PRIORITY
 
@@ -2447,26 +1923,19 @@
    an underscore or empty. */
 #undef USER_LABEL_PREFIX
 
+/* Define if the combination of the ISO C and POSIX multithreading APIs can be
+   used. */
+#undef USE_ISOC_AND_POSIX_THREADS
+
+/* Define if the ISO C multithreading library can be used. */
+#undef USE_ISOC_THREADS
+
 /* Define if the POSIX multithreading library can be used. */
 #undef USE_POSIX_THREADS
 
 /* Define if references to the POSIX multithreading library should be made
    weak. */
 #undef USE_POSIX_THREADS_WEAK
-
-/* Define if the GNU Pth multithreading library can be used. */
-#undef USE_PTH_THREADS
-
-/* Define if references to the GNU Pth multithreading library should be made
-   weak. */
-#undef USE_PTH_THREADS_WEAK
-
-/* Define if the old Solaris multithreading library can be used. */
-#undef USE_SOLARIS_THREADS
-
-/* Define if references to the old Solaris multithreading library should be
-   made weak. */
-#undef USE_SOLARIS_THREADS_WEAK
 
 /* Enable extensions on AIX 3, Interix.  */
 #ifndef _ALL_SOURCE
@@ -2577,10 +2046,6 @@
 /* path to directory containing UUCP device lock files */
 #undef VIR_CHRDEV_LOCK_FILE_PATH
 
-/* Define to empty or 'const' depending on how SELinux qualifies its security
-   context parameters */
-#undef VIR_SELINUX_CTX_CONST
-
 /* Define to empty or 'const' depending on how SELinux qualifies its
    selabel_open parameter */
 #undef VIR_SELINUX_OPEN_CONST
@@ -2653,6 +2118,9 @@
 /* whether fuse >= 2.8.6 is available */
 #undef WITH_FUSE
 
+/* whether glib-2.0 gobject-2.0 gio-2.0 >= $GLIB_REQUIRED is available */
+#undef WITH_GLIB
+
 /* whether glusterfs-api >= 3.4.1 is available */
 #undef WITH_GLUSTERFS
 
@@ -2683,7 +2151,7 @@
 /* whether libvirtd daemon is enabled */
 #undef WITH_LIBVIRTD
 
-/* whether libxenlight is available */
+/* whether xenlight >= 4.6.0 is available */
 #undef WITH_LIBXL
 
 /* whether libxml-2.0 >= $LIBXML_REQUIRED is available */
@@ -2698,7 +2166,7 @@
 /* whether macvtap support is enabled */
 #undef WITH_MACVTAP
 
-/* whether netcf >= 0.1.4 is available */
+/* whether netcf >= 0.1.8 is available */
 #undef WITH_NETCF
 
 /* whether network driver is enabled */
@@ -2721,9 +2189,6 @@
 
 /* whether pciaccess >= 0.10.0 is available */
 #undef WITH_PCIACCESS
-
-/* whether IBM HMC / IVM driver is enabled */
-#undef WITH_PHYP
 
 /* whether to use pm-utils */
 #undef WITH_PM_UTILS
@@ -2827,9 +2292,6 @@
 /* whether wireshark >= 2.4.0 is available */
 #undef WITH_WIRESHARK_DISSECTOR
 
-/* whether libxenserver is available */
-#undef WITH_XENAPI
-
 /* whether libyajl is available */
 #undef WITH_YAJL
 
@@ -2844,9 +2306,6 @@
 #  undef WORDS_BIGENDIAN
 # endif
 #endif
-
-/* Define to 1 if gcc supports pragma push/pop */
-#undef WORKING_PRAGMA_PUSH
 
 /* Location of zfs program */
 #undef ZFS
@@ -2880,10 +2339,20 @@
 
 /* The _Noreturn keyword of C11.  */
 #ifndef _Noreturn
-# if 201103 <= (defined __cplusplus ? __cplusplus : 0)
+# if (defined __cplusplus \
+      && ((201103 <= __cplusplus && !(__GNUC__ == 4 && __GNUC_MINOR__ == 7)) \
+          || (defined _MSC_VER && 1900 <= _MSC_VER)) \
+      && 0)
+    /* [[noreturn]] is not practically usable, because with it the syntax
+         extern _Noreturn void func (...);
+       would not be valid; such a declaration would only be valid with 'extern'
+       and '_Noreturn' swapped, or without the 'extern' keyword.  However, some
+       AIX system header files and several gnulib header files use precisely
+       this syntax with 'extern'.  */
 #  define _Noreturn [[noreturn]]
-# elif (201112 <= (defined __STDC_VERSION__ ? __STDC_VERSION__ : 0) \
-        || 4 < __GNUC__ + (7 <= __GNUC_MINOR__))
+# elif ((!defined __cplusplus || defined __clang__) \
+        && (201112 <= (defined __STDC_VERSION__ ? __STDC_VERSION__ : 0)  \
+            || 4 < __GNUC__ + (7 <= __GNUC_MINOR__)))
    /* _Noreturn works as-is.  */
 # elif 2 < __GNUC__ + (8 <= __GNUC_MINOR__) || 0x5110 <= __SUNPRO_C
 #  define _Noreturn __attribute__ ((__noreturn__))
@@ -2906,25 +2375,8 @@
 /* Define to 1 if you need to in order for 'stat' and other things to work. */
 #undef _POSIX_SOURCE
 
-/* For thread-safety on OSF/1, Solaris. */
-#undef _REENTRANT
-
-/* Define if you want <regex.h> to include <limits.h>, so that it consistently
-   overrides <limits.h>'s RE_DUP_MAX. */
-#undef _REGEX_INCLUDE_LIMITS_H
-
-/* Define if you want regoff_t to be at least as wide POSIX requires. */
-#undef _REGEX_LARGE_OFFSETS
-
-/* For thread-safety on AIX, FreeBSD. */
-#undef _THREAD_SAFE
-
 /* For standard stat data types on VMS. */
 #undef _USE_STD_STAT
-
-/* Define to rpl_ if the getopt replacement functions and variables should be
-   used. */
-#undef __GETOPT_PREFIX
 
 /* Define to 1 if the system <stdint.h> predates C++11. */
 #undef __STDC_CONSTANT_MACROS
@@ -2932,14 +2384,32 @@
 /* Define to 1 if the system <stdint.h> predates C++11. */
 #undef __STDC_LIMIT_MACROS
 
-/* Define as a replacement for the ISO C99 __func__ variable. */
-#undef __func__
+/* The _GL_ASYNC_SAFE marker should be attached to functions that are
+   signal handlers (for signals other than SIGABRT, SIGPIPE) or can be
+   invoked from such signal handlers.  Such functions have some restrictions:
+     * All functions that it calls should be marked _GL_ASYNC_SAFE as well,
+       or should be listed as async-signal-safe in POSIX
+       <https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_04>
+       section 2.4.3.  Note that malloc(), sprintf(), and fwrite(), in
+       particular, are NOT async-signal-safe.
+     * All memory locations (variables and struct fields) that these functions
+       access must be marked 'volatile'.  This holds for both read and write
+       accesses.  Otherwise the compiler might optimize away stores to and
+       reads from such locations that occur in the program, depending on its
+       data flow analysis.  For example, when the program contains a loop
+       that is intended to inspect a variable set from within a signal handler
+           while (!signal_occurred)
+             ;
+       the compiler is allowed to transform this into an endless loop if the
+       variable 'signal_occurred' is not declared 'volatile'.
+   Additionally, recall that:
+     * A signal handler should not modify errno (except if it is a handler
+       for a fatal signal and ends by raising the same signal again, thus
+       provoking the termination of the process).  If it invokes a function
+       that may clobber errno, it needs to save and restore the value of
+       errno.  */
+#define _GL_ASYNC_SAFE
 
-/* Hack to avoid symbol clash */
-#undef base64_encode
-
-/* Hack to avoid symbol clash */
-#undef base64_encode_alloc
 
 /* Please see the Gnulib manual for how to use these macros.
 
@@ -2965,7 +2435,7 @@
      https://lists.gnu.org/r/bug-gnulib/2012-12/msg00023.html
 
      DragonFly; see
-     http://muscles.dragonflybsd.org/bulk/bleeding-edge-potential/latest-per-pkg/ah-tty-0.3.12.log
+     http://muscles.dragonflybsd.org/bulk/clang-master-potential/20141111_102002/logs/ah-tty-0.3.12.log
 
      FreeBSD; see:
      https://lists.gnu.org/r/bug-gnulib/2014-07/msg00104.html
@@ -3048,9 +2518,6 @@
 /* Define to `int' if <sys/types.h> doesn't define. */
 #undef gid_t
 
-/* A replacement for va_copy, if needed.  */
-#define gl_va_copy(a,b) ((a) = (b))
-
 /* Define to `__inline__' or `__inline' if that's what the C compiler
    calls it, or to nothing if 'inline' is not supported under any name.  */
 #ifndef __cplusplus
@@ -3059,9 +2526,6 @@
 
 /* Define to long or long long if <stdint.h> and <inttypes.h> don't define. */
 #undef intmax_t
-
-/* Hack to avoid symbol clash */
-#undef isbase64
 
 /* Work around a bug in Apple GCC 4.0.1 build 5465: In C99 mode, it supports
    the ISO C 99 semantics of 'extern inline' (unlike the GNU C semantics of
@@ -3076,12 +2540,6 @@
 /* Define to 1 if the compiler is checking for lint. */
 #undef lint
 
-/* Define to a type if <wchar.h> does not define. */
-#undef mbstate_t
-
-/* Define to the real name of the mktime_internal function. */
-#undef mktime_internal
-
 /* Define to `int' if <sys/types.h> does not define. */
 #undef mode_t
 
@@ -3095,61 +2553,17 @@
    doesn't define it. */
 #undef ptrdiff_t
 
-/* Define to rpl_re_comp if the replacement should be used. */
-#undef re_comp
-
-/* Define to rpl_re_compile_fastmap if the replacement should be used. */
-#undef re_compile_fastmap
-
-/* Define to rpl_re_compile_pattern if the replacement should be used. */
-#undef re_compile_pattern
-
-/* Define to rpl_re_exec if the replacement should be used. */
-#undef re_exec
-
-/* Define to rpl_re_match if the replacement should be used. */
-#undef re_match
-
-/* Define to rpl_re_match_2 if the replacement should be used. */
-#undef re_match_2
-
-/* Define to rpl_re_search if the replacement should be used. */
-#undef re_search
-
-/* Define to rpl_re_search_2 if the replacement should be used. */
-#undef re_search_2
-
-/* Define to rpl_re_set_registers if the replacement should be used. */
-#undef re_set_registers
-
-/* Define to rpl_re_set_syntax if the replacement should be used. */
-#undef re_set_syntax
-
-/* Define to rpl_re_syntax_options if the replacement should be used. */
-#undef re_syntax_options
-
-/* Define to rpl_regcomp if the replacement should be used. */
-#undef regcomp
-
-/* Define to rpl_regerror if the replacement should be used. */
-#undef regerror
-
-/* Define to rpl_regexec if the replacement should be used. */
-#undef regexec
-
-/* Define to rpl_regfree if the replacement should be used. */
-#undef regfree
-
 /* Define to the equivalent of the C99 'restrict' keyword, or to
    nothing if this is not supported.  Do not define if restrict is
    supported directly.  */
 #undef restrict
-/* Work around a bug in Sun C++: it does not support _Restrict or
-   __restrict__, even though the corresponding Sun C compiler ends up with
-   "#define restrict _Restrict" or "#define restrict __restrict__" in the
-   previous line.  Perhaps some future version of Sun C++ will work with
-   restrict; if so, hopefully it defines __RESTRICT like Sun C does.  */
-#if defined __SUNPRO_CC && !defined __RESTRICT
+/* Work around a bug in older versions of Sun C++, which did not
+   #define __restrict__ or support _Restrict or __restrict__
+   even though the corresponding Sun C compiler ended up with
+   "#define restrict _Restrict" or "#define restrict __restrict__"
+   in the previous line.  This workaround can be removed once
+   we assume Oracle Developer Studio 12.5 (2016) or later.  */
+#if defined __SUNPRO_CC && !defined __RESTRICT && !defined __restrict__
 # define _Restrict
 # define __restrict__
 #endif
@@ -3228,8 +2642,5 @@
 
 /* Define to an unsigned 32-bit type if <sys/types.h> lacks this type. */
 #undef useconds_t
-
-/* Define as a macro for copying va_list variables. */
-#undef va_copy
 
 #include <config-post.h>

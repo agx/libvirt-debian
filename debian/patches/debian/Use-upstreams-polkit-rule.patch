@@ -4,29 +4,9 @@ Subject: Use upstreams polkit rule
 
 As of 1.2.16 upstream ships a Polkit rule like Debian does.
 ---
- src/Makefile.in            | 4 ++--
  src/remote/Makefile.inc.am | 4 ++--
- 2 files changed, 4 insertions(+), 4 deletions(-)
+ 1 file changed, 2 insertions(+), 2 deletions(-)
 
-diff --git a/src/Makefile.in b/src/Makefile.in
-index ace56ba..6721f99 100644
---- a/src/Makefile.in
-+++ b/src/Makefile.in
-@@ -14886,12 +14886,12 @@ lxc/lxc_controller_dispatch.h: $(srcdir)/rpc/gendispatch.pl \
- @WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@		$(DESTDIR)$(polkitactionsdir)/org.libvirt.unix.policy
- @WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@	$(MKDIR_P) $(DESTDIR)$(polkitrulesdir)
- @WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@	$(INSTALL_DATA) $(srcdir)/remote/libvirtd.rules \
--@WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@		$(DESTDIR)$(polkitrulesdir)/50-libvirt.rules
-+@WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@		$(DESTDIR)$(polkitrulesdir)/60-libvirt.rules
- 
- @WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@uninstall-polkit:
- @WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@	rm -f $(DESTDIR)$(polkitactionsdir)/org.libvirt.unix.policy
- @WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@	rmdir $(DESTDIR)$(polkitactionsdir) || :
--@WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@	rm -f $(DESTDIR)$(polkitrulesdir)/50-libvirt.rules
-+@WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@	rm -f $(DESTDIR)$(polkitrulesdir)/60-libvirt.rules
- @WITH_LIBVIRTD_TRUE@@WITH_POLKIT_TRUE@	rmdir $(DESTDIR)$(polkitrulesdir) || :
- 
- .PHONY: \
 diff --git a/src/remote/Makefile.inc.am b/src/remote/Makefile.inc.am
 index 0cf00cb..75b7290 100644
 --- a/src/remote/Makefile.inc.am

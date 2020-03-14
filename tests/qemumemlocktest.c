@@ -34,16 +34,15 @@ testCompareMemLock(const void *data)
     char *xml = NULL;
     int ret = -1;
 
-    if (virAsprintf(&xml, "%s/qemumemlockdata/qemumemlock-%s.xml",
-                    abs_srcdir, info->name) < 0)
-        goto cleanup;
+    xml = g_strdup_printf("%s/qemumemlockdata/qemumemlock-%s.xml", abs_srcdir,
+                          info->name);
 
-    if (!(def = virDomainDefParseFile(xml, driver.caps, driver.xmlopt, NULL,
+    if (!(def = virDomainDefParseFile(xml, driver.xmlopt, NULL,
                                       VIR_DOMAIN_DEF_PARSE_INACTIVE))) {
         goto cleanup;
     }
 
-    ret = virTestCompareToULL(info->memlock, qemuDomainGetMemLockLimitBytes(def));
+    ret = virTestCompareToULL(info->memlock, qemuDomainGetMemLockLimitBytes(def, false));
 
  cleanup:
     virDomainDefFree(def);
@@ -61,17 +60,14 @@ mymain(void)
     char *fakerootdir;
     virQEMUCapsPtr qemuCaps = NULL;
 
-    if (VIR_STRDUP_QUIET(fakerootdir, FAKEROOTDIRTEMPLATE) < 0) {
-        fprintf(stderr, "Out of memory\n");
-        abort();
-    }
+    fakerootdir = g_strdup(FAKEROOTDIRTEMPLATE);
 
-    if (!mkdtemp(fakerootdir)) {
+    if (!g_mkdtemp(fakerootdir)) {
         fprintf(stderr, "Cannot create fakerootdir");
         abort();
     }
 
-    setenv("LIBVIRT_FAKE_ROOT_DIR", fakerootdir, 1);
+    g_setenv("LIBVIRT_FAKE_ROOT_DIR", fakerootdir, TRUE);
 
     if (qemuTestDriverInit(&driver) < 0) {
         VIR_FREE(fakerootdir);
@@ -105,10 +101,22 @@ mymain(void)
      * ensure settings are prioritized as expected.
      */
 
-    qemuTestSetHostArch(driver.caps, VIR_ARCH_X86_64);
+    qemuTestSetHostArch(&driver, VIR_ARCH_X86_64);
 
     DO_TEST("pc-kvm", 0);
     DO_TEST("pc-tcg", 0);
+
+    if (!(qemuCaps = virQEMUCapsNew())) {
+        ret = -1;
+        goto cleanup;
+    }
+
+    virQEMUCapsSet(qemuCaps, QEMU_CAPS_DEVICE_VFIO_PCI);
+
+    if (qemuTestCapsCacheInsert(driver.qemuCapsCache, qemuCaps) < 0) {
+        ret = -1;
+        goto cleanup;
+    };
 
     DO_TEST("pc-hardlimit", 2147483648);
     DO_TEST("pc-locked", VIR_DOMAIN_MEMORY_PARAM_UNLIMITED);
@@ -119,11 +127,7 @@ mymain(void)
     DO_TEST("pc-hardlimit+locked+hostdev", 2147483648);
     DO_TEST("pc-locked+hostdev", VIR_DOMAIN_MEMORY_PARAM_UNLIMITED);
 
-    qemuTestSetHostArch(driver.caps, VIR_ARCH_PPC64);
-    if (!(qemuCaps = virQEMUCapsNew())) {
-        ret = -1;
-        goto cleanup;
-    }
+    qemuTestSetHostArch(&driver, VIR_ARCH_PPC64);
 
     virQEMUCapsSet(qemuCaps, QEMU_CAPS_DEVICE_SPAPR_PCI_HOST_BRIDGE);
     if (qemuTestCapsCacheInsert(driver.qemuCapsCache, qemuCaps) < 0) {
@@ -156,7 +160,8 @@ mymain(void)
 }
 
 VIR_TEST_MAIN_PRELOAD(mymain,
-                      abs_builddir "/.libs/virpcimock.so")
+                      VIR_TEST_MOCK("virpci"),
+                      VIR_TEST_MOCK("domaincaps"))
 
 #else
 

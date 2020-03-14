@@ -7,35 +7,27 @@ Subject: Debianize systemd service files
  tools/libvirt-guests.service.in | 2 +-
  2 files changed, 3 insertions(+), 3 deletions(-)
 
-diff --git a/src/remote/libvirtd.service.in b/src/remote/libvirtd.service.in
-index 3ddf0e2..143dd7f 100644
 --- a/src/remote/libvirtd.service.in
 +++ b/src/remote/libvirtd.service.in
-@@ -20,12 +20,12 @@ Documentation=https://libvirt.org
+@@ -25,8 +25,8 @@ Documentation=https://libvirt.org
  
  [Service]
  Type=notify
--EnvironmentFile=-/etc/sysconfig/libvirtd
-+EnvironmentFile=-/etc/default/libvirtd
- # libvirtd.service is set to run on boot so that autostart of
- # VMs can be performed. We don't want it to stick around if
- # unused though, so we set a timeout. The socket activation
- # then ensures it gets started again if anything needs it
--ExecStart=@sbindir@/libvirtd --timeout 120 $LIBVIRTD_ARGS
-+ExecStart=@sbindir@/libvirtd --timeout 120 $libvirtd_opts
+-EnvironmentFile=-@sysconfdir@/sysconfig/libvirtd
+-ExecStart=@sbindir@/libvirtd $LIBVIRTD_ARGS
++EnvironmentFile=-@sysconfdir@/default/libvirtd
++ExecStart=@sbindir@/libvirtd $libvirtd_opts
  ExecReload=/bin/kill -HUP $MAINPID
  KillMode=process
  Restart=on-failure
-diff --git a/tools/libvirt-guests.service.in b/tools/libvirt-guests.service.in
-index 491ca62..c2f36cf 100644
 --- a/tools/libvirt-guests.service.in
 +++ b/tools/libvirt-guests.service.in
 @@ -10,7 +10,7 @@ Documentation=man:libvirtd(8)
  Documentation=https://libvirt.org
  
  [Service]
--EnvironmentFile=-/etc/sysconfig/libvirt-guests
-+EnvironmentFile=-/etc/default/libvirt-guests
+-EnvironmentFile=-@sysconfdir@/sysconfig/libvirt-guests
++EnvironmentFile=-@sysconfdir@/default/libvirt-guests
  # Hack just call traditional service until we factor
  # out the code
  ExecStart=@libexecdir@/libvirt-guests.sh start

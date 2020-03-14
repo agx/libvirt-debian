@@ -112,7 +112,7 @@ vshAdmGetTimeStr(vshControl *ctl, time_t then, char **result)
  * check if the communication channel has not been closed by remote party.
  */
 static void
-vshAdmCatchDisconnect(virAdmConnectPtr conn ATTRIBUTE_UNUSED,
+vshAdmCatchDisconnect(virAdmConnectPtr conn G_GNUC_UNUSED,
                       int reason,
                       void *opaque)
 {
@@ -124,7 +124,7 @@ vshAdmCatchDisconnect(virAdmConnectPtr conn ATTRIBUTE_UNUSED,
     if (reason == VIR_CONNECT_CLOSE_REASON_CLIENT)
         return;
 
-    error = virSaveLastError();
+    virErrorPreserveLast(&error);
     uri = virAdmConnectGetURI(conn);
 
     switch ((virConnectCloseReason) reason) {
@@ -146,10 +146,7 @@ vshAdmCatchDisconnect(virAdmConnectPtr conn ATTRIBUTE_UNUSED,
     vshError(ctl, _(str), NULLSTR(uri));
     VIR_FREE(uri);
 
-    if (error) {
-        virSetError(error);
-        virFreeError(error);
-    }
+    virErrorRestore(&error);
 }
 
 static int
@@ -231,7 +228,7 @@ static const vshCmdInfo info_uri[] = {
 };
 
 static bool
-cmdURI(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
+cmdURI(vshControl *ctl, const vshCmd *cmd G_GNUC_UNUSED)
 {
     char *uri;
     vshAdmControlPtr priv = ctl->privData;
@@ -263,7 +260,7 @@ static const vshCmdInfo info_version[] = {
 };
 
 static bool
-cmdVersion(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
+cmdVersion(vshControl *ctl, const vshCmd *cmd G_GNUC_UNUSED)
 {
     unsigned long libVersion;
     unsigned long long includeVersion;
@@ -346,7 +343,7 @@ cmdConnect(vshControl *ctl, const vshCmd *cmd)
 
     if (name) {
         VIR_FREE(ctl->connname);
-        ctl->connname = vshStrdup(ctl, name);
+        ctl->connname = g_strdup(name);
     }
 
     vshAdmReconnect(ctl);
@@ -373,7 +370,7 @@ static const vshCmdInfo info_srv_list[] = {
 };
 
 static bool
-cmdSrvList(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
+cmdSrvList(vshControl *ctl, const vshCmd *cmd G_GNUC_UNUSED)
 {
     int nsrvs = 0;
     size_t i;
@@ -396,9 +393,8 @@ cmdSrvList(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
         goto cleanup;
 
     for (i = 0; i < nsrvs; i++) {
-        VIR_AUTOFREE(char *) idStr = NULL;
-        if (virAsprintf(&idStr, "%zu", i) < 0)
-            goto cleanup;
+        g_autofree char *idStr = NULL;
+        idStr = g_strdup_printf("%zu", i);
 
         if (vshTableRowAppend(table,
                               idStr,
@@ -650,8 +646,8 @@ cmdSrvClientsList(vshControl *ctl, const vshCmd *cmd)
         goto cleanup;
 
     for (i = 0; i < nclts; i++) {
-        VIR_AUTOFREE(char *) timestr = NULL;
-        VIR_AUTOFREE(char *) idStr = NULL;
+        g_autofree char *timestr = NULL;
+        g_autofree char *idStr = NULL;
         virAdmClientPtr client = clts[i];
         id = virAdmClientGetID(client);
         transport = virAdmClientGetTransport(client);
@@ -659,8 +655,7 @@ cmdSrvClientsList(vshControl *ctl, const vshCmd *cmd)
                              &timestr) < 0)
             goto cleanup;
 
-        if (virAsprintf(&idStr, "%llu", id) < 0)
-            goto cleanup;
+        idStr = g_strdup_printf("%llu", id);
         if (vshTableRowAppend(table, idStr,
                               vshAdmClientTransportToString(transport),
                               timestr, NULL) < 0)
@@ -1168,7 +1163,7 @@ vshAdmInit(vshControl *ctl)
 }
 
 static void
-vshAdmDeinitTimer(int timer ATTRIBUTE_UNUSED, void *opaque ATTRIBUTE_UNUSED)
+vshAdmDeinitTimer(int timer G_GNUC_UNUSED, void *opaque G_GNUC_UNUSED)
 {
     /* nothing to be done here */
 }
@@ -1256,7 +1251,7 @@ vshAdmUsage(void)
  * Show version and options compiled in
  */
 static void
-vshAdmShowVersion(vshControl *ctl ATTRIBUTE_UNUSED)
+vshAdmShowVersion(vshControl *ctl G_GNUC_UNUSED)
 {
     /* FIXME - list a copyright blurb, as in GNU programs?  */
     vshPrint(ctl, _("Virt-admin command line tool of libvirt %s\n"), VERSION);
@@ -1298,7 +1293,7 @@ vshAdmParseArgv(vshControl *ctl, int argc, char **argv)
         switch (arg) {
         case 'c':
             VIR_FREE(ctl->connname);
-            ctl->connname = vshStrdup(ctl, optarg);
+            ctl->connname = g_strdup(optarg);
             break;
         case 'd':
             if (virStrToLong_i(optarg, NULL, 10, &debug) < 0) {
@@ -1318,7 +1313,7 @@ vshAdmParseArgv(vshControl *ctl, int argc, char **argv)
             break;
         case 'l':
             vshCloseLogFile(ctl);
-            ctl->logfile = vshStrdup(ctl, optarg);
+            ctl->logfile = g_strdup(optarg);
             vshOpenLogFile(ctl);
             break;
         case 'q':
@@ -1329,7 +1324,7 @@ vshAdmParseArgv(vshControl *ctl, int argc, char **argv)
                 puts(VERSION);
                 exit(EXIT_SUCCESS);
             }
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
         case 'V':
             vshAdmShowVersion(ctl);
             exit(EXIT_SUCCESS);
@@ -1552,7 +1547,7 @@ main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    virFileActivateDirOverride(argv[0]);
+    virFileActivateDirOverrideForProg(argv[0]);
 
     if (!vshInit(ctl, cmdGroups, NULL))
         exit(EXIT_FAILURE);

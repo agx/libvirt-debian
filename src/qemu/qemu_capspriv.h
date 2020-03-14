@@ -36,6 +36,9 @@ virQEMUCapsNewForBinaryInternal(virArch hostArch,
                                 unsigned int microcodeVersion,
                                 const char *kernelVersion);
 
+void virQEMUCapsSetInvalidation(virQEMUCapsPtr qemuCaps,
+                                bool enabled);
+
 int virQEMUCapsLoadCache(virArch hostArch,
                          virQEMUCapsPtr qemuCaps,
                          const char *filename);
@@ -83,7 +86,7 @@ virQEMUCapsGetCPUModelX86Data(virQEMUCapsPtr qemuCaps,
 
 virCPUDefPtr
 virQEMUCapsProbeHostCPU(virArch hostArch,
-                        virDomainCapsCPUModelsPtr models) ATTRIBUTE_NOINLINE;
+                        virDomainCapsCPUModelsPtr models) G_GNUC_NO_INLINE;
 
 void
 virQEMUCapsSetGICCapabilities(virQEMUCapsPtr qemuCaps,
@@ -95,9 +98,8 @@ virQEMUCapsSetSEVCapabilities(virQEMUCapsPtr qemuCaps,
                               virSEVCapability *capabilities);
 
 int
-virQEMUCapsProbeQMPCPUDefinitions(virQEMUCapsPtr qemuCaps,
-                                  qemuMonitorPtr mon,
-                                  bool tcg);
+virQEMUCapsProbeCPUDefinitionsTest(virQEMUCapsPtr qemuCaps,
+                                   qemuMonitorPtr mon);
 
 void
 virQEMUCapsSetMicrocodeVersion(virQEMUCapsPtr qemuCaps,
@@ -105,3 +107,13 @@ virQEMUCapsSetMicrocodeVersion(virQEMUCapsPtr qemuCaps,
 
 void
 virQEMUCapsStripMachineAliases(virQEMUCapsPtr qemuCaps);
+
+void
+virQEMUCapsAddMachine(virQEMUCapsPtr qemuCaps,
+                      virDomainVirtType virtType,
+                      const char *name,
+                      const char *alias,
+                      const char *defaultCPU,
+                      int maxCpus,
+                      bool hotplugCpus,
+                      bool isDefault);

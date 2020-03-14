@@ -32,6 +32,7 @@
 #include "viralloc.h"
 #include "qemusecuritytest.h"
 #include "security/security_manager.h"
+#include "virhostuptime.h"
 
 #define VIR_FROM_THIS VIR_FROM_NONE
 
@@ -116,10 +117,7 @@ get_key(const char *path,
 {
     char *ret;
 
-    if (virAsprintf(&ret, "%s:%s", path, name) < 0) {
-        fprintf(stderr, "Unable to create hash table key\n");
-        abort();
-    }
+    ret = g_strdup_printf("%s:%s", path, name);
 
     return ret;
 }
@@ -145,8 +143,7 @@ virFileGetXAttrQuiet(const char *path,
         goto cleanup;
     }
 
-    if (VIR_STRDUP(*value, val) < 0)
-        goto cleanup;
+    *value = g_strdup(val);
 
     ret = 0;
  cleanup:
@@ -193,8 +190,7 @@ int virFileSetXAttr(const char *path,
     char *val;
 
     key = get_key(path, name);
-    if (VIR_STRDUP(val, value) < 0)
-        return -1;
+    val = g_strdup(value);
 
     virMutexLock(&m);
     init_syms();
@@ -301,7 +297,7 @@ mock_chown(const char *path,
 #include "virmockstathelpers.c"
 
 static int
-virMockStatRedirect(const char *path ATTRIBUTE_UNUSED, char **newpath ATTRIBUTE_UNUSED)
+virMockStatRedirect(const char *path G_GNUC_UNUSED, char **newpath G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -363,19 +359,19 @@ close(int fd)
 }
 
 
-int virFileLock(int fd ATTRIBUTE_UNUSED,
-                bool shared ATTRIBUTE_UNUSED,
-                off_t start ATTRIBUTE_UNUSED,
-                off_t len ATTRIBUTE_UNUSED,
-                bool waitForLock ATTRIBUTE_UNUSED)
+int virFileLock(int fd G_GNUC_UNUSED,
+                bool shared G_GNUC_UNUSED,
+                off_t start G_GNUC_UNUSED,
+                off_t len G_GNUC_UNUSED,
+                bool waitForLock G_GNUC_UNUSED)
 {
     return 0;
 }
 
 
-int virFileUnlock(int fd ATTRIBUTE_UNUSED,
-                  off_t start ATTRIBUTE_UNUSED,
-                  off_t len ATTRIBUTE_UNUSED)
+int virFileUnlock(int fd G_GNUC_UNUSED,
+                  off_t start G_GNUC_UNUSED,
+                  off_t len G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -487,4 +483,15 @@ virProcessRunInFork(virProcessForkCallback cb,
                     void *opaque)
 {
     return cb(-1, opaque);
+}
+
+
+/* We don't really need to mock this function. The qemusecuritytest doesn't
+ * care about the actual value. However, travis runs build and tests in a
+ * container where utmp is missing and thus this function fails. */
+int
+virHostGetBootTime(unsigned long long *when)
+{
+    *when = 1234567890;
+    return 0;
 }

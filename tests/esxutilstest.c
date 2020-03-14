@@ -33,7 +33,7 @@ static struct testPath paths[] = {
 };
 
 static int
-testParseDatastorePath(const void *data ATTRIBUTE_UNUSED)
+testParseDatastorePath(const void *data G_GNUC_UNUSED)
 {
     int result = 0;
     size_t i;
@@ -41,7 +41,7 @@ testParseDatastorePath(const void *data ATTRIBUTE_UNUSED)
     char *directoryName = NULL;
     char *directoryAndFileName = NULL;
 
-    for (i = 0; i < ARRAY_CARDINALITY(paths); ++i) {
+    for (i = 0; i < G_N_ELEMENTS(paths); ++i) {
         VIR_FREE(datastoreName);
         VIR_FREE(directoryName);
         VIR_FREE(directoryAndFileName);
@@ -121,13 +121,13 @@ static struct testDateTime times[] = {
 };
 
 static int
-testConvertDateTimeToCalendarTime(const void *data ATTRIBUTE_UNUSED)
+testConvertDateTimeToCalendarTime(const void *data G_GNUC_UNUSED)
 {
     size_t i;
     esxVI_DateTime dateTime;
     long long calendarTime;
 
-    for (i = 0; i < ARRAY_CARDINALITY(times); ++i) {
+    for (i = 0; i < G_N_ELEMENTS(times); ++i) {
         dateTime.value = (char *)times[i].dateTime;
 
         if (esxVI_DateTime_ConvertToCalendarTime(&dateTime,
@@ -172,12 +172,12 @@ static struct testDatastoreItem datastoreItems[] = {
 };
 
 static int
-testEscapeDatastoreItem(const void *data ATTRIBUTE_UNUSED)
+testEscapeDatastoreItem(const void *data G_GNUC_UNUSED)
 {
     size_t i;
     char *escaped = NULL;
 
-    for (i = 0; i < ARRAY_CARDINALITY(datastoreItems); ++i) {
+    for (i = 0; i < G_N_ELEMENTS(datastoreItems); ++i) {
         VIR_FREE(escaped);
 
         escaped = esxUtil_EscapeDatastoreItem(datastoreItems[i].string);
@@ -212,12 +212,12 @@ static struct testWindows1252ToUTF8 windows1252ToUTF8[] = {
 };
 
 static int
-testConvertWindows1252ToUTF8(const void *data ATTRIBUTE_UNUSED)
+testConvertWindows1252ToUTF8(const void *data G_GNUC_UNUSED)
 {
     size_t i;
     char *utf8 = NULL;
 
-    for (i = 0; i < ARRAY_CARDINALITY(windows1252ToUTF8); ++i) {
+    for (i = 0; i < G_N_ELEMENTS(windows1252ToUTF8); ++i) {
         VIR_FREE(utf8);
 
         utf8 = virVMXConvertToUTF8("Windows-1252",

@@ -25,8 +25,6 @@
 #include "virerror.h"
 #include "virlog.h"
 
-#include "c-ctype.h"
-
 #define VIR_FROM_THIS VIR_FROM_QEMU
 
 VIR_LOG_INIT("qemu.qemu_qapi");
@@ -74,7 +72,21 @@ struct virQEMUQAPISchemaTraverseContext {
     virHashTablePtr schema;
     char **queries;
     virJSONValuePtr returnType;
+    size_t depth;
 };
+
+
+static int
+virQEMUQAPISchemaTraverseContextValidateDepth(struct virQEMUQAPISchemaTraverseContext *ctxt)
+{
+    if (ctxt->depth++ > 1000) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("possible loop in QMP schema"));
+        return -1;
+    }
+
+    return 0;
+}
 
 
 static void
@@ -151,7 +163,7 @@ virQEMUQAPISchemaTraverseObject(virJSONValuePtr cur,
     const char *query = virQEMUQAPISchemaTraverseContextNextQuery(ctxt);
     char modifier = *query;
 
-    if (!c_isalpha(modifier))
+    if (!g_ascii_isalpha(modifier))
         query++;
 
     /* exit on modifers for other types */
@@ -202,6 +214,21 @@ virQEMUQAPISchemaTraverseCommand(virJSONValuePtr cur,
 {
     const char *query = virQEMUQAPISchemaTraverseContextNextQuery(ctxt);
     const char *querytype;
+    char modifier = *query;
+
+    if (!g_ascii_isalpha(modifier))
+        query++;
+
+    /* exit on modifers for other types */
+    if (modifier == '^' || modifier == '!' || modifier == '+' || modifier == '*')
+        return 0;
+
+    if (modifier == '$') {
+        if (virQEMUQAPISchemaTraverseContextHasNextQuery(ctxt))
+            return -3;
+
+        return virQEMUQAPISchemaTraverseHasObjectFeature(query, cur);
+    }
 
     if (!(querytype = virJSONValueObjectGetString(cur, query)))
         return 0;
@@ -329,6 +356,9 @@ virQEMUQAPISchemaTraverse(const char *baseName,
     const char *metatype;
     size_t i;
 
+    if (virQEMUQAPISchemaTraverseContextValidateDepth(ctxt) < 0)
+        return -2;
+
     if (!(cur = virHashLookup(ctxt->schema, baseName)))
         return -2;
 
@@ -340,7 +370,7 @@ virQEMUQAPISchemaTraverse(const char *baseName,
     if (!(metatype = virJSONValueObjectGetString(cur, "meta-type")))
         return -2;
 
-    for (i = 0; i < ARRAY_CARDINALITY(traverseMetaType); i++) {
+    for (i = 0; i < G_N_ELEMENTS(traverseMetaType); i++) {
         if (STREQ(metatype, traverseMetaType[i].metatype))
             return traverseMetaType[i].func(cur, ctxt);
     }
@@ -454,7 +484,7 @@ virQEMUQAPISchemaPathExists(const char *query,
 }
 
 static int
-virQEMUQAPISchemaEntryProcess(size_t pos ATTRIBUTE_UNUSED,
+virQEMUQAPISchemaEntryProcess(size_t pos G_GNUC_UNUSED,
                               virJSONValuePtr item,
                               void *opaque)
 {
@@ -484,8 +514,8 @@ virQEMUQAPISchemaEntryProcess(size_t pos ATTRIBUTE_UNUSED,
 virHashTablePtr
 virQEMUQAPISchemaConvert(virJSONValuePtr schemareply)
 {
-    VIR_AUTOPTR(virHashTable) schema = NULL;
-    VIR_AUTOPTR(virJSONValue) schemajson = schemareply;
+    g_autoptr(virHashTable) schema = NULL;
+    g_autoptr(virJSONValue) schemajson = schemareply;
 
     if (!(schema = virHashCreate(512, virJSONValueHashFree)))
         return NULL;
@@ -495,5 +525,5 @@ virQEMUQAPISchemaConvert(virJSONValuePtr schemareply)
                                       schema) < 0)
         return NULL;
 
-    VIR_RETURN_PTR(schema);
+    return g_steal_pointer(&schema);
 }

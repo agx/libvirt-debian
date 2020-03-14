@@ -243,9 +243,8 @@ virNWFilterIncludeDefToRuleInst(virNWFilterIncludeDefPtr inc,
     int ret = -1;
     char *xml;
 
-    if (virAsprintf(&xml, "%s/nwfilterxml2firewalldata/%s.xml",
-                    abs_srcdir, inc->filterref) < 0)
-        return -1;
+    xml = g_strdup_printf("%s/nwfilterxml2firewalldata/%s.xml", abs_srcdir,
+                          inc->filterref);
 
     /* create a temporary hashmap for depth-first tree traversal */
     if (!(tmpvars = virNWFilterCreateVarsFrom(inc->params,
@@ -313,7 +312,7 @@ static void testRemoveCommonRules(char *rules)
     size_t i;
     char *offset = rules;
 
-    for (i = 0; i < ARRAY_CARDINALITY(commonRules); i++) {
+    for (i = 0; i < G_N_ELEMENTS(commonRules); i++) {
         char *tmp = strstr(offset, commonRules[i]);
         size_t len = strlen(commonRules[i]);
         if (tmp) {
@@ -328,24 +327,22 @@ static int testSetOneParameter(virHashTablePtr vars,
                                const char *name,
                                const char *value)
 {
-    int ret = -1;
     virNWFilterVarValuePtr val;
 
     if ((val = virHashLookup(vars, name)) == NULL) {
         val = virNWFilterVarValueCreateSimpleCopyValue(value);
         if (!val)
-            goto cleanup;
+            return -1;
         if (virHashUpdateEntry(vars, name, val) < 0) {
             virNWFilterVarValueFree(val);
-            goto cleanup;
+            return -1;
         }
     } else {
         if (virNWFilterVarValueAddValueCopy(val, value) < 0)
-            goto cleanup;
+            return -1;
     }
-    ret = 0;
- cleanup:
-    return ret;
+
+    return 0;
 }
 
 static int testSetDefaultParameters(virHashTablePtr vars)
@@ -394,9 +391,6 @@ static int testCompareXMLToArgvFiles(const char *xml,
     if (ebiptables_driver.applyNewRules("vnet0", inst.rules, inst.nrules) < 0)
         goto cleanup;
 
-    if (virBufferError(&buf))
-        goto cleanup;
-
     actualargv = virBufferContentAndReset(&buf);
     virTestClearCommandPath(actualargv);
     virCommandSetDryRun(NULL, NULL, NULL);
@@ -429,15 +423,13 @@ testCompareXMLToIPTablesHelper(const void *data)
     char *xml = NULL;
     char *args = NULL;
 
-    if (virAsprintf(&xml, "%s/nwfilterxml2firewalldata/%s.xml",
-                    abs_srcdir, info->name) < 0 ||
-        virAsprintf(&args, "%s/nwfilterxml2firewalldata/%s-%s.args",
-                    abs_srcdir, info->name, RULESTYPE) < 0)
-        goto cleanup;
+    xml = g_strdup_printf("%s/nwfilterxml2firewalldata/%s.xml",
+                          abs_srcdir, info->name);
+    args = g_strdup_printf("%s/nwfilterxml2firewalldata/%s-%s.args",
+                           abs_srcdir, info->name, RULESTYPE);
 
     result = testCompareXMLToArgvFiles(xml, args);
 
- cleanup:
     VIR_FREE(xml);
     VIR_FREE(args);
     return result;
@@ -474,8 +466,7 @@ mymain(void)
             fprintf(stderr, "iptables/ip6tables/ebtables tools not present");
             return EXIT_AM_SKIP;
         }
-        ret = -1;
-        goto cleanup;
+        return EXIT_FAILURE;
     }
 
     DO_TEST("ah");
@@ -518,7 +509,6 @@ mymain(void)
     DO_TEST("udplite-ipv6");
     DO_TEST("vlan");
 
- cleanup:
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

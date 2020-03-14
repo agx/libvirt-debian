@@ -63,7 +63,6 @@
 # include <sys/un.h>
 #endif
 
-#include "c-ctype.h"
 #include "mgetgroups.h"
 #include "virerror.h"
 #include "virlog.h"
@@ -102,7 +101,7 @@ int virSetInherit(int fd, bool inherit)
 
 #else /* WIN32 */
 
-int virSetInherit(int fd ATTRIBUTE_UNUSED, bool inherit ATTRIBUTE_UNUSED)
+int virSetInherit(int fd G_GNUC_UNUSED, bool inherit G_GNUC_UNUSED)
 {
     /* FIXME: Currently creating child processes is not supported on
      * Win32, so there is no point in failing calls that are only relevant
@@ -129,7 +128,7 @@ int virSetCloseExec(int fd)
 }
 
 #ifdef WIN32
-int virSetSockReuseAddr(int fd ATTRIBUTE_UNUSED, bool fatal ATTRIBUTE_UNUSED)
+int virSetSockReuseAddr(int fd G_GNUC_UNUSED, bool fatal G_GNUC_UNUSED)
 {
     /*
      * SO_REUSEADDR on Windows is actually akin to SO_REUSEPORT
@@ -201,7 +200,7 @@ virScaleInteger(unsigned long long *value, const char *suffix,
 
         if (!suffix[1] || STRCASEEQ(suffix + 1, "iB")) {
             base = 1024;
-        } else if (c_tolower(suffix[1]) == 'b' && !suffix[2]) {
+        } else if (g_ascii_tolower(suffix[1]) == 'b' && !suffix[2]) {
             base = 1000;
         } else {
             virReportError(VIR_ERR_INVALID_ARG,
@@ -209,22 +208,22 @@ virScaleInteger(unsigned long long *value, const char *suffix,
             return -1;
         }
         scale = 1;
-        switch (c_tolower(*suffix)) {
+        switch (g_ascii_tolower(*suffix)) {
         case 'e':
             scale *= base;
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
         case 'p':
             scale *= base;
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
         case 't':
             scale *= base;
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
         case 'g':
             scale *= base;
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
         case 'm':
             scale *= base;
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
         case 'k':
             scale *= base;
             break;
@@ -386,18 +385,18 @@ int virDiskNameParse(const char *name, int *disk, int *partition)
     static char const* const drive_prefix[] = {"fd", "hd", "vd", "sd", "xvd", "ubd"};
     size_t i;
 
-    for (i = 0; i < ARRAY_CARDINALITY(drive_prefix); i++) {
+    for (i = 0; i < G_N_ELEMENTS(drive_prefix); i++) {
         if (STRPREFIX(name, drive_prefix[i])) {
             ptr = name + strlen(drive_prefix[i]);
             break;
         }
     }
 
-    if (!ptr || !c_islower(*ptr))
+    if (!ptr || !g_ascii_islower(*ptr))
         return -1;
 
     for (i = 0; *ptr; i++) {
-        if (!c_islower(*ptr))
+        if (!g_ascii_islower(*ptr))
             break;
 
         idx = (idx + (i < 1 ? 0 : 1)) * 26;
@@ -504,17 +503,11 @@ static char *
 virGetHostnameImpl(bool quiet)
 {
     int r;
-    char hostname[HOST_NAME_MAX+1], *result = NULL;
+    const char *hostname;
+    char *result = NULL;
     struct addrinfo hints, *info;
 
-    r = gethostname(hostname, sizeof(hostname));
-    if (r == -1) {
-        if (!quiet)
-            virReportSystemError(errno,
-                                 "%s", _("failed to determine host name"));
-        return NULL;
-    }
-    NUL_TERMINATE(hostname);
+    hostname = g_get_host_name();
 
     if (STRPREFIX(hostname, "localhost") || strchr(hostname, '.')) {
         /* in this case, gethostname returned localhost (meaning we can't
@@ -523,7 +516,7 @@ virGetHostnameImpl(bool quiet)
          * string as-is; it's up to callers to check whether "localhost"
          * is allowed.
          */
-        ignore_value(VIR_STRDUP_QUIET(result, hostname));
+        result = g_strdup(hostname);
         goto cleanup;
     }
 
@@ -539,7 +532,7 @@ virGetHostnameImpl(bool quiet)
         if (!quiet)
             VIR_WARN("getaddrinfo failed for '%s': %s",
                      hostname, gai_strerror(r));
-        ignore_value(VIR_STRDUP_QUIET(result, hostname));
+        result = g_strdup(hostname);
         goto cleanup;
     }
 
@@ -552,10 +545,10 @@ virGetHostnameImpl(bool quiet)
          * localhost.  Ignore the canonicalized name and just return the
          * original hostname
          */
-        ignore_value(VIR_STRDUP_QUIET(result, hostname));
+        result = g_strdup(hostname);
     else
         /* Caller frees this string. */
-        ignore_value(VIR_STRDUP_QUIET(result, info->ai_canonname));
+        result = g_strdup(info->ai_canonname);
 
     freeaddrinfo(info);
 
@@ -583,7 +576,37 @@ virGetHostnameQuiet(void)
 char *
 virGetUserDirectory(void)
 {
-    return virGetUserDirectoryByUID(geteuid());
+    return g_strdup(g_get_home_dir());
+}
+
+
+char *virGetUserConfigDirectory(void)
+{
+#ifdef WIN32
+    return g_strdup(g_get_user_config_dir());
+#else
+    return g_build_filename(g_get_user_config_dir(), "libvirt", NULL);
+#endif
+}
+
+
+char *virGetUserCacheDirectory(void)
+{
+#ifdef WIN32
+    return g_strdup(g_get_user_cache_dir());
+#else
+    return g_build_filename(g_get_user_cache_dir(), "libvirt", NULL);
+#endif
+}
+
+
+char *virGetUserRuntimeDirectory(void)
+{
+#ifdef WIN32
+    return g_strdup(g_get_user_runtime_dir());
+#else
+    return g_build_filename(g_get_user_runtime_dir(), "libvirt", NULL);
+#endif
 }
 
 
@@ -646,14 +669,14 @@ virGetUserEnt(uid_t uid, char **name, gid_t *group, char **dir, char **shell, bo
         goto cleanup;
     }
 
-    if (name && VIR_STRDUP(*name, pw->pw_name) < 0)
-        goto cleanup;
+    if (name)
+        *name = g_strdup(pw->pw_name);
     if (group)
         *group = pw->pw_gid;
-    if (dir && VIR_STRDUP(*dir, pw->pw_dir) < 0)
-        goto cleanup;
-    if (shell && VIR_STRDUP(*shell, pw->pw_shell) < 0)
-        goto cleanup;
+    if (dir)
+        *dir = g_strdup(pw->pw_dir);
+    if (shell)
+        *shell = g_strdup(pw->pw_shell);
 
     ret = 0;
  cleanup:
@@ -714,7 +737,7 @@ static char *virGetGroupEnt(gid_t gid)
         return NULL;
     }
 
-    ignore_value(VIR_STRDUP(ret, gr->gr_name));
+    ret = g_strdup(gr->gr_name);
     VIR_FREE(strbuf);
     return ret;
 }
@@ -736,48 +759,6 @@ char *virGetUserShell(uid_t uid)
     return ret;
 }
 
-
-static char *virGetXDGDirectory(const char *xdgenvname, const char *xdgdefdir)
-{
-    const char *path = virGetEnvBlockSUID(xdgenvname);
-    char *ret = NULL;
-    char *home = NULL;
-
-    if (path && path[0]) {
-        ignore_value(virAsprintf(&ret, "%s/libvirt", path));
-    } else {
-        home = virGetUserDirectory();
-        if (home)
-            ignore_value(virAsprintf(&ret, "%s/%s/libvirt", home, xdgdefdir));
-    }
-
-    VIR_FREE(home);
-    return ret;
-}
-
-char *virGetUserConfigDirectory(void)
-{
-    return virGetXDGDirectory("XDG_CONFIG_HOME", ".config");
-}
-
-char *virGetUserCacheDirectory(void)
-{
-    return virGetXDGDirectory("XDG_CACHE_HOME", ".cache");
-}
-
-char *virGetUserRuntimeDirectory(void)
-{
-    const char *path = virGetEnvBlockSUID("XDG_RUNTIME_DIR");
-
-    if (!path || !path[0]) {
-        return virGetUserCacheDirectory();
-    } else {
-        char *ret;
-
-        ignore_value(virAsprintf(&ret, "%s/libvirt", path));
-        return ret;
-    }
-}
 
 char *virGetUserName(uid_t uid)
 {
@@ -1032,8 +1013,8 @@ virGetGroupList(uid_t uid, gid_t gid, gid_t **list)
  * failure (the original system error remains in errno).
  */
 int
-virSetUIDGID(uid_t uid, gid_t gid, gid_t *groups ATTRIBUTE_UNUSED,
-             int ngroups ATTRIBUTE_UNUSED)
+virSetUIDGID(uid_t uid, gid_t gid, gid_t *groups G_GNUC_UNUSED,
+             int ngroups G_GNUC_UNUSED)
 {
     if (gid != (gid_t)-1 && setregid(gid, gid) < 0) {
         virReportSystemError(errno,
@@ -1063,7 +1044,7 @@ virSetUIDGID(uid_t uid, gid_t gid, gid_t *groups ATTRIBUTE_UNUSED,
 #else /* ! HAVE_GETPWUID_R */
 
 int
-virGetGroupList(uid_t uid ATTRIBUTE_UNUSED, gid_t gid ATTRIBUTE_UNUSED,
+virGetGroupList(uid_t uid G_GNUC_UNUSED, gid_t gid G_GNUC_UNUSED,
                 gid_t **list)
 {
     *list = NULL;
@@ -1071,116 +1052,30 @@ virGetGroupList(uid_t uid ATTRIBUTE_UNUSED, gid_t gid ATTRIBUTE_UNUSED,
 }
 
 bool
-virDoesUserExist(const char *name ATTRIBUTE_UNUSED)
+virDoesUserExist(const char *name G_GNUC_UNUSED)
 {
     return false;
 }
 
 bool
-virDoesGroupExist(const char *name ATTRIBUTE_UNUSED)
+virDoesGroupExist(const char *name G_GNUC_UNUSED)
 {
     return false;
 }
 
 # ifdef WIN32
-/* These methods are adapted from GLib2 under terms of LGPLv2+ */
-static int
-virGetWin32SpecialFolder(int csidl, char **path)
-{
-    char buf[MAX_PATH+1];
-    LPITEMIDLIST pidl = NULL;
-    int ret = 0;
-
-    *path = NULL;
-
-    if (SHGetSpecialFolderLocation(NULL, csidl, &pidl) == S_OK) {
-        if (SHGetPathFromIDList(pidl, buf) && VIR_STRDUP(*path, buf) < 0)
-            ret = -1;
-        CoTaskMemFree(pidl);
-    }
-    return ret;
-}
-
-static int
-virGetWin32DirectoryRoot(char **path)
-{
-    char windowsdir[MAX_PATH];
-
-    *path = NULL;
-
-    if (GetWindowsDirectory(windowsdir, ARRAY_CARDINALITY(windowsdir))) {
-        const char *tmp;
-        /* Usually X:\Windows, but in terminal server environments
-         * might be an UNC path, AFAIK.
-         */
-        tmp = virFileSkipRoot(windowsdir);
-        if (VIR_FILE_IS_DIR_SEPARATOR(tmp[-1]) &&
-            tmp[-2] != ':')
-            tmp--;
-
-        windowsdir[tmp - windowsdir] = '\0';
-    } else {
-        strcpy(windowsdir, "C:\\");
-    }
-
-    return VIR_STRDUP(*path, windowsdir) < 0 ? -1 : 0;
-}
-
-
-
 char *
-virGetUserDirectoryByUID(uid_t uid ATTRIBUTE_UNUSED)
+virGetUserDirectoryByUID(uid_t uid G_GNUC_UNUSED)
 {
     /* Since Windows lacks setuid binaries, and since we already fake
      * geteuid(), we can safely assume that this is only called when
      * querying about the current user */
-    const char *dir;
-    char *ret;
 
-    dir = virGetEnvBlockSUID("HOME");
-
-    /* Only believe HOME if it is an absolute path and exists */
-    if (dir) {
-        if (!virFileIsAbsPath(dir) ||
-            !virFileExists(dir))
-            dir = NULL;
-    }
-
-    /* In case HOME is Unix-style (it happens), convert it to
-     * Windows style.
-     */
-    if (dir) {
-        char *p;
-        while ((p = strchr(dir, '/')) != NULL)
-            *p = '\\';
-    }
-
-    if (!dir)
-        /* USERPROFILE is probably the closest equivalent to $HOME? */
-        dir = virGetEnvBlockSUID("USERPROFILE");
-
-    if (VIR_STRDUP(ret, dir) < 0)
-        return NULL;
-
-    if (!ret &&
-        virGetWin32SpecialFolder(CSIDL_PROFILE, &ret) < 0)
-        return NULL;
-
-    if (!ret &&
-        virGetWin32DirectoryRoot(&ret) < 0)
-        return NULL;
-
-    if (!ret) {
-        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
-                       _("Unable to determine home directory"));
-        return NULL;
-    }
-
-    return ret;
+    return g_strdup(g_get_home_dir());
 }
 
 char *
-virGetUserShell(uid_t uid ATTRIBUTE_UNUSED)
+virGetUserShell(uid_t uid G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("virGetUserShell is not available"));
@@ -1188,45 +1083,9 @@ virGetUserShell(uid_t uid ATTRIBUTE_UNUSED)
     return NULL;
 }
 
-char *
-virGetUserConfigDirectory(void)
-{
-    char *ret;
-    if (virGetWin32SpecialFolder(CSIDL_LOCAL_APPDATA, &ret) < 0)
-        return NULL;
-
-    if (!ret) {
-        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
-                       _("Unable to determine config directory"));
-        return NULL;
-    }
-    return ret;
-}
-
-char *
-virGetUserCacheDirectory(void)
-{
-    char *ret;
-    if (virGetWin32SpecialFolder(CSIDL_INTERNET_CACHE, &ret) < 0)
-        return NULL;
-
-    if (!ret) {
-        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
-                       _("Unable to determine config directory"));
-        return NULL;
-    }
-    return ret;
-}
-
-char *
-virGetUserRuntimeDirectory(void)
-{
-    return virGetUserCacheDirectory();
-}
-
 # else /* !HAVE_GETPWUID_R && !WIN32 */
 char *
-virGetUserDirectoryByUID(uid_t uid ATTRIBUTE_UNUSED)
+virGetUserDirectoryByUID(uid_t uid G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("virGetUserDirectory is not available"));
@@ -1235,44 +1094,17 @@ virGetUserDirectoryByUID(uid_t uid ATTRIBUTE_UNUSED)
 }
 
 char *
-virGetUserShell(uid_t uid ATTRIBUTE_UNUSED)
+virGetUserShell(uid_t uid G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("virGetUserShell is not available"));
 
     return NULL;
 }
-
-char *
-virGetUserConfigDirectory(void)
-{
-    virReportError(VIR_ERR_INTERNAL_ERROR,
-                   "%s", _("virGetUserConfigDirectory is not available"));
-
-    return NULL;
-}
-
-char *
-virGetUserCacheDirectory(void)
-{
-    virReportError(VIR_ERR_INTERNAL_ERROR,
-                   "%s", _("virGetUserCacheDirectory is not available"));
-
-    return NULL;
-}
-
-char *
-virGetUserRuntimeDirectory(void)
-{
-    virReportError(VIR_ERR_INTERNAL_ERROR,
-                   "%s", _("virGetUserRuntimeDirectory is not available"));
-
-    return NULL;
-}
 # endif /* ! HAVE_GETPWUID_R && ! WIN32 */
 
 char *
-virGetUserName(uid_t uid ATTRIBUTE_UNUSED)
+virGetUserName(uid_t uid G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("virGetUserName is not available"));
@@ -1280,8 +1112,8 @@ virGetUserName(uid_t uid ATTRIBUTE_UNUSED)
     return NULL;
 }
 
-int virGetUserID(const char *name ATTRIBUTE_UNUSED,
-                 uid_t *uid ATTRIBUTE_UNUSED)
+int virGetUserID(const char *name G_GNUC_UNUSED,
+                 uid_t *uid G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("virGetUserID is not available"));
@@ -1290,8 +1122,8 @@ int virGetUserID(const char *name ATTRIBUTE_UNUSED,
 }
 
 
-int virGetGroupID(const char *name ATTRIBUTE_UNUSED,
-                  gid_t *gid ATTRIBUTE_UNUSED)
+int virGetGroupID(const char *name G_GNUC_UNUSED,
+                  gid_t *gid G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("virGetGroupID is not available"));
@@ -1300,10 +1132,10 @@ int virGetGroupID(const char *name ATTRIBUTE_UNUSED,
 }
 
 int
-virSetUIDGID(uid_t uid ATTRIBUTE_UNUSED,
-             gid_t gid ATTRIBUTE_UNUSED,
-             gid_t *groups ATTRIBUTE_UNUSED,
-             int ngroups ATTRIBUTE_UNUSED)
+virSetUIDGID(uid_t uid G_GNUC_UNUSED,
+             gid_t gid G_GNUC_UNUSED,
+             gid_t *groups G_GNUC_UNUSED,
+             int ngroups G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("virSetUIDGID is not available"));
@@ -1311,7 +1143,7 @@ virSetUIDGID(uid_t uid ATTRIBUTE_UNUSED,
 }
 
 char *
-virGetGroupName(gid_t gid ATTRIBUTE_UNUSED)
+virGetGroupName(gid_t gid G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("virGetGroupName is not available"));
@@ -1331,7 +1163,7 @@ virSetUIDGIDWithCaps(uid_t uid, gid_t gid, gid_t *groups, int ngroups,
                      unsigned long long capBits, bool clearExistingCaps)
 {
     size_t i;
-    int capng_ret, ret = -1;
+    int capng_ret;
     bool need_setgid = false;
     bool need_setuid = false;
     bool need_setpcap = false;
@@ -1383,7 +1215,7 @@ virSetUIDGIDWithCaps(uid_t uid, gid_t gid, gid_t *groups, int ngroups,
     if (prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0)) {
         virReportSystemError(errno, "%s",
                              _("prctl failed to set KEEPCAPS"));
-        goto cleanup;
+        return -1;
     }
 
     /* Change to the temp capabilities */
@@ -1401,18 +1233,18 @@ virSetUIDGIDWithCaps(uid_t uid, gid_t gid, gid_t *groups, int ngroups,
         } else {
             virReportError(VIR_ERR_INTERNAL_ERROR,
                            _("cannot apply process capabilities %d"), capng_ret);
-            goto cleanup;
+            return -1;
         }
     }
 
     if (virSetUIDGID(uid, gid, groups, ngroups) < 0)
-        goto cleanup;
+        return -1;
 
     /* Tell it we are done keeping capabilities */
     if (prctl(PR_SET_KEEPCAPS, 0, 0, 0, 0)) {
         virReportSystemError(errno, "%s",
                              _("prctl failed to reset KEEPCAPS"));
-        goto cleanup;
+        return -1;
     }
 
 # ifdef PR_CAP_AMBIENT
@@ -1430,7 +1262,7 @@ virSetUIDGIDWithCaps(uid_t uid, gid_t gid, gid_t *groups, int ngroups,
                                      _("prctl failed to enable '%s' in the "
                                        "AMBIENT set"),
                                      capstr);
-                goto cleanup;
+                return -1;
             }
         }
     }
@@ -1454,13 +1286,10 @@ virSetUIDGIDWithCaps(uid_t uid, gid_t gid, gid_t *groups, int ngroups,
     if (((capng_ret = capng_apply(CAPNG_SELECT_CAPS)) < 0)) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("cannot apply process capabilities %d"), capng_ret);
-        ret = -1;
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 #else
@@ -1471,8 +1300,8 @@ virSetUIDGIDWithCaps(uid_t uid, gid_t gid, gid_t *groups, int ngroups,
 
 int
 virSetUIDGIDWithCaps(uid_t uid, gid_t gid, gid_t *groups, int ngroups,
-                     unsigned long long capBits ATTRIBUTE_UNUSED,
-                     bool clearExistingCaps ATTRIBUTE_UNUSED)
+                     unsigned long long capBits G_GNUC_UNUSED,
+                     bool clearExistingCaps G_GNUC_UNUSED)
 {
     return virSetUIDGID(uid, gid, groups, ngroups);
 }
@@ -1481,8 +1310,8 @@ virSetUIDGIDWithCaps(uid_t uid, gid_t gid, gid_t *groups, int ngroups,
 
 void virWaitForDevices(void)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
-    VIR_AUTOFREE(char *) udev = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    g_autofree char *udev = NULL;
     int exitstatus;
 
     if (!(udev = virFindFileInPath(UDEVADM)))
@@ -1512,7 +1341,7 @@ virIsDevMapperDevice(const char *dev_name)
     return false;
 }
 #else
-bool virIsDevMapperDevice(const char *dev_name ATTRIBUTE_UNUSED)
+bool virIsDevMapperDevice(const char *dev_name G_GNUC_UNUSED)
 {
     return false;
 }
@@ -1528,7 +1357,7 @@ virValidateWWN(const char *wwn)
         p += 2;
 
     for (i = 0; p[i]; i++) {
-        if (!c_isxdigit(p[i]))
+        if (!g_ascii_isxdigit(p[i]))
             break;
     }
 
@@ -1562,9 +1391,9 @@ virGetDeviceID(const char *path, int *maj, int *min)
 }
 #else
 int
-virGetDeviceID(const char *path ATTRIBUTE_UNUSED,
-               int *maj ATTRIBUTE_UNUSED,
-               int *min ATTRIBUTE_UNUSED)
+virGetDeviceID(const char *path G_GNUC_UNUSED,
+               int *maj G_GNUC_UNUSED,
+               int *min G_GNUC_UNUSED)
 {
     return -ENOSYS;
 }
@@ -1587,9 +1416,9 @@ virGetUnprivSGIOSysfsPath(const char *path,
         return NULL;
     }
 
-    ignore_value(virAsprintf(&sysfs_path, "%s/%d:%d/queue/unpriv_sgio",
-                             sysfs_dir ? sysfs_dir : SYSFS_DEV_BLOCK_PATH,
-                             maj, min));
+    sysfs_path = g_strdup_printf("%s/%d:%d/queue/unpriv_sgio",
+                                 sysfs_dir ? sysfs_dir : SYSFS_DEV_BLOCK_PATH,
+                                 maj, min);
     return sysfs_path;
 }
 
@@ -1612,8 +1441,7 @@ virSetDeviceUnprivSGIO(const char *path,
         goto cleanup;
     }
 
-    if (virAsprintf(&val, "%d", unpriv_sgio) < 0)
-        goto cleanup;
+    val = g_strdup_printf("%d", unpriv_sgio);
 
     if ((rc = virFileWriteStr(sysfs_path, val, 0)) < 0) {
         virReportSystemError(-rc, _("failed to set %s"), sysfs_path);
@@ -1687,8 +1515,7 @@ virParseOwnershipIds(const char *label, uid_t *uidPtr, gid_t *gidPtr)
     char *owner = NULL;
     char *group = NULL;
 
-    if (VIR_STRDUP(tmp_label, label) < 0)
-        goto cleanup;
+    tmp_label = g_strdup(label);
 
     /* Split label */
     sep = strchr(tmp_label, ':');
@@ -1721,46 +1548,6 @@ virParseOwnershipIds(const char *label, uid_t *uidPtr, gid_t *gidPtr)
 
     return rc;
 }
-
-
-/**
- * virGetEnvBlockSUID:
- * @name: the environment variable name
- *
- * Obtain an environment variable which is unsafe to
- * use when running setuid. If running setuid, a NULL
- * value will be returned
- */
-const char *virGetEnvBlockSUID(const char *name)
-{
-    return secure_getenv(name); /* exempt from syntax-check */
-}
-
-
-/**
- * virGetEnvAllowSUID:
- * @name: the environment variable name
- *
- * Obtain an environment variable which is safe to
- * use when running setuid. The value will be returned
- * even when running setuid
- */
-const char *virGetEnvAllowSUID(const char *name)
-{
-    return getenv(name); /* exempt from syntax-check */
-}
-
-
-/**
- * virIsSUID:
- * Return a true value if running setuid. Does not
- * check for elevated capabilities bits.
- */
-bool virIsSUID(void)
-{
-    return getuid() != geteuid();
-}
-
 
 static time_t selfLastChanged;
 
@@ -1919,8 +1706,7 @@ virHostGetDRMRenderNode(void)
         goto cleanup;
     }
 
-    if (virAsprintf(&ret, "%s/%s", driPath, ent->d_name) < 0)
-        goto cleanup;
+    ret = g_strdup_printf("%s/%s", driPath, ent->d_name);
 
  cleanup:
     VIR_DIR_CLOSE(driDir);

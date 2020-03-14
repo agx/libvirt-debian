@@ -21,7 +21,6 @@
 #pragma once
 
 #include "internal.h"
-#include "virautoclean.h"
 
 typedef struct _virFirewall virFirewall;
 typedef virFirewall *virFirewallPtr;
@@ -65,7 +64,7 @@ virFirewallRulePtr virFirewallAddRuleFull(virFirewallPtr firewall,
                                           virFirewallQueryCallback cb,
                                           void *opaque,
                                           ...)
-    ATTRIBUTE_SENTINEL;
+    G_GNUC_NULL_TERMINATED;
 
 void virFirewallRemoveRule(virFirewallPtr firewall,
                            virFirewallRulePtr rule);
@@ -78,7 +77,7 @@ void virFirewallRuleAddArg(virFirewallPtr firewall,
 void virFirewallRuleAddArgFormat(virFirewallPtr firewall,
                                  virFirewallRulePtr rule,
                                  const char *fmt, ...)
-    ATTRIBUTE_NONNULL(3) ATTRIBUTE_FMT_PRINTF(3, 4);
+    ATTRIBUTE_NONNULL(3) G_GNUC_PRINTF(3, 4);
 
 void virFirewallRuleAddArgSet(virFirewallPtr firewall,
                               virFirewallRulePtr rule,
@@ -88,7 +87,7 @@ void virFirewallRuleAddArgSet(virFirewallPtr firewall,
 void virFirewallRuleAddArgList(virFirewallPtr firewall,
                                virFirewallRulePtr rule,
                                ...)
-    ATTRIBUTE_SENTINEL;
+    G_GNUC_NULL_TERMINATED;
 
 size_t virFirewallRuleGetArgCount(virFirewallRulePtr rule);
 
@@ -114,4 +113,4 @@ int virFirewallApply(virFirewallPtr firewall);
 
 void virFirewallSetLockOverride(bool avoid);
 
-VIR_DEFINE_AUTOPTR_FUNC(virFirewall, virFirewallFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virFirewall, virFirewallFree);

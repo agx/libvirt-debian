@@ -81,8 +81,8 @@ static virNetClientProgramEvent virLXCMonitorEvents[] = {
 
 
 static void
-virLXCMonitorHandleEventExit(virNetClientProgramPtr prog ATTRIBUTE_UNUSED,
-                             virNetClientPtr client ATTRIBUTE_UNUSED,
+virLXCMonitorHandleEventExit(virNetClientProgramPtr prog G_GNUC_UNUSED,
+                             virNetClientPtr client G_GNUC_UNUSED,
                              void *evdata, void *opaque)
 {
     virLXCMonitorPtr mon = opaque;
@@ -95,8 +95,8 @@ virLXCMonitorHandleEventExit(virNetClientProgramPtr prog ATTRIBUTE_UNUSED,
 
 
 static void
-virLXCMonitorHandleEventInit(virNetClientProgramPtr prog ATTRIBUTE_UNUSED,
-                             virNetClientPtr client ATTRIBUTE_UNUSED,
+virLXCMonitorHandleEventInit(virNetClientProgramPtr prog G_GNUC_UNUSED,
+                             virNetClientPtr client G_GNUC_UNUSED,
                              void *evdata, void *opaque)
 {
     virLXCMonitorPtr mon = opaque;
@@ -108,8 +108,8 @@ virLXCMonitorHandleEventInit(virNetClientProgramPtr prog ATTRIBUTE_UNUSED,
 }
 
 
-static void virLXCMonitorEOFNotify(virNetClientPtr client ATTRIBUTE_UNUSED,
-                                   int reason ATTRIBUTE_UNUSED,
+static void virLXCMonitorEOFNotify(virNetClientPtr client G_GNUC_UNUSED,
+                                   int reason G_GNUC_UNUSED,
                                    void *opaque)
 {
     virLXCMonitorPtr mon = opaque;
@@ -151,9 +151,7 @@ virLXCMonitorPtr virLXCMonitorNew(virDomainObjPtr vm,
     if (!(mon = virObjectLockableNew(virLXCMonitorClass)))
         return NULL;
 
-    if (virAsprintf(&sockpath, "%s/%s.sock",
-                    socketdir, vm->def->name) < 0)
-        goto error;
+    sockpath = g_strdup_printf("%s/%s.sock", socketdir, vm->def->name);
 
     if (!(mon->client = virNetClientNewUNIX(sockpath, false, NULL)))
         goto error;
@@ -171,7 +169,7 @@ virLXCMonitorPtr virLXCMonitorNew(virDomainObjPtr vm,
     if (!(mon->program = virNetClientProgramNew(VIR_LXC_MONITOR_PROGRAM,
                                                 VIR_LXC_MONITOR_PROGRAM_VERSION,
                                                 virLXCMonitorEvents,
-                                                ARRAY_CARDINALITY(virLXCMonitorEvents),
+                                                G_N_ELEMENTS(virLXCMonitorEvents),
                                                 mon)))
         goto error;
 

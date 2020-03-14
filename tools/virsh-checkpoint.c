@@ -127,7 +127,7 @@ cmdCheckpointCreate(vshControl *ctl,
     if (vshCommandOptStringReq(ctl, cmd, "xmlfile", &from) < 0)
         goto cleanup;
     if (!from) {
-        buffer = vshStrdup(ctl, "<domaincheckpoint/>");
+        buffer = g_strdup("<domaincheckpoint/>");
     } else {
         if (virFileReadAll(from, VSH_MAX_XML_FILE, &buffer) < 0) {
             vshSaveLibvirtError();
@@ -266,11 +266,6 @@ cmdCheckpointCreateAs(vshControl *ctl,
     }
     virBufferAdjustIndent(&buf, -2);
     virBufferAddLit(&buf, "</domaincheckpoint>\n");
-
-    if (virBufferError(&buf)) {
-        vshError(ctl, "%s", _("Out of memory"));
-        goto cleanup;
-    }
 
     buffer = virBufferContentAndReset(&buf);
 
@@ -426,7 +421,7 @@ virshGetCheckpointParent(vshControl *ctl,
     parent = virDomainCheckpointGetParent(checkpoint, 0);
     if (parent) {
         /* API works, and virDomainCheckpointGetName will succeed */
-        *parent_name = vshStrdup(ctl, virDomainCheckpointGetName(parent));
+        *parent_name = g_strdup(virDomainCheckpointGetName(parent));
         ret = 0;
     } else if (last_error->code == VIR_ERR_NO_DOMAIN_CHECKPOINT) {
         /* API works, and we found a root with no parent */

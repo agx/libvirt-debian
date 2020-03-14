@@ -118,7 +118,7 @@ hypervInitConnection(virConnectPtr conn, hypervPrivate *priv,
 
 static virDrvOpenStatus
 hypervConnectOpen(virConnectPtr conn, virConnectAuthPtr auth,
-                  virConfPtr conf ATTRIBUTE_UNUSED,
+                  virConfPtr conf G_GNUC_UNUSED,
                   unsigned int flags)
 {
     virDrvOpenStatus result = VIR_DRV_OPEN_ERROR;
@@ -149,8 +149,7 @@ hypervConnectOpen(virConnectPtr conn, virConnectAuthPtr auth,
 
     /* Request credentials */
     if (conn->uri->user != NULL) {
-        if (VIR_STRDUP(username, conn->uri->user) < 0)
-            goto cleanup;
+        username = g_strdup(conn->uri->user);
     } else {
         if (!(username = virAuthGetUsername(conn, auth, "hyperv",
                                             "administrator",
@@ -194,7 +193,7 @@ hypervConnectClose(virConnectPtr conn)
 
 
 static const char *
-hypervConnectGetType(virConnectPtr conn ATTRIBUTE_UNUSED)
+hypervConnectGetType(virConnectPtr conn G_GNUC_UNUSED)
 {
     return "Hyper-V";
 }
@@ -221,7 +220,7 @@ hypervConnectGetHostname(virConnectPtr conn)
         goto cleanup;
     }
 
-    ignore_value(VIR_STRDUP(hostname, computerSystem->data.common->DNSHostName));
+    hostname = g_strdup(computerSystem->data.common->DNSHostName);
 
  cleanup:
     hypervFreeObject(priv, (hypervObject *)computerSystem);
@@ -598,11 +597,11 @@ hypervDomainDestroy(virDomainPtr domain)
 
 
 static char *
-hypervDomainGetOSType(virDomainPtr domain ATTRIBUTE_UNUSED)
+hypervDomainGetOSType(virDomainPtr domain G_GNUC_UNUSED)
 {
     char *osType;
 
-    ignore_value(VIR_STRDUP(osType, "hvm"));
+    osType = g_strdup("hvm");
     return osType;
 }
 
@@ -846,13 +845,10 @@ hypervDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
         return NULL;
     }
 
-    if (VIR_STRDUP(def->name, computerSystem->data.common->ElementName) < 0)
-        goto cleanup;
+    def->name = g_strdup(computerSystem->data.common->ElementName);
 
     if (priv->wmiVersion == HYPERV_WMI_VERSION_V1) {
-        if (VIR_STRDUP(def->description,
-                       virtualSystemSettingData->data.v1->Notes) < 0)
-            goto cleanup;
+        def->description = g_strdup(virtualSystemSettingData->data.v1->Notes);
     } else if (priv->wmiVersion == HYPERV_WMI_VERSION_V2 &&
                virtualSystemSettingData->data.v2->Notes.data != NULL) {
         char **notes = (char **)virtualSystemSettingData->data.v2->Notes.data;
@@ -868,9 +864,6 @@ hypervDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
             virBufferAdd(&buf, *notes, -1);
             notes++;
         }
-
-        if (virBufferCheckError(&buf))
-            goto cleanup;
 
         def->description = virBufferContentAndReset(&buf);
     }
@@ -893,6 +886,7 @@ hypervDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
 
     /* FIXME: devices section is totally missing */
 
+    /* XXX xmlopts must be non-NULL */
     xml = virDomainDefFormat(def, NULL,
                              virDomainDefFormatConvertXMLFlags(flags));
 
@@ -935,8 +929,7 @@ hypervConnectListDefinedDomains(virConnectPtr conn, char **const names, int maxn
 
     for (computerSystem = computerSystemList; computerSystem != NULL;
          computerSystem = computerSystem->next) {
-        if (VIR_STRDUP(names[count], computerSystem->data.common->ElementName) < 0)
-            goto cleanup;
+        names[count] = g_strdup(computerSystem->data.common->ElementName);
 
         ++count;
 
@@ -1100,7 +1093,7 @@ hypervDomainIsActive(virDomainPtr domain)
 
 
 static int
-hypervDomainIsPersistent(virDomainPtr domain ATTRIBUTE_UNUSED)
+hypervDomainIsPersistent(virDomainPtr domain G_GNUC_UNUSED)
 {
     /* Hyper-V has no concept of transient domains, so all of them are persistent */
     return 1;
@@ -1109,7 +1102,7 @@ hypervDomainIsPersistent(virDomainPtr domain ATTRIBUTE_UNUSED)
 
 
 static int
-hypervDomainIsUpdated(virDomainPtr domain ATTRIBUTE_UNUSED)
+hypervDomainIsUpdated(virDomainPtr domain G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -1383,15 +1376,13 @@ hypervDomainSendKey(virDomainPtr domain, unsigned int codeset,
         }
     }
 
-    if (virAsprintf(&selector,
-                "CreationClassName=Msvm_Keyboard&DeviceID=%s&"
-                "SystemCreationClassName=Msvm_ComputerSystem&"
-                "SystemName=%s", keyboard->data.common->DeviceID, uuid_string) < 0)
-        goto cleanup;
+    selector = g_strdup_printf("CreationClassName=Msvm_Keyboard&DeviceID=%s&"
+                               "SystemCreationClassName=Msvm_ComputerSystem&"
+                               "SystemName=%s", keyboard->data.common->DeviceID, uuid_string);
 
     /* press the keys */
     for (i = 0; i < nkeycodes; i++) {
-        snprintf(keycodeStr, sizeof(keycodeStr), "%d", translatedKeycodes[i]);
+        g_snprintf(keycodeStr, sizeof(keycodeStr), "%d", translatedKeycodes[i]);
 
         params = hypervCreateInvokeParamsList(priv, "PressKey", selector,
                 Msvm_Keyboard_WmiInfo);
@@ -1415,11 +1406,11 @@ hypervDomainSendKey(virDomainPtr domain, unsigned int codeset,
 
     /* simulate holdtime by sleeping */
     if (holdtime > 0)
-        usleep(holdtime * 1000);
+        g_usleep(holdtime * 1000);
 
     /* release the keys */
     for (i = 0; i < nkeycodes; i++) {
-        snprintf(keycodeStr, sizeof(keycodeStr), "%d", translatedKeycodes[i]);
+        g_snprintf(keycodeStr, sizeof(keycodeStr), "%d", translatedKeycodes[i]);
         params = hypervCreateInvokeParamsList(priv, "ReleaseKey", selector,
                 Msvm_Keyboard_WmiInfo);
 
@@ -1469,8 +1460,7 @@ hypervDomainSetMemoryFlags(virDomainPtr domain, unsigned long memory,
 
     virCheckFlags(0, -1);
 
-    if (virAsprintf(&memory_str, "%lu", memory_mb) < 0)
-        goto cleanup;
+    memory_str = g_strdup_printf("%lu", memory_mb);
 
     virUUIDFormat(domain->uuid, uuid_string);
 
@@ -1607,7 +1597,7 @@ static virHypervisorDriver hypervHypervisorDriver = {
 
 static void
 hypervDebugHandler(const char *message, debug_level_e level,
-                   void *user_data ATTRIBUTE_UNUSED)
+                   void *user_data G_GNUC_UNUSED)
 {
     switch (level) {
       case DEBUG_LEVEL_ERROR:

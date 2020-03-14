@@ -52,10 +52,8 @@ virSCSIHostGetUniqueId(const char *sysfs_prefix,
     char *buf = NULL;
     int unique_id;
 
-    if (virAsprintf(&sysfs_path, "%s/host%d/unique_id",
-                    sysfs_prefix ? sysfs_prefix : SYSFS_SCSI_HOST_PATH,
-                    host) < 0)
-        return -1;
+    sysfs_path = g_strdup_printf("%s/host%d/unique_id",
+                                 sysfs_prefix ? sysfs_prefix : SYSFS_SCSI_HOST_PATH, host);
 
     if (virFileReadAll(sysfs_path, 1024, &buf) < 0)
         goto cleanup;
@@ -118,8 +116,7 @@ virSCSIHostFindByPCI(const char *sysfs_prefix,
         if (!virFileIsLink(entry->d_name))
             continue;
 
-        if (virAsprintf(&host_link, "%s/%s", prefix, entry->d_name) < 0)
-            goto cleanup;
+        host_link = g_strdup_printf("%s/%s", prefix, entry->d_name);
 
         if (virFileResolveLink(host_link, &host_path) < 0)
             goto cleanup;
@@ -132,9 +129,7 @@ virSCSIHostFindByPCI(const char *sysfs_prefix,
         VIR_FREE(host_link);
         VIR_FREE(host_path);
 
-        if (virAsprintf(&unique_path, "%s/%s/unique_id", prefix,
-                        entry->d_name) < 0)
-            goto cleanup;
+        unique_path = g_strdup_printf("%s/%s/unique_id", prefix, entry->d_name);
 
         if (!virFileExists(unique_path)) {
             VIR_FREE(unique_path);
@@ -157,7 +152,7 @@ virSCSIHostFindByPCI(const char *sysfs_prefix,
             continue;
         }
 
-        ignore_value(VIR_STRDUP(ret, entry->d_name));
+        ret = g_strdup(entry->d_name);
         break;
     }
 
@@ -240,9 +235,8 @@ virSCSIHostGetNameByParentaddr(unsigned int domain,
     char *name = NULL;
     char *parentaddr = NULL;
 
-    if (virAsprintf(&parentaddr, "%04x:%02x:%02x.%01x",
-                    domain, bus, slot, function) < 0)
-        goto cleanup;
+    parentaddr = g_strdup_printf("%04x:%02x:%02x.%01x", domain, bus, slot,
+                                 function);
     if (!(name = virSCSIHostFindByPCI(NULL, parentaddr, unique_id))) {
         virReportError(VIR_ERR_XML_ERROR,
                        _("Failed to find scsi_host using PCI '%s' "
@@ -259,36 +253,36 @@ virSCSIHostGetNameByParentaddr(unsigned int domain,
 #else
 
 int
-virSCSIHostGetUniqueId(const char *sysfs_prefix ATTRIBUTE_UNUSED,
-                       int host ATTRIBUTE_UNUSED)
+virSCSIHostGetUniqueId(const char *sysfs_prefix G_GNUC_UNUSED,
+                       int host G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return -1;
 }
 
 char *
-virSCSIHostFindByPCI(const char *sysfs_prefix ATTRIBUTE_UNUSED,
-                     const char *parentaddr ATTRIBUTE_UNUSED,
-                     unsigned int unique_id ATTRIBUTE_UNUSED)
+virSCSIHostFindByPCI(const char *sysfs_prefix G_GNUC_UNUSED,
+                     const char *parentaddr G_GNUC_UNUSED,
+                     unsigned int unique_id G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return NULL;
 }
 
 int
-virSCSIHostGetNumber(const char *adapter_name ATTRIBUTE_UNUSED,
-                     unsigned int *result ATTRIBUTE_UNUSED)
+virSCSIHostGetNumber(const char *adapter_name G_GNUC_UNUSED,
+                     unsigned int *result G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return -1;
 }
 
 char *
-virSCSIHostGetNameByParentaddr(unsigned int domain ATTRIBUTE_UNUSED,
-                               unsigned int bus ATTRIBUTE_UNUSED,
-                               unsigned int slot ATTRIBUTE_UNUSED,
-                               unsigned int function ATTRIBUTE_UNUSED,
-                               unsigned int unique_id ATTRIBUTE_UNUSED)
+virSCSIHostGetNameByParentaddr(unsigned int domain G_GNUC_UNUSED,
+                               unsigned int bus G_GNUC_UNUSED,
+                               unsigned int slot G_GNUC_UNUSED,
+                               unsigned int function G_GNUC_UNUSED,
+                               unsigned int unique_id G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return NULL;

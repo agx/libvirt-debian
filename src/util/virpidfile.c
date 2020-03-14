@@ -34,8 +34,6 @@
 #include "intprops.h"
 #include "virlog.h"
 #include "virerror.h"
-#include "c-ctype.h"
-#include "areadlink.h"
 #include "virstring.h"
 #include "virprocess.h"
 
@@ -50,14 +48,7 @@ char *virPidFileBuildPath(const char *dir, const char* name)
     virBufferAsprintf(&buf, "%s", dir);
     virBufferEscapeString(&buf, "/%s.pid", name);
 
-    if (virBufferCheckError(&buf) < 0)
-        goto error;
-
     return virBufferContentAndReset(&buf);
-
- error:
-    virBufferFreeAndReset(&buf);
-    return NULL;
 }
 
 
@@ -75,7 +66,7 @@ int virPidFileWritePath(const char *pidfile,
         goto cleanup;
     }
 
-    snprintf(pidstr, sizeof(pidstr), "%lld", (long long) pid);
+    g_snprintf(pidstr, sizeof(pidstr), "%lld", (long long) pid);
 
     if (safewrite(fd, pidstr, strlen(pidstr)) < 0) {
         rc = -errno;
@@ -97,7 +88,7 @@ int virPidFileWrite(const char *dir,
                     const char *name,
                     pid_t pid)
 {
-    VIR_AUTOFREE(char *) pidfile = NULL;
+    g_autofree char *pidfile = NULL;
 
     if (name == NULL || dir == NULL)
         return -EINVAL;
@@ -138,7 +129,7 @@ int virPidFileReadPath(const char *path,
     pidstr[bytes] = '\0';
 
     if (virStrToLong_ll(pidstr, &endptr, 10, &pid_value) < 0 ||
-        !(*endptr == '\0' || c_isspace(*endptr)) ||
+        !(*endptr == '\0' || g_ascii_isspace(*endptr)) ||
         (pid_t) pid_value != pid_value) {
         rc = -1;
         goto cleanup;
@@ -159,7 +150,7 @@ int virPidFileRead(const char *dir,
                    const char *name,
                    pid_t *pid)
 {
-    VIR_AUTOFREE(char *) pidfile = NULL;
+    g_autofree char *pidfile = NULL;
 
     *pid = 0;
 
@@ -189,7 +180,7 @@ int virPidFileRead(const char *dir,
  * If @binpath is NULL the check for the executable path
  * is skipped.
  *
- * Returns -errno upon error, or zero on successful
+ * Returns -1 upon error, or zero on successful
  * reading of the pidfile. If the PID was not still
  * alive, zero will be returned, but @pid will be
  * set to -1.
@@ -198,30 +189,29 @@ int virPidFileReadPathIfAlive(const char *path,
                               pid_t *pid,
                               const char *binPath)
 {
-    int ret;
-    bool isLink;
+    int rc;
+    bool isLink = false;
     size_t procLinkLen;
     const char deletedText[] = " (deleted)";
     size_t deletedTextLen = strlen(deletedText);
     pid_t retPid;
-    VIR_AUTOFREE(char *) procPath = NULL;
-    VIR_AUTOFREE(char *) procLink = NULL;
-    VIR_AUTOFREE(char *) resolvedBinPath = NULL;
-    VIR_AUTOFREE(char *) resolvedProcLink = NULL;
+    g_autofree char *procPath = NULL;
+    g_autofree char *procLink = NULL;
+    g_autofree char *resolvedBinPath = NULL;
+    g_autofree char *resolvedProcLink = NULL;
 
     /* only set this at the very end on success */
     *pid = -1;
 
-    if ((ret = virPidFileReadPath(path, &retPid)) < 0)
-        return ret;
+    if (virPidFileReadPath(path, &retPid) < 0)
+        return -1;
 
 #ifndef WIN32
     /* Check that it's still alive.  Safe to skip this sanity check on
      * mingw, which lacks kill().  */
     if (kill(retPid, 0) < 0) {
-        ret = 0;
-        retPid = -1;
-        goto cleanup;
+        *pid = -1;
+        return 0;
     }
 #endif
 
@@ -229,24 +219,24 @@ int virPidFileReadPathIfAlive(const char *path,
         /* we only knew the pid, and that pid is alive, so we can
          * return it.
          */
-        ret = 0;
-        goto cleanup;
+        *pid = retPid;
+        return 0;
     }
 
-    if (virAsprintf(&procPath, "/proc/%lld/exe", (long long)retPid) < 0)
-        return -ENOMEM;
+    procPath = g_strdup_printf("/proc/%lld/exe", (long long)retPid);
 
-    if ((ret = virFileIsLink(procPath)) < 0)
-        return ret;
+    if ((rc = virFileIsLink(procPath)) < 0)
+        return -1;
 
-    isLink = ret;
+    if (rc == 1)
+        isLink = true;
 
     if (isLink && virFileLinkPointsTo(procPath, binPath)) {
         /* the link in /proc/$pid/exe is a symlink to a file
          * that has the same inode as the file at binpath.
          */
-        ret = 0;
-        goto cleanup;
+        *pid = retPid;
+        return 0;
     }
 
     /* Even if virFileLinkPointsTo returns a mismatch, it could be
@@ -255,25 +245,23 @@ int virPidFileReadPathIfAlive(const char *path,
      * "$procpath (deleted)".  Read that link, remove the " (deleted)"
      * part, and see if it has the same canonicalized name as binpath.
      */
-    if (!(procLink = areadlink(procPath)))
-        return -errno;
+    if (!(procLink = g_file_read_link(procPath, NULL)))
+        return -1;
 
     procLinkLen = strlen(procLink);
     if (procLinkLen > deletedTextLen)
         procLink[procLinkLen - deletedTextLen] = 0;
 
-    if ((ret = virFileResolveAllLinks(binPath, &resolvedBinPath)) < 0)
-        return ret;
-    if ((ret = virFileResolveAllLinks(procLink, &resolvedProcLink)) < 0)
-        return ret;
+    if (virFileResolveAllLinks(binPath, &resolvedBinPath) < 0)
+        return -1;
+    if (virFileResolveAllLinks(procLink, &resolvedProcLink) < 0)
+        return -1;
 
-    ret = STREQ(resolvedBinPath, resolvedProcLink) ? 0 : -1;
+    if (STRNEQ(resolvedBinPath, resolvedProcLink))
+        return -1;
 
- cleanup:
-    /* return the originally set pid of -1 unless we proclaim success */
-    if (ret == 0)
-        *pid = retPid;
-    return ret;
+    *pid = retPid;
+    return 0;
 }
 
 
@@ -290,7 +278,7 @@ int virPidFileReadPathIfAlive(const char *path,
  * and its executable path resolves to @binpath. This adds
  * protection against recycling of previously reaped pids.
  *
- * Returns -errno upon error, or zero on successful
+ * Returns -1 upon error, or zero on successful
  * reading of the pidfile. If the PID was not still
  * alive, zero will be returned, but @pid will be
  * set to -1.
@@ -300,15 +288,18 @@ int virPidFileReadIfAlive(const char *dir,
                           pid_t *pid,
                           const char *binpath)
 {
-    VIR_AUTOFREE(char *) pidfile = NULL;
+    g_autofree char *pidfile = NULL;
 
     if (name == NULL || dir == NULL)
-        return -EINVAL;
+        return -1;
 
     if (!(pidfile = virPidFileBuildPath(dir, name)))
-        return -ENOMEM;
+        return -1;
 
-    return virPidFileReadPathIfAlive(pidfile, pid, binpath);
+    if (virPidFileReadPathIfAlive(pidfile, pid, binpath) < 0)
+        return -1;
+
+    return 0;
 }
 
 
@@ -326,7 +317,7 @@ int virPidFileDeletePath(const char *pidfile)
 int virPidFileDelete(const char *dir,
                      const char *name)
 {
-    VIR_AUTOFREE(char *) pidfile = NULL;
+    g_autofree char *pidfile = NULL;
 
     if (name == NULL || dir == NULL)
         return -EINVAL;
@@ -384,7 +375,7 @@ int virPidFileAcquirePath(const char *path,
          * one that now exists on the filesystem
          */
         if (stat(path, &a) < 0) {
-            char ebuf[1024] ATTRIBUTE_UNUSED;
+            char ebuf[1024] G_GNUC_UNUSED;
             VIR_DEBUG("Pid file '%s' disappeared: %s",
                       path, virStrerror(errno, ebuf, sizeof(ebuf)));
             VIR_FORCE_CLOSE(fd);
@@ -400,7 +391,7 @@ int virPidFileAcquirePath(const char *path,
         /* Someone else must be racing with us, so try again */
     }
 
-    snprintf(pidstr, sizeof(pidstr), "%lld", (long long) pid);
+    g_snprintf(pidstr, sizeof(pidstr), "%lld", (long long) pid);
 
     if (ftruncate(fd, 0) < 0) {
         virReportSystemError(errno,
@@ -426,7 +417,7 @@ int virPidFileAcquire(const char *dir,
                       bool waitForLock,
                       pid_t pid)
 {
-    VIR_AUTOFREE(char *) pidfile = NULL;
+    g_autofree char *pidfile = NULL;
 
     if (name == NULL || dir == NULL)
         return -EINVAL;
@@ -465,7 +456,7 @@ int virPidFileRelease(const char *dir,
                       const char *name,
                       int fd)
 {
-    VIR_AUTOFREE(char *) pidfile = NULL;
+    g_autofree char *pidfile = NULL;
 
     if (name == NULL || dir == NULL)
         return -EINVAL;
@@ -479,27 +470,25 @@ int virPidFileRelease(const char *dir,
 
 int
 virPidFileConstructPath(bool privileged,
-                        const char *statedir,
+                        const char *runstatedir,
                         const char *progname,
                         char **pidfile)
 {
-    VIR_AUTOFREE(char *) rundir = NULL;
+    g_autofree char *rundir = NULL;
 
     if (privileged) {
         /*
          * This is here just to allow calling this function with
          * statedir == NULL; of course only when !privileged.
          */
-        if (!statedir) {
+        if (!runstatedir) {
             virReportError(VIR_ERR_INTERNAL_ERROR,
-                           "%s", _("No statedir specified"));
+                           "%s", _("No runstatedir specified"));
             return -1;
         }
-        if (virAsprintf(pidfile, "%s/run/%s.pid", statedir, progname) < 0)
-            return -1;
+        *pidfile = g_strdup_printf("%s/%s.pid", runstatedir, progname);
     } else {
-        if (!(rundir = virGetUserRuntimeDirectory()))
-            return -1;
+        rundir = virGetUserRuntimeDirectory();
 
         if (virFileMakePathWithMode(rundir, 0700) < 0) {
             virReportSystemError(errno,
@@ -508,8 +497,7 @@ virPidFileConstructPath(bool privileged,
             return -1;
         }
 
-        if (virAsprintf(pidfile, "%s/%s.pid", rundir, progname) < 0)
-            return -1;
+        *pidfile = g_strdup_printf("%s/%s.pid", rundir, progname);
     }
 
     return 0;

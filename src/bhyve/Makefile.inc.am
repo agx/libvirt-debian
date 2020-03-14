@@ -22,8 +22,8 @@ BHYVE_DRIVER_SOURCES = \
 	bhyve/bhyve_utils.h \
 	$(NULL)
 
-DRIVER_SOURCE_FILES += $(BHYVE_DRIVER_SOURCES)
-STATEFUL_DRIVER_SOURCE_FILES += $(BHYVE_DRIVER_SOURCES)
+DRIVER_SOURCE_FILES += $(addprefix $(srcdir)/,$(BHYVE_DRIVER_SOURCES))
+STATEFUL_DRIVER_SOURCE_FILES += $(addprefix $(srcdir)/,$(BHYVE_DRIVER_SOURCES))
 
 EXTRA_DIST += $(BHYVE_DRIVER_SOURCES)
 
@@ -34,6 +34,7 @@ libvirt_driver_bhyve_la_SOURCES =
 libvirt_driver_bhyve_la_LIBADD = \
 	libvirt_driver_bhyve_impl.la \
 	libvirt.la \
+	$(GLIB_LIBS) \
 	../gnulib/lib/libgnu.la \
 	$(NULL)
 mod_LTLIBRARIES += libvirt_driver_bhyve.la
@@ -41,26 +42,60 @@ libvirt_driver_bhyve_la_LDFLAGS = $(AM_LDFLAGS_MOD_NOUNDEF)
 
 libvirt_driver_bhyve_impl_la_CFLAGS = \
 	-I$(srcdir)/access \
+	-I$(builddir)/access \
 	-I$(srcdir)/conf \
 	$(AM_CFLAGS) \
 	$(NULL)
 libvirt_driver_bhyve_impl_la_LDFLAGS = $(AM_LDFLAGS)
 libvirt_driver_bhyve_impl_la_SOURCES = $(BHYVE_DRIVER_SOURCES)
 
+sbin_PROGRAMS += virtbhyved
+
+nodist_conf_DATA += bhyve/virtbhyved.conf
+augeas_DATA += bhyve/virtbhyved.aug
+augeastest_DATA += bhyve/test_virtbhyved.aug
+CLEANFILES += bhyve/virtbhyved.aug
+
+virtbhyved_SOURCES = $(REMOTE_DAEMON_SOURCES)
+nodist_virtbhyved_SOURCES = $(REMOTE_DAEMON_GENERATED)
+virtbhyved_CFLAGS = \
+       $(REMOTE_DAEMON_CFLAGS) \
+       -DDAEMON_NAME="\"virtbhyved\"" \
+       -DMODULE_NAME="\"bhyve\"" \
+       $(NULL)
+virtbhyved_LDFLAGS = $(REMOTE_DAEMON_LD_FLAGS)
+virtbhyved_LDADD = $(REMOTE_DAEMON_LD_ADD)
+
+bhyve/virtbhyved.conf: remote/libvirtd.conf.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtbhyved/' \
+		$< > $@
+
+bhyve/virtbhyved.aug: remote/libvirtd.aug.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtbhyved/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtbhyved/' \
+		$< > $@
+
+bhyve/test_virtbhyved.aug: remote/test_libvirtd.aug.in \
+		bhyve/virtbhyved.conf $(AUG_GENTEST_SCRIPT)
+	$(AM_V_GEN)$(AUG_GENTEST) bhyve/virtbhyved.conf \
+		$(srcdir)/remote/test_libvirtd.aug.in | \
+		$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtbhyved/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtbhyved/' \
+		> $@ || rm -f $@
+
 conf_DATA += bhyve/bhyve.conf
 augeas_DATA += bhyve/libvirtd_bhyve.aug
-augeastest_DATA += test_libvirtd_bhyve.aug
+augeastest_DATA += bhyve/test_libvirtd_bhyve.aug
 
-AUGEAS_DIRS += bhyve
-
-test_libvirtd_bhyve.aug: bhyve/test_libvirtd_bhyve.aug.in \
-		$(srcdir)/bhyve/bhyve.conf $(AUG_GENTEST)
-	$(AM_V_GEN)$(AUG_GENTEST) $(srcdir)/bhyve/bhyve.conf $< $@
-
-check-augeas-bhyve: test_libvirtd_bhyve.aug
-	$(AM_V_GEN)if test -x '$(AUGPARSE)'; then \
-	    '$(AUGPARSE)' -I $(srcdir)/bhyve test_libvirtd_bhyve.aug; \
-	fi
+bhyve/test_libvirtd_bhyve.aug: bhyve/test_libvirtd_bhyve.aug.in \
+		$(srcdir)/bhyve/bhyve.conf $(AUG_GENTEST_SCRIPT)
+	$(AM_V_GEN)$(AUG_GENTEST) $(srcdir)/bhyve/bhyve.conf $< > $@
 
 endif WITH_BHYVE
 
@@ -68,8 +103,4 @@ EXTRA_DIST += \
 	bhyve/bhyve.conf \
 	bhyve/libvirtd_bhyve.aug \
 	bhyve/test_libvirtd_bhyve.aug.in \
-	$(NULL)
-
-.PHONY: \
-	check-augeas-bhyve \
 	$(NULL)

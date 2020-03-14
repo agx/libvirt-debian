@@ -41,7 +41,7 @@
 
 # define VIR_FROM_THIS VIR_FROM_LIBXL
 
-static virCapsPtr caps;
+static libxlDriverPrivatePtr driver;
 
 static int
 testCompareXMLToDomConfig(const char *xmlfile,
@@ -50,19 +50,13 @@ testCompareXMLToDomConfig(const char *xmlfile,
     int ret = -1;
     libxl_domain_config actualconfig;
     libxl_domain_config expectconfig;
-    libxlDriverConfigPtr cfg;
     xentoollog_logger *log = NULL;
     virPortAllocatorRangePtr gports = NULL;
-    virDomainXMLOptionPtr xmlopt = NULL;
     virDomainDefPtr vmdef = NULL;
     char *actualjson = NULL;
     char *tempjson = NULL;
     char *expectjson = NULL;
-
-    if (!(cfg = libxlDriverConfigNew()))
-        return -1;
-
-    cfg->caps = caps;
+    g_autoptr(libxlDriverConfig) cfg = libxlDriverConfigGet(driver);
 
     libxl_domain_config_init(&actualconfig);
     libxl_domain_config_init(&expectconfig);
@@ -82,10 +76,7 @@ testCompareXMLToDomConfig(const char *xmlfile,
     if (!(gports = virPortAllocatorRangeNew("vnc", 5900, 6000)))
         goto cleanup;
 
-    if (!(xmlopt = libxlCreateXMLConf()))
-        goto cleanup;
-
-    if (!(vmdef = virDomainDefParseFile(xmlfile, caps, xmlopt,
+    if (!(vmdef = virDomainDefParseFile(xmlfile, driver->xmlopt,
                                         NULL, VIR_DOMAIN_XML_INACTIVE)))
         goto cleanup;
 
@@ -128,12 +119,9 @@ testCompareXMLToDomConfig(const char *xmlfile,
     VIR_FREE(tempjson);
     virDomainDefFree(vmdef);
     virPortAllocatorRangeFree(gports);
-    virObjectUnref(xmlopt);
     libxl_domain_config_dispose(&actualconfig);
     libxl_domain_config_dispose(&expectconfig);
     xtl_logger_destroy(log);
-    cfg->caps = NULL;
-    virObjectUnref(cfg);
     return ret;
 }
 
@@ -151,15 +139,11 @@ testCompareXMLToDomConfigHelper(const void *data)
     char *xmlfile = NULL;
     char *jsonfile = NULL;
 
-    if (virAsprintf(&xmlfile, "%s/libxlxml2domconfigdata/%s.xml",
-                    abs_srcdir, info->name) < 0 ||
-        virAsprintf(&jsonfile, "%s/libxlxml2domconfigdata/%s.json",
-                    abs_srcdir, info->name) < 0)
-        goto cleanup;
+    xmlfile = g_strdup_printf("%s/libxlxml2domconfigdata/%s.xml", abs_srcdir, info->name);
+    jsonfile = g_strdup_printf("%s/libxlxml2domconfigdata/%s.json", abs_srcdir, info->name);
 
     ret = testCompareXMLToDomConfig(xmlfile, jsonfile);
 
- cleanup:
     VIR_FREE(xmlfile);
     VIR_FREE(jsonfile);
     return ret;
@@ -176,12 +160,12 @@ mymain(void)
      * results. In order to detect things that just work by a blind
      * chance, we need to set an virtual timezone that no libvirt
      * developer resides in. */
-    if (setenv("TZ", "VIR00:30", 1) < 0) {
-        perror("setenv");
+    if (g_setenv("TZ", "VIR00:30", TRUE) == FALSE) {
+        perror("g_setenv");
         return EXIT_FAILURE;
     }
 
-    if ((caps = testXLInitCaps()) == NULL)
+    if ((driver = testXLInitDriver()) == NULL)
         return EXIT_FAILURE;
 
 # define DO_TEST(name) \
@@ -212,16 +196,20 @@ mymain(void)
     DO_TEST("fullvirt-cpuid-legacy-nest");
 # endif
 
+    DO_TEST("fullvirt-acpi-slic");
+
 # ifdef LIBXL_HAVE_BUILDINFO_GRANT_LIMITS
     DO_TEST("max-gntframes-hvm");
 # endif
 
     unlink("libxl-driver.log");
 
+    testXLFreeDriver(driver);
+
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/libxlmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("xl"))
 
 #else
 

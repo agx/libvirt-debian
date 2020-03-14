@@ -140,7 +140,7 @@ struct printString
 
 
 static int
-printString(void *payload ATTRIBUTE_UNUSED, const void *name, void *data)
+printString(void *payload G_GNUC_UNUSED, const void *name, void *data)
 {
     struct printString *ps = data;
 
@@ -180,8 +180,6 @@ virNWFilterPrintVars(virHashTablePtr vars,
 
     virHashForEach(vars, printString, &ps);
 
-    if (virBufferCheckError(&ps.buf) < 0)
-        return NULL;
     return virBufferContentAndReset(&ps.buf);
 }
 
@@ -431,10 +429,6 @@ virNWFilterDetermineMissingVarsRec(virNWFilterDefPtr filter,
                     virBuffer buf = VIR_BUFFER_INITIALIZER;
 
                     virNWFilterVarAccessPrint(rule->varAccess[j], &buf);
-                    if (virBufferError(&buf)) {
-                        virReportOOMError();
-                        return -1;
-                    }
 
                     val = virNWFilterVarValueCreateSimpleCopyValue("1");
                     if (!val) {

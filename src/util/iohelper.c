@@ -42,7 +42,7 @@
 static int
 runIO(const char *path, int fd, int oflags)
 {
-    VIR_AUTOFREE(void *) base = NULL; /* Location to be freed */
+    g_autofree void *base = NULL; /* Location to be freed */
     char *buf = NULL; /* Aligned location within base */
     size_t buflen = 1024*1024;
     intptr_t alignMask = 64*1024 - 1;
@@ -154,7 +154,7 @@ runIO(const char *path, int fd, int oflags)
     }
 
     /* Ensure all data is written */
-    if (fdatasync(fdout) < 0) {
+    if (virFileDataSync(fdout) < 0) {
         if (errno != EINVAL && errno != EROFS) {
             /* fdatasync() may fail on some special FDs, e.g. pipes */
             virReportSystemError(errno, _("unable to fsync %s"), fdoutname);
@@ -175,7 +175,7 @@ runIO(const char *path, int fd, int oflags)
 
 static const char *program_name;
 
-ATTRIBUTE_NORETURN static void
+G_GNUC_NORETURN static void
 usage(int status)
 {
     if (status) {
@@ -196,7 +196,6 @@ main(int argc, char **argv)
     program_name = argv[0];
 
     if (virGettextInitialize() < 0 ||
-        virThreadInitialize() < 0 ||
         virErrorInitialize() < 0) {
         fprintf(stderr, _("%s: initialization failed"), program_name);
         exit(EXIT_FAILURE);

@@ -13,7 +13,7 @@
   <on_reboot>restart</on_reboot>
   <on_crash>destroy</on_crash>
   <devices>
-    <emulator>/usr/bin/qemu-system-i686</emulator>
+    <emulator>/usr/bin/qemu-system-i386</emulator>
     <disk type='network' device='disk'>
       <driver name='qemu' type='raw'/>
       <source protocol='iscsi' name='iqn.1992-01.com.example'>
@@ -64,6 +64,19 @@
         </initiator>
       </source>
       <target dev='sdb' bus='scsi'/>
+    </disk>
+    <disk type='network' device='lun'>
+      <driver name='qemu' type='raw'/>
+      <source protocol='iscsi' name='iqn.1992-01.com.example:server/0'>
+        <host name='example.org' port='3260'/>
+        <initiator>
+          <iqn name='iqn.1992-01.com.example:client'/>
+        </initiator>
+        <auth username='myname'>
+          <secret type='iscsi' usage='mycluster_myname'/>
+        </auth>
+      </source>
+      <target dev='sdc' bus='scsi'/>
     </disk>
     <controller type='usb' index='0'/>
     <controller type='pci' index='0' model='pci-root'/>

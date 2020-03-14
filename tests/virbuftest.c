@@ -9,50 +9,7 @@
 
 #define VIR_FROM_THIS VIR_FROM_NONE
 
-struct testInfo {
-    int doEscape;
-};
-
-static int testBufInfiniteLoop(const void *data)
-{
-    virBuffer bufinit = VIR_BUFFER_INITIALIZER;
-    virBufferPtr buf = &bufinit;
-    char *addstr = NULL, *bufret = NULL;
-    int ret = -1;
-    const struct testInfo *info = data;
-    int len;
-
-    virBufferAddChar(buf, 'a');
-
-    /*
-     * Infinite loop used to trigger if:
-     * (strlen + 1 > 1000) && (strlen == buf-size - buf-use - 1)
-     * which was the case after the above addchar at the time of the bug.
-     * This test is a bit fragile, since it relies on virBuffer internals.
-     */
-    len = buf->size - buf->use - 1;
-    if (virAsprintf(&addstr, "%*s", len, "a") < 0)
-        goto out;
-
-    if (info->doEscape)
-        virBufferEscapeString(buf, "%s", addstr);
-    else
-        virBufferAsprintf(buf, "%s", addstr);
-
-    ret = 0;
- out:
-    bufret = virBufferContentAndReset(buf);
-    if (!bufret) {
-        VIR_TEST_DEBUG("Buffer had error set");
-        ret = -1;
-    }
-
-    VIR_FREE(addstr);
-    VIR_FREE(bufret);
-    return ret;
-}
-
-static int testBufAutoIndent(const void *data ATTRIBUTE_UNUSED)
+static int testBufAutoIndent(const void *data G_GNUC_UNUSED)
 {
     virBuffer bufinit = VIR_BUFFER_INITIALIZER;
     virBufferPtr buf = &bufinit;
@@ -61,8 +18,8 @@ static int testBufAutoIndent(const void *data ATTRIBUTE_UNUSED)
     char *result = NULL;
     int ret = 0;
 
-    if (virBufferGetIndent(buf, false) != 0 ||
-        virBufferGetIndent(buf, true) != 0) {
+    if (virBufferGetIndent(buf) != 0 ||
+        virBufferGetEffectiveIndent(buf) != 0) {
         VIR_TEST_DEBUG("Wrong indentation");
         ret = -1;
     }
@@ -71,45 +28,38 @@ static int testBufAutoIndent(const void *data ATTRIBUTE_UNUSED)
         VIR_TEST_DEBUG("Wrong content");
         ret = -1;
     }
-    if (virBufferGetIndent(buf, false) != 3 ||
-        virBufferGetIndent(buf, true) != 3 ||
-        virBufferError(buf)) {
+    if (virBufferGetIndent(buf) != 3 ||
+        virBufferGetEffectiveIndent(buf) != 3) {
         VIR_TEST_DEBUG("Wrong indentation");
         ret = -1;
     }
     virBufferAdjustIndent(buf, -2);
-    if (virBufferGetIndent(buf, false) != 1 ||
-        virBufferGetIndent(buf, true) != 1 ||
-        virBufferError(buf)) {
+    if (virBufferGetIndent(buf) != 1 ||
+        virBufferGetEffectiveIndent(buf) != 1) {
         VIR_TEST_DEBUG("Wrong indentation");
         ret = -1;
     }
     virBufferAdjustIndent(buf, -3);
-    if (virBufferGetIndent(buf, false) != -1 ||
-        virBufferGetIndent(buf, true) != -1 ||
-        virBufferError(buf) != -1) {
-        VIR_TEST_DEBUG("Usage error not flagged");
+    if (virBufferGetIndent(buf) != 0 ||
+        virBufferGetEffectiveIndent(buf) != 0) {
+        VIR_TEST_DEBUG("Indentation level not truncated");
         ret = -1;
     }
+    virBufferAdjustIndent(buf, 3);
     virBufferFreeAndReset(buf);
-    if (virBufferGetIndent(buf, false) != 0 ||
-        virBufferGetIndent(buf, true) != 0 ||
-        virBufferError(buf)) {
+    if (virBufferGetIndent(buf) != 0 ||
+        virBufferGetEffectiveIndent(buf) != 0) {
         VIR_TEST_DEBUG("Reset didn't clear indentation");
         ret = -1;
     }
     virBufferAdjustIndent(buf, 2);
     virBufferAddLit(buf, "1");
-    if (virBufferError(buf)) {
-        VIR_TEST_DEBUG("Buffer had error");
-        return -1;
-    }
     if (STRNEQ(virBufferCurrentContent(buf), "  1")) {
         VIR_TEST_DEBUG("Wrong content");
         ret = -1;
     }
-    if (virBufferGetIndent(buf, false) != 2 ||
-        virBufferGetIndent(buf, true) != 0) {
+    if (virBufferGetIndent(buf) != 2 ||
+        virBufferGetEffectiveIndent(buf) != 0) {
         VIR_TEST_DEBUG("Wrong indentation");
         ret = -1;
     }
@@ -130,11 +80,6 @@ static int testBufAutoIndent(const void *data ATTRIBUTE_UNUSED)
     virBufferEscapeShell(buf, " 11");
     virBufferAddChar(buf, '\n');
 
-    if (virBufferError(buf)) {
-        VIR_TEST_DEBUG("Buffer had error");
-        return -1;
-    }
-
     result = virBufferContentAndReset(buf);
     if (!result || STRNEQ(result, expected)) {
         virTestDifference(stderr, expected, result);
@@ -144,7 +89,7 @@ static int testBufAutoIndent(const void *data ATTRIBUTE_UNUSED)
     return ret;
 }
 
-static int testBufTrim(const void *data ATTRIBUTE_UNUSED)
+static int testBufTrim(const void *data G_GNUC_UNUSED)
 {
     virBuffer bufinit = VIR_BUFFER_INITIALIZER;
     virBufferPtr buf = NULL;
@@ -163,24 +108,14 @@ static int testBufTrim(const void *data ATTRIBUTE_UNUSED)
     virBufferTrim(buf, "a", 2);
 
     virBufferAddLit(buf, ",b,,");
+    virBufferTrim(buf, NULL, -1);
     virBufferTrim(buf, "b", -1);
     virBufferTrim(buf, "b,,", 1);
     virBufferTrim(buf, ",", -1);
 
-    if (virBufferError(buf)) {
-        VIR_TEST_DEBUG("Buffer had error");
-        return -1;
-    }
-
     result = virBufferContentAndReset(buf);
     if (!result || STRNEQ(result, expected)) {
         virTestDifference(stderr, expected, result);
-        goto cleanup;
-    }
-
-    virBufferTrim(buf, NULL, -1);
-    if (virBufferError(buf) != -1) {
-        VIR_TEST_DEBUG("Usage error not flagged");
         goto cleanup;
     }
 
@@ -192,7 +127,7 @@ static int testBufTrim(const void *data ATTRIBUTE_UNUSED)
     return ret;
 }
 
-static int testBufAddBuffer(const void *data ATTRIBUTE_UNUSED)
+static int testBufAddBuffer(const void *data G_GNUC_UNUSED)
 {
     virBuffer buf1 = VIR_BUFFER_INITIALIZER;
     virBuffer buf2 = VIR_BUFFER_INITIALIZER;
@@ -303,39 +238,13 @@ static int testBufAddBuffer(const void *data ATTRIBUTE_UNUSED)
     return ret;
 }
 
-static int
-testBufAddBuffer2(const void *opaque ATTRIBUTE_UNUSED)
-{
-    VIR_AUTOCLEAN(virBuffer) buf1 = VIR_BUFFER_INITIALIZER;
-    VIR_AUTOCLEAN(virBuffer) buf2 = VIR_BUFFER_INITIALIZER;
-
-    /* Intent of this test is to demonstrate a memleak that happen with
-     * virBufferAddBuffer */
-
-    virBufferAddLit(&buf1, "Hello world!\n");
-    virBufferAddLit(&buf2, "Hello world!\n");
-
-    /* Intentional usage error */
-    virBufferAdjustIndent(&buf2, -2);
-
-    virBufferAddBuffer(&buf1, &buf2);
-
-    if (virBufferCurrentContent(&buf1) ||
-        !virBufferCurrentContent(&buf2)) {
-        VIR_TEST_DEBUG("Unexpected buffer content");
-        return -1;
-    }
-
-    return 0;
-}
-
 struct testBufAddStrData {
     const char *data;
     const char *expect;
 };
 
 static int
-testBufAddStr(const void *opaque ATTRIBUTE_UNUSED)
+testBufAddStr(const void *opaque G_GNUC_UNUSED)
 {
     const struct testBufAddStrData *data = opaque;
     virBuffer buf = VIR_BUFFER_INITIALIZER;
@@ -354,7 +263,7 @@ testBufAddStr(const void *opaque ATTRIBUTE_UNUSED)
     }
 
     if (STRNEQ_NULLABLE(actual, data->expect)) {
-        VIR_TEST_DEBUG("testBufAddStr(): Strings don't match:\n");
+        VIR_TEST_DEBUG("testBufAddStr(): Strings don't match:");
         virTestDifference(stderr, data->expect, actual);
         goto cleanup;
     }
@@ -368,7 +277,7 @@ testBufAddStr(const void *opaque ATTRIBUTE_UNUSED)
 
 
 static int
-testBufEscapeStr(const void *opaque ATTRIBUTE_UNUSED)
+testBufEscapeStr(const void *opaque G_GNUC_UNUSED)
 {
     const struct testBufAddStrData *data = opaque;
     virBuffer buf = VIR_BUFFER_INITIALIZER;
@@ -387,7 +296,7 @@ testBufEscapeStr(const void *opaque ATTRIBUTE_UNUSED)
     }
 
     if (STRNEQ_NULLABLE(actual, data->expect)) {
-        VIR_TEST_DEBUG("testBufEscapeStr(): Strings don't match:\n");
+        VIR_TEST_DEBUG("testBufEscapeStr(): Strings don't match:");
         virTestDifference(stderr, data->expect, actual);
         goto cleanup;
     }
@@ -416,7 +325,7 @@ testBufEscapeRegex(const void *opaque)
     }
 
     if (STRNEQ_NULLABLE(actual, data->expect)) {
-        VIR_TEST_DEBUG("testBufEscapeRegex: Strings don't match:\n");
+        VIR_TEST_DEBUG("testBufEscapeRegex: Strings don't match:");
         virTestDifference(stderr, data->expect, actual);
         goto cleanup;
     }
@@ -430,7 +339,7 @@ testBufEscapeRegex(const void *opaque)
 
 
 static int
-testBufSetIndent(const void *opaque ATTRIBUTE_UNUSED)
+testBufSetIndent(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     char *actual;
@@ -445,7 +354,7 @@ testBufSetIndent(const void *opaque ATTRIBUTE_UNUSED)
         goto cleanup;
 
     if (STRNEQ(actual, "           test\n  test2\n")) {
-        VIR_TEST_DEBUG("testBufSetIndent: expected indent not set\n");
+        VIR_TEST_DEBUG("testBufSetIndent: expected indent not set");
         goto cleanup;
     }
 
@@ -459,9 +368,9 @@ testBufSetIndent(const void *opaque ATTRIBUTE_UNUSED)
 
 /* Result of this shows up only in valgrind or similar */
 static int
-testBufferAutoclean(const void *opaque ATTRIBUTE_UNUSED)
+testBufferAutoclean(const void *opaque G_GNUC_UNUSED)
 {
-    VIR_AUTOCLEAN(virBuffer) buf = VIR_BUFFER_INITIALIZER;
+    g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
 
     virBufferAddLit(&buf, "test test test\n");
     return 0;
@@ -474,21 +383,17 @@ mymain(void)
     int ret = 0;
 
 
-#define DO_TEST(msg, cb, data) \
+#define DO_TEST(msg, cb) \
     do { \
-        struct testInfo info = { data }; \
-        if (virTestRun("Buf: " msg, cb, &info) < 0) \
+        if (virTestRun("Buf: " msg, cb, NULL) < 0) \
             ret = -1; \
     } while (0)
 
-    DO_TEST("EscapeString infinite loop", testBufInfiniteLoop, 1);
-    DO_TEST("VSprintf infinite loop", testBufInfiniteLoop, 0);
-    DO_TEST("Auto-indentation", testBufAutoIndent, 0);
-    DO_TEST("Trim", testBufTrim, 0);
-    DO_TEST("AddBuffer", testBufAddBuffer, 0);
-    DO_TEST("AddBuffer2", testBufAddBuffer2, 0);
-    DO_TEST("set indent", testBufSetIndent, 0);
-    DO_TEST("autoclean", testBufferAutoclean, 0);
+    DO_TEST("Auto-indentation", testBufAutoIndent);
+    DO_TEST("Trim", testBufTrim);
+    DO_TEST("AddBuffer", testBufAddBuffer);
+    DO_TEST("set indent", testBufSetIndent);
+    DO_TEST("autoclean", testBufferAutoclean);
 
 #define DO_TEST_ADD_STR(DATA, EXPECT) \
     do { \

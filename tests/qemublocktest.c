@@ -18,22 +18,22 @@
 
 
 #include "testutils.h"
+#include "testutilsqemu.h"
+#include "testutilsqemuschema.h"
+#include "virstoragefile.h"
+#include "virstring.h"
+#include "virlog.h"
+#include "qemu/qemu_block.h"
+#include "qemu/qemu_qapi.h"
+#include "qemu/qemu_monitor_json.h"
+#include "qemu/qemu_backup.h"
 
-#if WITH_YAJL
-# include "testutilsqemu.h"
-# include "testutilsqemuschema.h"
-# include "virstoragefile.h"
-# include "virstring.h"
-# include "virlog.h"
-# include "qemu/qemu_block.h"
-# include "qemu/qemu_qapi.h"
+#include "qemu/qemu_command.h"
 
-# include "qemu/qemu_command.h"
+#define LIBVIRT_SNAPSHOT_CONF_PRIV_H_ALLOW
+#include "conf/snapshot_conf_priv.h"
 
-# define LIBVIRT_SNAPSHOT_CONF_PRIV_H_ALLOW
-# include "conf/snapshot_conf_priv.h"
-
-# define VIR_FROM_THIS VIR_FROM_NONE
+#define VIR_FROM_THIS VIR_FROM_NONE
 
 VIR_LOG_INIT("tests.storagetest");
 
@@ -46,16 +46,16 @@ static int
 testBackingXMLjsonXML(const void *args)
 {
     const struct testBackingXMLjsonXMLdata *data = args;
-    VIR_AUTOPTR(xmlDoc) xml = NULL;
-    VIR_AUTOPTR(xmlXPathContext) ctxt = NULL;
-    VIR_AUTOCLEAN(virBuffer) buf = VIR_BUFFER_INITIALIZER;
-    VIR_AUTOPTR(virJSONValue) backendprops = NULL;
-    VIR_AUTOPTR(virJSONValue) wrapper = NULL;
-    VIR_AUTOFREE(char *) propsstr = NULL;
-    VIR_AUTOFREE(char *) protocolwrapper = NULL;
-    VIR_AUTOFREE(char *) actualxml = NULL;
-    VIR_AUTOUNREF(virStorageSourcePtr) xmlsrc = NULL;
-    VIR_AUTOUNREF(virStorageSourcePtr) jsonsrc = NULL;
+    g_autoptr(xmlDoc) xml = NULL;
+    g_autoptr(xmlXPathContext) ctxt = NULL;
+    g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
+    g_autoptr(virJSONValue) backendprops = NULL;
+    g_autoptr(virJSONValue) wrapper = NULL;
+    g_autofree char *propsstr = NULL;
+    g_autofree char *protocolwrapper = NULL;
+    g_autofree char *actualxml = NULL;
+    g_autoptr(virStorageSource) xmlsrc = NULL;
+    g_autoptr(virStorageSource) jsonsrc = NULL;
 
     if (!(xmlsrc = virStorageSourceNew()))
         return -1;
@@ -82,15 +82,15 @@ testBackingXMLjsonXML(const void *args)
     if (!(propsstr = virJSONValueToString(wrapper, false)))
         return -1;
 
-    if (virAsprintf(&protocolwrapper, "json:%s", propsstr) < 0)
-        return -1;
+    protocolwrapper = g_strdup_printf("json:%s", propsstr);
 
-    if (!(jsonsrc = virStorageSourceNewFromBackingAbsolute(protocolwrapper))) {
+    if (virStorageSourceNewFromBackingAbsolute(protocolwrapper,
+                                               &jsonsrc) < 0) {
         fprintf(stderr, "failed to parse disk json\n");
         return -1;
     }
 
-    if (virDomainDiskSourceFormat(&buf, jsonsrc, "source", 0, false, 0,
+    if (virDomainDiskSourceFormat(&buf, jsonsrc, "source", 0, false, 0, true,
                                   NULL) < 0 ||
         !(actualxml = virBufferContentAndReset(&buf))) {
         fprintf(stderr, "failed to format disk source xml\n");
@@ -160,12 +160,10 @@ testQemuDiskXMLToJSONFakeSecrets(virStorageSourcePtr src)
             return -1;
 
         srcpriv->secinfo->type = VIR_DOMAIN_SECRET_INFO_TYPE_AES;
-        if (VIR_STRDUP(srcpriv->secinfo->s.aes.username, src->auth->username) < 0)
-            return -1;
+        srcpriv->secinfo->s.aes.username = g_strdup(src->auth->username);
 
-        if (virAsprintf(&srcpriv->secinfo->s.aes.alias, "%s-secalias",
-                        NULLSTR(src->nodestorage)) < 0)
-            return -1;
+        srcpriv->secinfo->s.aes.alias = g_strdup_printf("%s-secalias",
+                                                        NULLSTR(src->nodestorage));
     }
 
     if (src->encryption) {
@@ -173,9 +171,8 @@ testQemuDiskXMLToJSONFakeSecrets(virStorageSourcePtr src)
             return -1;
 
         srcpriv->encinfo->type = VIR_DOMAIN_SECRET_INFO_TYPE_AES;
-        if (virAsprintf(&srcpriv->encinfo->s.aes.alias, "%s-encalias",
-                        NULLSTR(src->nodeformat)) < 0)
-            return -1;
+        srcpriv->encinfo->s.aes.alias = g_strdup_printf("%s-encalias",
+                                                        NULLSTR(src->nodeformat));
     }
 
     return 0;
@@ -192,26 +189,24 @@ testQemuDiskXMLToProps(const void *opaque)
     virStorageSourcePtr n;
     virJSONValuePtr formatProps = NULL;
     virJSONValuePtr storageProps = NULL;
-    VIR_AUTOPTR(virJSONValue) storageSrcOnlyProps = NULL;
+    g_autoptr(virJSONValue) storageSrcOnlyProps = NULL;
     char *xmlpath = NULL;
     char *xmlstr = NULL;
     int ret = -1;
 
-    if (virAsprintf(&xmlpath, "%s%s.xml",
-                    testQemuDiskXMLToJSONPath, data->name) < 0)
-        goto cleanup;
+    xmlpath = g_strdup_printf("%s%s.xml", testQemuDiskXMLToJSONPath, data->name);
 
     if (virTestLoadFile(xmlpath, &xmlstr) < 0)
         goto cleanup;
 
     /* qemu stores node names in the status XML portion */
-    if (!(disk = virDomainDiskDefParse(xmlstr, NULL, data->driver->xmlopt,
+    if (!(disk = virDomainDiskDefParse(xmlstr, data->driver->xmlopt,
                                        VIR_DOMAIN_DEF_PARSE_STATUS)))
         goto cleanup;
 
     if (qemuCheckDiskConfig(disk, data->qemuCaps) < 0 ||
         qemuDomainDeviceDefValidateDisk(disk, data->qemuCaps) < 0) {
-        VIR_TEST_VERBOSE("invalid configuration for disk\n");
+        VIR_TEST_VERBOSE("invalid configuration for disk");
         goto cleanup;
     }
 
@@ -222,18 +217,17 @@ testQemuDiskXMLToProps(const void *opaque)
         if (qemuDomainValidateStorageSource(n, data->qemuCaps) < 0)
             goto cleanup;
 
-        if (qemuDomainPrepareDiskSourceData(disk, n, NULL, data->qemuCaps) < 0)
-            goto cleanup;
+        qemuDomainPrepareDiskSourceData(disk, n);
 
-        if (!(formatProps = qemuBlockStorageSourceGetBlockdevProps(n)) ||
+        if (!(formatProps = qemuBlockStorageSourceGetBlockdevProps(n, n->backingStore)) ||
             !(storageSrcOnlyProps = qemuBlockStorageSourceGetBackendProps(n, false, true, true)) ||
             !(storageProps = qemuBlockStorageSourceGetBackendProps(n, false, false, true))) {
             if (!data->fail) {
-                VIR_TEST_VERBOSE("failed to generate qemu blockdev props\n");
+                VIR_TEST_VERBOSE("failed to generate qemu blockdev props");
                 goto cleanup;
             }
         } else if (data->fail) {
-            VIR_TEST_VERBOSE("qemu blockdev props should have failed\n");
+            VIR_TEST_VERBOSE("qemu blockdev props should have failed");
             goto cleanup;
         }
 
@@ -317,9 +311,7 @@ testQemuDiskXMLToPropsValidateFile(const void *opaque)
     if (data->fail)
         return EXIT_AM_SKIP;
 
-    if (virAsprintf(&jsonpath, "%s%s.json",
-                    testQemuDiskXMLToJSONPath, data->name) < 0)
-        goto cleanup;
+    jsonpath = g_strdup_printf("%s%s.json", testQemuDiskXMLToJSONPath, data->name);
 
     for (i = 0; i < data->nprops; i++) {
         char *jsonstr;
@@ -330,9 +322,6 @@ testQemuDiskXMLToPropsValidateFile(const void *opaque)
         virBufferAdd(&buf, jsonstr, -1);
         VIR_FREE(jsonstr);
     }
-
-    if (virBufferCheckError(&buf) < 0)
-        goto cleanup;
 
     actual = virBufferContentAndReset(&buf);
 
@@ -362,15 +351,13 @@ testQemuImageCreateLoadDiskXML(const char *name,
 
 {
     virDomainSnapshotDiskDefPtr diskdef = NULL;
-    VIR_AUTOPTR(xmlDoc) doc = NULL;
-    VIR_AUTOPTR(xmlXPathContext) ctxt = NULL;
+    g_autoptr(xmlDoc) doc = NULL;
+    g_autoptr(xmlXPathContext) ctxt = NULL;
     xmlNodePtr node;
-    VIR_AUTOFREE(char *) xmlpath = NULL;
+    g_autofree char *xmlpath = NULL;
     virStorageSourcePtr ret = NULL;
 
-    if (virAsprintf(&xmlpath, "%s%s.xml",
-                    testQemuImageCreatePath, name) < 0)
-        return NULL;
+    xmlpath = g_strdup_printf("%s%s.xml", testQemuImageCreatePath, name);
 
     if (!(doc = virXMLParseFileCtxt(xmlpath, &ctxt)))
         return NULL;
@@ -386,7 +373,7 @@ testQemuImageCreateLoadDiskXML(const char *name,
     if (virDomainSnapshotDiskDefParseXML(node, ctxt, diskdef,
                                          VIR_DOMAIN_DEF_PARSE_STATUS,
                                          xmlopt) == 0)
-        VIR_STEAL_PTR(ret, diskdef->src);
+        ret = g_steal_pointer(&diskdef->src);
 
     virDomainSnapshotDiskDefFree(diskdef);
     return ret;
@@ -397,15 +384,15 @@ static int
 testQemuImageCreate(const void *opaque)
 {
     struct testQemuImageCreateData *data = (void *) opaque;
-    VIR_AUTOPTR(virJSONValue) protocolprops = NULL;
-    VIR_AUTOPTR(virJSONValue) formatprops = NULL;
-    VIR_AUTOUNREF(virStorageSourcePtr) src = NULL;
-    VIR_AUTOCLEAN(virBuffer) debug = VIR_BUFFER_INITIALIZER;
-    VIR_AUTOCLEAN(virBuffer) actualbuf = VIR_BUFFER_INITIALIZER;
-    VIR_AUTOFREE(char *) jsonprotocol = NULL;
-    VIR_AUTOFREE(char *) jsonformat = NULL;
-    VIR_AUTOFREE(char *) actual = NULL;
-    VIR_AUTOFREE(char *) jsonpath = NULL;
+    g_autoptr(virJSONValue) protocolprops = NULL;
+    g_autoptr(virJSONValue) formatprops = NULL;
+    g_autoptr(virStorageSource) src = NULL;
+    g_auto(virBuffer) debug = VIR_BUFFER_INITIALIZER;
+    g_auto(virBuffer) actualbuf = VIR_BUFFER_INITIALIZER;
+    g_autofree char *jsonprotocol = NULL;
+    g_autofree char *jsonformat = NULL;
+    g_autofree char *actual = NULL;
+    g_autofree char *jsonpath = NULL;
 
     if (!(src = testQemuImageCreateLoadDiskXML(data->name, data->driver->xmlopt)))
         return -1;
@@ -419,8 +406,8 @@ testQemuImageCreate(const void *opaque)
         return -1;
 
     /* fake some sizes */
-    src->capacity = 1337;
-    src->physical = 42;
+    src->capacity = UINT_MAX * 2ULL;
+    src->physical = UINT_MAX + 1ULL;
 
     if (qemuDomainValidateStorageSource(src, data->qemuCaps) < 0)
         return -1;
@@ -437,7 +424,7 @@ testQemuImageCreate(const void *opaque)
 
         if (testQEMUSchemaValidate(formatprops, data->schemaroot, data->schema,
                                    &debug) < 0) {
-            VIR_AUTOFREE(char *) debugmsg = virBufferContentAndReset(&debug);
+            g_autofree char *debugmsg = virBufferContentAndReset(&debug);
             VIR_TEST_VERBOSE("blockdev-create format json does not conform to QAPI schema");
             VIR_TEST_DEBUG("json:\n%s\ndoes not match schema. Debug output:\n %s",
                            jsonformat, NULLSTR(debugmsg));
@@ -452,7 +439,7 @@ testQemuImageCreate(const void *opaque)
 
         if (testQEMUSchemaValidate(protocolprops, data->schemaroot, data->schema,
                                    &debug) < 0) {
-            VIR_AUTOFREE(char *) debugmsg = virBufferContentAndReset(&debug);
+            g_autofree char *debugmsg = virBufferContentAndReset(&debug);
             VIR_TEST_VERBOSE("blockdev-create protocol json does not conform to QAPI schema");
             VIR_TEST_DEBUG("json:\n%s\ndoes not match schema. Debug output:\n %s",
                            jsonprotocol, NULLSTR(debugmsg));
@@ -466,9 +453,7 @@ testQemuImageCreate(const void *opaque)
     virBufferTrim(&actualbuf, "\n", -1);
     virBufferAddLit(&actualbuf, "\n");
 
-    if (virAsprintf(&jsonpath, "%s%s.json",
-                    testQemuImageCreatePath, data->name) < 0)
-        return -1;
+    jsonpath = g_strdup_printf("%s%s.json", testQemuImageCreatePath, data->name);
 
     if (!(actual = virBufferContentAndReset(&actualbuf)))
         return -1;
@@ -481,20 +466,19 @@ static int
 testQemuDiskXMLToPropsValidateFileSrcOnly(const void *opaque)
 {
     struct testQemuDiskXMLToJSONData *data = (void *) opaque;
-    VIR_AUTOCLEAN(virBuffer) buf = VIR_BUFFER_INITIALIZER;
-    VIR_AUTOFREE(char *) jsonpath = NULL;
-    VIR_AUTOFREE(char *) actual = NULL;
+    g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
+    g_autofree char *jsonpath = NULL;
+    g_autofree char *actual = NULL;
     size_t i;
 
     if (data->fail)
         return EXIT_AM_SKIP;
 
-    if (virAsprintf(&jsonpath, "%s%s-srconly.json",
-                    testQemuDiskXMLToJSONPath, data->name) < 0)
-        return -1;
+    jsonpath = g_strdup_printf("%s%s-srconly.json", testQemuDiskXMLToJSONPath,
+                               data->name);
 
     for (i = 0; i < data->npropssrc; i++) {
-        VIR_AUTOFREE(char *) jsonstr = NULL;
+        g_autofree char *jsonstr = NULL;
 
         if (!(jsonstr = virJSONValueToString(data->propssrc[i], true)))
             return -1;
@@ -502,12 +486,213 @@ testQemuDiskXMLToPropsValidateFileSrcOnly(const void *opaque)
         virBufferAdd(&buf, jsonstr, -1);
     }
 
-    if (virBufferCheckError(&buf) < 0)
-        return -1;
-
     actual = virBufferContentAndReset(&buf);
 
     return virTestCompareToFile(actual, jsonpath);
+}
+
+
+static const char *bitmapDetectPrefix = "qemublocktestdata/bitmap/";
+
+static void
+testQemuDetectBitmapsWorker(virHashTablePtr nodedata,
+                            const char *nodename,
+                            virBufferPtr buf)
+{
+    qemuBlockNamedNodeDataPtr data;
+    size_t i;
+
+    if (!(data = virHashLookup(nodedata, nodename)))
+        return;
+
+    virBufferAsprintf(buf, "%s:\n", nodename);
+    virBufferAdjustIndent(buf, 1);
+
+    for (i = 0; i < data->nbitmaps; i++) {
+        qemuBlockNamedNodeDataBitmapPtr bitmap = data->bitmaps[i];
+
+        virBufferAsprintf(buf, "%8s: record:%d busy:%d persist:%d inconsist:%d gran:%llu dirty:%llu\n",
+                          bitmap->name, bitmap->recording, bitmap->busy,
+                          bitmap->persistent, bitmap->inconsistent,
+                          bitmap->granularity, bitmap->dirtybytes);
+    }
+
+    virBufferAdjustIndent(buf, -1);
+}
+
+
+static int
+testQemuDetectBitmaps(const void *opaque)
+{
+    const char *name = opaque;
+    g_autoptr(virJSONValue) nodedatajson = NULL;
+    g_autoptr(virHashTable) nodedata = NULL;
+    g_autofree char *actual = NULL;
+    g_autofree char *expectpath = NULL;
+    g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
+    size_t i;
+
+    expectpath = g_strdup_printf("%s/%s%s.out", abs_srcdir,
+                                 bitmapDetectPrefix, name);
+
+    if (!(nodedatajson = virTestLoadFileJSON(bitmapDetectPrefix, name,
+                                             ".json", NULL)))
+        return -1;
+
+    if (!(nodedata = qemuMonitorJSONBlockGetNamedNodeDataJSON(nodedatajson))) {
+        VIR_TEST_VERBOSE("failed to load nodedata JSON");
+        return -1;
+    }
+
+    /* we detect for the first 30 nodenames for simplicity */
+    for (i = 0; i < 30; i++) {
+        g_autofree char *nodename = g_strdup_printf("libvirt-%zu-format", i);
+
+        testQemuDetectBitmapsWorker(nodedata, nodename, &buf);
+    }
+
+    actual = virBufferContentAndReset(&buf);
+
+    return virTestCompareToFile(actual, expectpath);
+}
+
+
+static virStorageSourcePtr
+testQemuBackupIncrementalBitmapCalculateGetFakeImage(size_t idx)
+{
+   virStorageSourcePtr ret;
+
+   if (!(ret = virStorageSourceNew()))
+       abort();
+
+   ret->type = VIR_STORAGE_TYPE_FILE;
+   ret->format = VIR_STORAGE_FILE_QCOW2;
+   ret->path = g_strdup_printf("/image%zu", idx);
+   ret->nodestorage = g_strdup_printf("libvirt-%zu-storage", idx);
+   ret->nodeformat = g_strdup_printf("libvirt-%zu-format", idx);
+
+   return ret;
+}
+
+
+static virStorageSourcePtr
+testQemuBackupIncrementalBitmapCalculateGetFakeChain(void)
+{
+    virStorageSourcePtr ret;
+    virStorageSourcePtr n;
+    size_t i;
+
+    n = ret = testQemuBackupIncrementalBitmapCalculateGetFakeImage(1);
+
+    for (i = 2; i < 10; i++) {
+        n->backingStore = testQemuBackupIncrementalBitmapCalculateGetFakeImage(i);
+        n = n->backingStore;
+    }
+
+    return ret;
+}
+
+
+typedef virDomainMomentDefPtr testMomentList;
+
+static void
+testMomentListFree(testMomentList *list)
+{
+    testMomentList *tmp = list;
+
+    if (!list)
+        return;
+
+    while (*tmp) {
+        virObjectUnref(*tmp);
+        tmp++;
+    }
+
+    g_free(list);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(testMomentList, testMomentListFree);
+
+static virDomainMomentDefPtr
+testQemuBackupGetIncrementalMoment(const char *name)
+{
+    virDomainCheckpointDefPtr checkpoint = NULL;
+
+    if (!(checkpoint = virDomainCheckpointDefNew()))
+        abort();
+
+    checkpoint->parent.name = g_strdup(name);
+
+    return (virDomainMomentDefPtr) checkpoint;
+}
+
+
+static virDomainMomentDefPtr *
+testQemuBackupGetIncremental(const char *incFrom)
+{
+    const char *checkpoints[] = {"current", "d", "c", "b", "a"};
+    virDomainMomentDefPtr *incr;
+    size_t i;
+
+    incr = g_new0(virDomainMomentDefPtr, G_N_ELEMENTS(checkpoints) + 1);
+
+    for (i = 0; i < G_N_ELEMENTS(checkpoints); i++) {
+        incr[i] = testQemuBackupGetIncrementalMoment(checkpoints[i]);
+
+        if (STREQ(incFrom, checkpoints[i]))
+            break;
+    }
+
+    return incr;
+}
+
+static const char *backupDataPrefix = "qemublocktestdata/backupmerge/";
+
+struct testQemuBackupIncrementalBitmapCalculateData {
+    const char *name;
+    virStorageSourcePtr chain;
+    const char *incremental;
+    const char *nodedatafile;
+};
+
+
+static int
+testQemuBackupIncrementalBitmapCalculate(const void *opaque)
+{
+    const struct testQemuBackupIncrementalBitmapCalculateData *data = opaque;
+    g_autoptr(virJSONValue) nodedatajson = NULL;
+    g_autoptr(virHashTable) nodedata = NULL;
+    g_autoptr(virJSONValue) mergebitmaps = NULL;
+    g_autofree char *actual = NULL;
+    g_autofree char *expectpath = NULL;
+    g_autoptr(testMomentList) incremental = NULL;
+
+    expectpath = g_strdup_printf("%s/%s%s-out.json", abs_srcdir,
+                                 backupDataPrefix, data->name);
+
+    if (!(nodedatajson = virTestLoadFileJSON(bitmapDetectPrefix, data->nodedatafile,
+                                             ".json", NULL)))
+        return -1;
+
+    if (!(nodedata = qemuMonitorJSONBlockGetNamedNodeDataJSON(nodedatajson))) {
+        VIR_TEST_VERBOSE("failed to load nodedata JSON\n");
+        return -1;
+    }
+
+    incremental = testQemuBackupGetIncremental(data->incremental);
+
+    if (!(mergebitmaps = qemuBackupDiskPrepareOneBitmapsChain(incremental,
+                                                              data->chain,
+                                                              nodedata,
+                                                              "testdisk"))) {
+        VIR_TEST_VERBOSE("failed to calculate merged bitmaps");
+        return -1;
+    }
+
+    if (!(actual = virJSONValueToString(mergebitmaps, true)))
+        return -1;
+
+    return virTestCompareToFile(actual, expectpath);
 }
 
 
@@ -519,11 +704,15 @@ mymain(void)
     struct testBackingXMLjsonXMLdata xmljsonxmldata;
     struct testQemuDiskXMLToJSONData diskxmljsondata;
     struct testQemuImageCreateData imagecreatedata;
+    struct testQemuBackupIncrementalBitmapCalculateData backupbitmapcalcdata;
     char *capslatest_x86_64 = NULL;
     virQEMUCapsPtr caps_x86_64 = NULL;
+    g_autoptr(virStorageSource) bitmapSourceChain = NULL;
 
     if (qemuTestDriverInit(&driver) < 0)
         return EXIT_FAILURE;
+
+    bitmapSourceChain = testQemuBackupIncrementalBitmapCalculateGetFakeChain();
 
     diskxmljsondata.driver = &driver;
     imagecreatedata.driver = &driver;
@@ -531,7 +720,7 @@ mymain(void)
     if (!(capslatest_x86_64 = testQemuGetLatestCapsForArch("x86_64", "xml")))
         return EXIT_FAILURE;
 
-    VIR_TEST_VERBOSE("\nlatest caps x86_64: %s\n", capslatest_x86_64);
+    VIR_TEST_VERBOSE("\nlatest caps x86_64: %s", capslatest_x86_64);
 
     if (!(caps_x86_64 = qemuTestParseCapabilitiesArch(virArchFromString("x86_64"),
                                                       capslatest_x86_64)))
@@ -542,7 +731,7 @@ mymain(void)
 
     virTestCounterReset("qemu storage source xml->json->xml ");
 
-# define TEST_JSON_FORMAT(tpe, xmlstr) \
+#define TEST_JSON_FORMAT(tpe, xmlstr) \
     do { \
         xmljsonxmldata.type = tpe; \
         xmljsonxmldata.xml = xmlstr; \
@@ -551,7 +740,7 @@ mymain(void)
             ret = -1; \
     } while (0)
 
-# define TEST_JSON_FORMAT_NET(xmlstr) \
+#define TEST_JSON_FORMAT_NET(xmlstr) \
     TEST_JSON_FORMAT(VIR_STORAGE_TYPE_NETWORK, xmlstr)
 
     TEST_JSON_FORMAT(VIR_STORAGE_TYPE_FILE, "<source file='/path/to/file'/>\n");
@@ -607,7 +796,7 @@ mymain(void)
                          "  <host name='example.com' port='9999'/>\n"
                          "</source>\n");
 
-# define TEST_DISK_TO_JSON_FULL(nme, fl) \
+#define TEST_DISK_TO_JSON_FULL(nme, fl) \
     do { \
         diskxmljsondata.name = nme; \
         diskxmljsondata.props = NULL; \
@@ -630,7 +819,7 @@ mymain(void)
         testQemuDiskXMLToPropsClear(&diskxmljsondata); \
     } while (0)
 
-# define TEST_DISK_TO_JSON(nme) TEST_DISK_TO_JSON_FULL(nme, false)
+#define TEST_DISK_TO_JSON(nme) TEST_DISK_TO_JSON_FULL(nme, false)
 
     if (!(diskxmljsondata.schema = testQEMUSchemaLoad())) {
         ret = -1;
@@ -641,7 +830,7 @@ mymain(void)
                                  diskxmljsondata.schema,
                                  &diskxmljsondata.schemaroot) < 0 ||
         !diskxmljsondata.schemaroot) {
-        VIR_TEST_VERBOSE("failed to find schema entry for blockdev-add\n");
+        VIR_TEST_VERBOSE("failed to find schema entry for blockdev-add");
         ret = -1;
         goto cleanup;
     }
@@ -686,7 +875,7 @@ mymain(void)
     TEST_DISK_TO_JSON("block-raw-noopts");
     TEST_DISK_TO_JSON("block-raw-reservations");
 
-# define TEST_IMAGE_CREATE(testname, testbacking) \
+#define TEST_IMAGE_CREATE(testname, testbacking) \
     do { \
         imagecreatedata.name = testname; \
         imagecreatedata.backingname = testbacking; \
@@ -721,6 +910,37 @@ mymain(void)
     TEST_IMAGE_CREATE("network-ssh-qcow2", NULL);
     TEST_IMAGE_CREATE("network-sheepdog-qcow2", NULL);
 
+#define TEST_BITMAP_DETECT(testname) \
+    do { \
+        if (virTestRun("bitmap detect " testname, \
+                       testQemuDetectBitmaps, testname) < 0) \
+            ret = -1; \
+    } while (0)
+
+    TEST_BITMAP_DETECT("basic");
+    TEST_BITMAP_DETECT("synthetic");
+    TEST_BITMAP_DETECT("snapshots");
+
+#define TEST_BACKUP_BITMAP_CALCULATE(testname, source, incrbackup, named) \
+    do { \
+        backupbitmapcalcdata.name = testname; \
+        backupbitmapcalcdata.chain = source; \
+        backupbitmapcalcdata.incremental = incrbackup; \
+        backupbitmapcalcdata.nodedatafile = named; \
+        if (virTestRun("incremental backup bitmap " testname, \
+                       testQemuBackupIncrementalBitmapCalculate, \
+                       &backupbitmapcalcdata) < 0) \
+            ret = -1; \
+    } while (0)
+
+    TEST_BACKUP_BITMAP_CALCULATE("basic-flat", bitmapSourceChain, "current", "basic");
+    TEST_BACKUP_BITMAP_CALCULATE("basic-intermediate", bitmapSourceChain, "d", "basic");
+    TEST_BACKUP_BITMAP_CALCULATE("basic-deep", bitmapSourceChain, "a", "basic");
+
+    TEST_BACKUP_BITMAP_CALCULATE("snapshot-flat", bitmapSourceChain, "current", "snapshots");
+    TEST_BACKUP_BITMAP_CALCULATE("snapshot-intermediate", bitmapSourceChain, "d", "snapshots");
+    TEST_BACKUP_BITMAP_CALCULATE("snapshot-deep", bitmapSourceChain, "a", "snapshots");
+
  cleanup:
     virHashFree(diskxmljsondata.schema);
     qemuTestDriverFree(&driver);
@@ -729,13 +949,5 @@ mymain(void)
 
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
-
-#else
-static int
-mymain(void)
-{
-    return EXIT_AM_SKIP;
-}
-#endif
 
 VIR_TEST_MAIN(mymain)

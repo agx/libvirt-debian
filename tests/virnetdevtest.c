@@ -35,31 +35,28 @@ struct testVirNetDevGetLinkInfoData {
 static int
 testVirNetDevGetLinkInfo(const void *opaque)
 {
-    int ret = -1;
     const struct testVirNetDevGetLinkInfoData *data = opaque;
     virNetDevIfLink lnk;
 
     if (virNetDevGetLinkInfo(data->ifname, &lnk) < 0)
-        goto cleanup;
+        return -1;
 
     if (lnk.state != data->state) {
         fprintf(stderr,
                 "Fetched link state (%s) doesn't match the expected one (%s)",
                 virNetDevIfStateTypeToString(lnk.state),
                 virNetDevIfStateTypeToString(data->state));
-        goto cleanup;
+        return -1;
     }
 
     if (lnk.speed != data->speed) {
         fprintf(stderr,
                 "Fetched link speed (%u) doesn't match the expected one (%u)",
                 lnk.speed, data->speed);
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 static int
@@ -82,7 +79,7 @@ mymain(void)
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virnetdevmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virnetdev"))
 #else
 int
 main(void)

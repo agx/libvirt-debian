@@ -27,8 +27,8 @@
 #ifdef HAVE_SOCKETPAIR
 
 static void *
-testClientNew(virNetServerClientPtr client ATTRIBUTE_UNUSED,
-              void *opaque ATTRIBUTE_UNUSED)
+testClientNew(virNetServerClientPtr client G_GNUC_UNUSED,
+              void *opaque G_GNUC_UNUSED)
 {
     char *dummy;
 
@@ -45,17 +45,17 @@ testClientFree(void *opaque)
     VIR_FREE(opaque);
 }
 
-static int testIdentity(const void *opaque ATTRIBUTE_UNUSED)
+static int testIdentity(const void *opaque G_GNUC_UNUSED)
 {
     int sv[2];
     int ret = -1;
     virNetSocketPtr sock = NULL;
     virNetServerClientPtr client = NULL;
-    virIdentityPtr ident = NULL;
+    g_autoptr(virIdentity) ident = NULL;
     const char *gotUsername = NULL;
-    const char *gotUserID = NULL;
+    uid_t gotUserID;
     const char *gotGroupname = NULL;
-    const char *gotGroupID = NULL;
+    gid_t gotGroupID;
     const char *gotSELinuxContext = NULL;
 
     if (socketpair(PF_UNIX, SOCK_STREAM, 0, sv) < 0) {
@@ -85,9 +85,7 @@ static int testIdentity(const void *opaque ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    if (virIdentityGetAttr(ident,
-                           VIR_IDENTITY_ATTR_UNIX_USER_NAME,
-                           &gotUsername) < 0) {
+    if (virIdentityGetUserName(ident, &gotUsername) <= 0) {
         fprintf(stderr, "Missing username in identity\n");
         goto cleanup;
     }
@@ -97,21 +95,17 @@ static int testIdentity(const void *opaque ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    if (virIdentityGetAttr(ident,
-                           VIR_IDENTITY_ATTR_UNIX_USER_ID,
-                           &gotUserID) < 0) {
+    if (virIdentityGetUNIXUserID(ident, &gotUserID) <= 0) {
         fprintf(stderr, "Missing user ID in identity\n");
         goto cleanup;
     }
-    if (STRNEQ_NULLABLE("666", gotUserID)) {
-        fprintf(stderr, "Want username '666' got '%s'\n",
-                NULLSTR(gotUserID));
+    if (666 != gotUserID) {
+        fprintf(stderr, "Want username '666' got '%llu'\n",
+                (unsigned long long)gotUserID);
         goto cleanup;
     }
 
-    if (virIdentityGetAttr(ident,
-                           VIR_IDENTITY_ATTR_UNIX_GROUP_NAME,
-                           &gotGroupname) < 0) {
+    if (virIdentityGetGroupName(ident, &gotGroupname) <= 0) {
         fprintf(stderr, "Missing groupname in identity\n");
         goto cleanup;
     }
@@ -121,27 +115,23 @@ static int testIdentity(const void *opaque ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    if (virIdentityGetAttr(ident,
-                           VIR_IDENTITY_ATTR_UNIX_GROUP_ID,
-                           &gotGroupID) < 0) {
+    if (virIdentityGetUNIXGroupID(ident, &gotGroupID) <= 0) {
         fprintf(stderr, "Missing group ID in identity\n");
         goto cleanup;
     }
-    if (STRNEQ_NULLABLE("7337", gotGroupID)) {
-        fprintf(stderr, "Want groupname '7337' got '%s'\n",
-                NULLSTR(gotGroupID));
+    if (7337 != gotGroupID) {
+        fprintf(stderr, "Want groupname '7337' got '%llu'\n",
+                (unsigned long long)gotGroupID);
         goto cleanup;
     }
 
-    if (virIdentityGetAttr(ident,
-                           VIR_IDENTITY_ATTR_SELINUX_CONTEXT,
-                           &gotSELinuxContext) < 0) {
+    if (virIdentityGetSELinuxContext(ident, &gotSELinuxContext) <= 0) {
         fprintf(stderr, "Missing SELinux context in identity\n");
         goto cleanup;
     }
     if (STRNEQ_NULLABLE("foo_u:bar_r:wizz_t:s0-s0:c0.c1023", gotSELinuxContext)) {
-        fprintf(stderr, "Want groupname 'foo_u:bar_r:wizz_t:s0-s0:c0.c1023' got '%s'\n",
-                NULLSTR(gotGroupID));
+        fprintf(stderr, "Want SELinux context 'foo_u:bar_r:wizz_t:s0-s0:c0.c1023' got '%s'\n",
+                NULLSTR(gotSELinuxContext));
         goto cleanup;
     }
 
@@ -151,7 +141,6 @@ static int testIdentity(const void *opaque ATTRIBUTE_UNUSED)
     if (client)
         virNetServerClientClose(client);
     virObjectUnref(client);
-    virObjectUnref(ident);
     VIR_FORCE_CLOSE(sv[0]);
     VIR_FORCE_CLOSE(sv[1]);
     return ret;
@@ -170,7 +159,7 @@ mymain(void)
 
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virnetserverclientmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virnetserverclient"))
 #else
 static int
 mymain(void)

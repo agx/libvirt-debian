@@ -29,7 +29,6 @@
 #include "internal.h"
 #include "virbitmap.h"
 #include "virstoragefile.h"
-#include "virautoclean.h"
 
 typedef enum {
     VIR_FILE_CLOSE_PRESERVE_ERRNO = 1 << 0,
@@ -37,19 +36,19 @@ typedef enum {
     VIR_FILE_CLOSE_DONT_LOG = 1 << 2,
 } virFileCloseFlags;
 
-ssize_t saferead(int fd, void *buf, size_t count) ATTRIBUTE_RETURN_CHECK;
+ssize_t saferead(int fd, void *buf, size_t count) G_GNUC_WARN_UNUSED_RESULT;
 ssize_t safewrite(int fd, const void *buf, size_t count)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int safezero(int fd, off_t offset, off_t len)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int virFileAllocate(int fd, off_t offset, off_t len)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 
 /* Don't call these directly - use the macros below */
 int virFileClose(int *fdptr, virFileCloseFlags flags)
-        ATTRIBUTE_RETURN_CHECK;
-int virFileFclose(FILE **file, bool preserve_errno) ATTRIBUTE_RETURN_CHECK;
-FILE *virFileFdopen(int *fdptr, const char *mode) ATTRIBUTE_RETURN_CHECK;
+        G_GNUC_WARN_UNUSED_RESULT;
+int virFileFclose(FILE **file, bool preserve_errno) G_GNUC_WARN_UNUSED_RESULT;
+FILE *virFileFdopen(int *fdptr, const char *mode) G_GNUC_WARN_UNUSED_RESULT;
 
 static inline void virForceCloseHelper(int *fd)
 {
@@ -107,16 +106,16 @@ typedef enum {
 virFileWrapperFdPtr virFileWrapperFdNew(int *fd,
                                         const char *name,
                                         unsigned int flags)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 
 int virFileWrapperFdClose(virFileWrapperFdPtr dfd);
 
 void virFileWrapperFdFree(virFileWrapperFdPtr dfd);
 
 int virFileLock(int fd, bool shared, off_t start, off_t len, bool waitForLock)
-    ATTRIBUTE_NOINLINE;
+    G_GNUC_NO_INLINE;
 int virFileUnlock(int fd, off_t start, off_t len)
-    ATTRIBUTE_NOINLINE;
+    G_GNUC_NO_INLINE;
 
 int virFileFlock(int fd, bool lock, bool shared);
 
@@ -146,20 +145,20 @@ int virFileNBDDeviceAssociate(const char *file,
 int virFileDeleteTree(const char *dir);
 
 int virFileReadHeaderFD(int fd, int maxlen, char **buf)
-    ATTRIBUTE_RETURN_CHECK ATTRIBUTE_NONNULL(3);
+    G_GNUC_WARN_UNUSED_RESULT ATTRIBUTE_NONNULL(3);
 int virFileReadHeaderQuiet(const char *path, int maxlen, char **buf)
-    ATTRIBUTE_RETURN_CHECK ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(3);
+    G_GNUC_WARN_UNUSED_RESULT ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(3);
 int virFileReadLimFD(int fd, int maxlen, char **buf)
-    ATTRIBUTE_RETURN_CHECK ATTRIBUTE_NONNULL(3);
+    G_GNUC_WARN_UNUSED_RESULT ATTRIBUTE_NONNULL(3);
 int virFileReadAll(const char *path, int maxlen, char **buf)
-    ATTRIBUTE_RETURN_CHECK ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(3);
+    G_GNUC_WARN_UNUSED_RESULT ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(3);
 int virFileReadAllQuiet(const char *path, int maxlen, char **buf)
-    ATTRIBUTE_RETURN_CHECK ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(3);
+    G_GNUC_WARN_UNUSED_RESULT ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(3);
 int virFileReadBufQuiet(const char *file, char *buf, int len)
-    ATTRIBUTE_RETURN_CHECK ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);
+    G_GNUC_WARN_UNUSED_RESULT ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);
 
 int virFileWriteStr(const char *path, const char *str, mode_t mode)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 
 int virFileLinkPointsTo(const char *checkLink,
                         const char *checkDest)
@@ -170,15 +169,12 @@ int virFileRelLinkPointsTo(const char *directory,
     ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(3);
 
 int virFileResolveLink(const char *linkpath,
-                       char **resultpath) ATTRIBUTE_RETURN_CHECK;
+                       char **resultpath) G_GNUC_WARN_UNUSED_RESULT;
 int virFileResolveAllLinks(const char *linkpath,
-                           char **resultpath) ATTRIBUTE_RETURN_CHECK;
+                           char **resultpath) G_GNUC_WARN_UNUSED_RESULT;
 
 int virFileIsLink(const char *linkpath)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
-
-int virFileReadLink(const char *linkpath, char **resultpath)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;
 
 char *virFindFileInPath(const char *file);
 
@@ -193,12 +189,13 @@ char *virFileFindResourceFull(const char *filename,
                               const char *installdir,
                               const char *envname)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(4) ATTRIBUTE_NONNULL(5);
-void virFileActivateDirOverride(const char *argv0)
+void virFileActivateDirOverrideForProg(const char *argv0)
     ATTRIBUTE_NONNULL(1);
+void virFileActivateDirOverrideForLib(void);
 
 off_t virFileLength(const char *path, int fd) ATTRIBUTE_NONNULL(1);
 bool virFileIsDir (const char *file) ATTRIBUTE_NONNULL(1);
-bool virFileExists(const char *file) ATTRIBUTE_NONNULL(1) ATTRIBUTE_NOINLINE;
+bool virFileExists(const char *file) ATTRIBUTE_NONNULL(1) G_GNUC_NO_INLINE;
 bool virFileIsExecutable(const char *file) ATTRIBUTE_NONNULL(1);
 bool virFileIsRegular(const char *file) ATTRIBUTE_NONNULL(1);
 
@@ -212,25 +209,26 @@ enum {
     VIR_FILE_SHFS_CEPH = (1 << 6),
     VIR_FILE_SHFS_GPFS = (1 << 7),
     VIR_FILE_SHFS_QB = (1 << 8),
+    VIR_FILE_SHFS_ACFS = (1 << 9),
 };
 
 int virFileIsSharedFSType(const char *path, int fstypes) ATTRIBUTE_NONNULL(1);
 int virFileIsSharedFS(const char *path) ATTRIBUTE_NONNULL(1);
 int virFileIsMountPoint(const char *file) ATTRIBUTE_NONNULL(1);
 int virFileIsCDROM(const char *path)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;
 
 int virFileGetMountSubtree(const char *mtabpath,
                            const char *prefix,
                            char ***mountsret,
-                           size_t *nmountsret) ATTRIBUTE_RETURN_CHECK;
+                           size_t *nmountsret) G_GNUC_WARN_UNUSED_RESULT;
 int virFileGetMountReverseSubtree(const char *mtabpath,
                                   const char *prefix,
                                   char ***mountsret,
-                                  size_t *nmountsret) ATTRIBUTE_RETURN_CHECK;
+                                  size_t *nmountsret) G_GNUC_WARN_UNUSED_RESULT;
 
 char *virFileSanitizePath(const char *path);
-char *virFileCanonicalizePath(const char *path) ATTRIBUTE_NOINLINE;
+char *virFileCanonicalizePath(const char *path) G_GNUC_NO_INLINE;
 
 enum {
     VIR_FILE_OPEN_NONE        = 0,
@@ -241,15 +239,15 @@ enum {
 };
 int virFileAccessibleAs(const char *path, int mode,
                         uid_t uid, gid_t gid)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;
 int virFileOpenAs(const char *path, int openflags, mode_t mode,
                   uid_t uid, gid_t gid,
                   unsigned int flags)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;
 int virFileRemove(const char *path, uid_t uid, gid_t gid);
 
 int virFileChownFiles(const char *name, uid_t uid, gid_t gid)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;
 
 enum {
     VIR_DIR_CREATE_NONE        = 0,
@@ -257,54 +255,31 @@ enum {
     VIR_DIR_CREATE_ALLOW_EXIST = (1 << 1),
 };
 int virDirCreate(const char *path, mode_t mode, uid_t uid, gid_t gid,
-                 unsigned int flags) ATTRIBUTE_RETURN_CHECK;
+                 unsigned int flags) G_GNUC_WARN_UNUSED_RESULT;
 int virDirOpen(DIR **dirp, const char *dirname)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 int virDirOpenIfExists(DIR **dirp, const char *dirname)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 int virDirOpenQuiet(DIR **dirp, const char *dirname)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 int virDirRead(DIR *dirp, struct dirent **ent, const char *dirname)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 void virDirClose(DIR **dirp)
     ATTRIBUTE_NONNULL(1);
 #define VIR_DIR_CLOSE(dir)  virDirClose(&(dir))
 
-int virFileMakePath(const char *path) ATTRIBUTE_RETURN_CHECK;
+int virFileMakePath(const char *path) G_GNUC_WARN_UNUSED_RESULT;
 int virFileMakePathWithMode(const char *path,
-                            mode_t mode) ATTRIBUTE_RETURN_CHECK;
-int virFileMakeParentPath(const char *path) ATTRIBUTE_RETURN_CHECK;
+                            mode_t mode) G_GNUC_WARN_UNUSED_RESULT;
+int virFileMakeParentPath(const char *path) G_GNUC_WARN_UNUSED_RESULT;
 
 char *virFileBuildPath(const char *dir,
                        const char *name,
-                       const char *ext) ATTRIBUTE_RETURN_CHECK;
+                       const char *ext) G_GNUC_WARN_UNUSED_RESULT;
 
 
-#ifdef WIN32
-/* On Win32, the canonical directory separator is the backslash, and
- * the search path separator is the semicolon. Note that also the
- * (forward) slash works as directory separator.
- */
-# define VIR_FILE_DIR_SEPARATOR '\\'
-# define VIR_FILE_DIR_SEPARATOR_S "\\"
-# define VIR_FILE_IS_DIR_SEPARATOR(c) ((c) == VIR_FILE_DIR_SEPARATOR || (c) == '/')
-# define VIR_FILE_PATH_SEPARATOR ';'
-# define VIR_FILE_PATH_SEPARATOR_S ";"
-
-#else  /* !WIN32 */
-
-# define VIR_FILE_DIR_SEPARATOR '/'
-# define VIR_FILE_DIR_SEPARATOR_S "/"
-# define VIR_FILE_IS_DIR_SEPARATOR(c) ((c) == VIR_FILE_DIR_SEPARATOR)
-# define VIR_FILE_PATH_SEPARATOR ':'
-# define VIR_FILE_PATH_SEPARATOR_S ":"
-
-#endif /* !WIN32 */
-
-bool virFileIsAbsPath(const char *path);
 int virFileAbsPath(const char *path,
-                   char **abspath) ATTRIBUTE_RETURN_CHECK;
-const char *virFileSkipRoot(const char *path);
+                   char **abspath) G_GNUC_WARN_UNUSED_RESULT;
 void virFileRemoveLastComponent(char *path);
 
 int virFileOpenTty(int *ttymaster,
@@ -316,10 +291,10 @@ char *virFileFindMountPoint(const char *type);
 /* NB: this should be combined with virFileBuildPath */
 #define virBuildPath(path, ...) \
     virBuildPathInternal(path, __VA_ARGS__, NULL)
-int virBuildPathInternal(char **path, ...) ATTRIBUTE_SENTINEL;
+int virBuildPathInternal(char **path, ...) G_GNUC_NULL_TERMINATED;
 
 int virFilePrintf(FILE *fp, const char *msg, ...)
-    ATTRIBUTE_FMT_PRINTF(2, 3);
+    G_GNUC_PRINTF(2, 3);
 
 typedef struct _virHugeTLBFS virHugeTLBFS;
 typedef virHugeTLBFS *virHugeTLBFSPtr;
@@ -360,15 +335,17 @@ int virFileCopyACLs(const char *src,
 int virFileComparePaths(const char *p1, const char *p2);
 
 int virFileReadValueInt(int *value, const char *format, ...)
- ATTRIBUTE_FMT_PRINTF(2, 3);
+ G_GNUC_PRINTF(2, 3);
 int virFileReadValueUint(unsigned int *value, const char *format, ...)
- ATTRIBUTE_FMT_PRINTF(2, 3);
+ G_GNUC_PRINTF(2, 3);
+int virFileReadValueUllong(unsigned long long *value, const char *format, ...)
+ G_GNUC_PRINTF(2, 3);
 int virFileReadValueBitmap(virBitmapPtr *value, const char *format, ...)
- ATTRIBUTE_FMT_PRINTF(2, 3);
+ G_GNUC_PRINTF(2, 3);
 int virFileReadValueScaledInt(unsigned long long *value, const char *format, ...)
- ATTRIBUTE_FMT_PRINTF(2, 3);
+ G_GNUC_PRINTF(2, 3);
 int virFileReadValueString(char **value, const char *format, ...)
- ATTRIBUTE_FMT_PRINTF(2, 3);
+ G_GNUC_PRINTF(2, 3);
 
 int virFileWaitForExists(const char *path, size_t ms, size_t tries);
 
@@ -377,23 +354,25 @@ int virFileInData(int fd,
                   int *inData,
                   long long *length);
 
-VIR_DEFINE_AUTOPTR_FUNC(virFileWrapperFd, virFileWrapperFdFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virFileWrapperFd, virFileWrapperFdFree);
 
 int virFileGetXAttr(const char *path,
                     const char *name,
                     char **value)
-    ATTRIBUTE_NOINLINE;
+    G_GNUC_NO_INLINE;
 
 int virFileGetXAttrQuiet(const char *path,
                          const char *name,
                          char **value)
-    ATTRIBUTE_NOINLINE;
+    G_GNUC_NO_INLINE;
 
 int virFileSetXAttr(const char *path,
                     const char *name,
                     const char *value)
-    ATTRIBUTE_NOINLINE;
+    G_GNUC_NO_INLINE;
 
 int virFileRemoveXAttr(const char *path,
                        const char *name)
-    ATTRIBUTE_NOINLINE;
+    G_GNUC_NO_INLINE;
+
+int virFileDataSync(int fd);

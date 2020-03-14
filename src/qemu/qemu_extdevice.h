@@ -23,16 +23,22 @@
 #include "qemu_conf.h"
 #include "qemu_domain.h"
 
-int qemuExtDeviceLogCommand(qemuDomainLogContextPtr logCtxt,
+int qemuExtDeviceLogCommand(virQEMUDriverPtr driver,
+                            virDomainObjPtr vm,
                             virCommandPtr cmd,
                             const char *info)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(3)
-    ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(3) ATTRIBUTE_NONNULL(4)
+    G_GNUC_WARN_UNUSED_RESULT;
+
+int qemuExtDevicesPrepareDomain(virQEMUDriverPtr driver,
+                                virDomainObjPtr vm)
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
+    G_GNUC_WARN_UNUSED_RESULT;
 
 int qemuExtDevicesPrepareHost(virQEMUDriverPtr driver,
-                              virDomainDefPtr def)
+                              virDomainObjPtr vm)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 
 void qemuExtDevicesCleanupHost(virQEMUDriverPtr driver,
                                virDomainDefPtr def)
@@ -40,10 +46,9 @@ void qemuExtDevicesCleanupHost(virQEMUDriverPtr driver,
 
 int qemuExtDevicesStart(virQEMUDriverPtr driver,
                         virDomainObjPtr vm,
-                        qemuDomainLogContextPtr logCtxt,
                         bool incomingMigration)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(3)
-    ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
+    G_GNUC_WARN_UNUSED_RESULT;
 
 void qemuExtDevicesStop(virQEMUDriverPtr driver,
                         virDomainObjPtr vm)
@@ -54,6 +59,3 @@ bool qemuExtDevicesHasDevice(virDomainDefPtr def);
 int qemuExtDevicesSetupCgroup(virQEMUDriverPtr driver,
                               virDomainDefPtr def,
                               virCgroupPtr cgroup);
-
-int qemuExtDevicesInitPaths(virQEMUDriverPtr driver,
-                            virDomainDefPtr def);

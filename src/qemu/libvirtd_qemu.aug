@@ -86,9 +86,9 @@ module Libvirtd_qemu =
                  | bool_entry "auto_start_bypass_cache"
 
    let process_entry = str_entry "hugetlbfs_mount"
-                 | bool_entry "clear_emulator_capabilities"
                  | str_entry "bridge_helper"
                  | str_entry "pr_helper"
+                 | str_entry "slirp_helper"
                  | bool_entry "set_process_name"
                  | int_entry "max_processes"
                  | int_entry "max_files"
@@ -115,7 +115,7 @@ module Libvirtd_qemu =
 
    let nvram_entry = str_array_entry "nvram"
 
-   let gluster_debug_level_entry = int_entry "gluster_debug_level"
+   let debug_level_entry = int_entry "gluster_debug_level"
 
    let memory_entry = str_entry "memory_backing_dir"
 
@@ -127,6 +127,12 @@ module Libvirtd_qemu =
 
    let swtpm_entry = str_entry "swtpm_user"
                 | str_entry "swtpm_group"
+
+   (* Entries that used to exist in the config which are now
+    * deleted. We keep on parsing them so we don't break
+    * ability to parse old configs after upgrade
+    *)
+   let obsolete_entry = bool_entry "clear_emulator_capabilities"
 
    let capability_filters_entry = str_array_entry "capability_filters"
 
@@ -146,12 +152,13 @@ module Libvirtd_qemu =
              | network_entry
              | log_entry
              | nvram_entry
-             | gluster_debug_level_entry
+             | debug_level_entry
              | memory_entry
              | vxhs_entry
              | nbd_entry
              | swtpm_entry
              | capability_filters_entry
+             | obsolete_entry
 
    let comment = [ label "#comment" . del /#[ \t]*/ "# " .  store /([^ \t\n][^\n]*)?/ . del /\n/ "\n" ]
    let empty = [ label "#empty" . eol ]

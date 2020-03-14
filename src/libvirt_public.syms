@@ -852,4 +852,25 @@ LIBVIRT_5.6.0 {
         virDomainListAllCheckpoints;
 } LIBVIRT_5.5.0;
 
+LIBVIRT_5.7.0 {
+    global:
+        virDomainGetGuestInfo;
+} LIBVIRT_5.6.0;
+
+LIBVIRT_5.8.0 {
+    global:
+        virConnectSetIdentity;
+} LIBVIRT_5.7.0;
+
+LIBVIRT_5.10.0 {
+    global:
+        virDomainAgentSetResponseTimeout;
+} LIBVIRT_5.8.0;
+
+LIBVIRT_6.0.0 {
+    global:
+        virDomainBackupBegin;
+        virDomainBackupGetXMLDesc;
+} LIBVIRT_5.10.0;
+
 # .... define new API here using predicted next version number ....

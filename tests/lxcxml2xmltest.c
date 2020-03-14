@@ -16,8 +16,7 @@
 
 # define VIR_FROM_THIS VIR_FROM_NONE
 
-static virCapsPtr caps;
-static virDomainXMLOptionPtr xmlopt;
+static virLXCDriverPtr driver;
 
 struct testInfo {
     const char *name;
@@ -34,18 +33,16 @@ testCompareXMLToXMLHelper(const void *data)
     char *xml_out = NULL;
     int ret = -1;
 
-    if (virAsprintf(&xml_in, "%s/lxcxml2xmldata/lxc-%s.xml",
-                    abs_srcdir, info->name) < 0 ||
-        virAsprintf(&xml_out, "%s/lxcxml2xmloutdata/lxc-%s.xml",
-                    abs_srcdir, info->name) < 0)
-        goto cleanup;
+    xml_in = g_strdup_printf("%s/lxcxml2xmldata/lxc-%s.xml",
+                             abs_srcdir, info->name);
+    xml_out = g_strdup_printf("%s/lxcxml2xmloutdata/lxc-%s.xml",
+                              abs_srcdir, info->name);
 
-    ret = testCompareDomXML2XMLFiles(caps, xmlopt, xml_in,
+    ret = testCompareDomXML2XMLFiles(driver->caps, driver->xmlopt, xml_in,
                                      info->different ? xml_out : xml_in,
                                      !info->inactive_only,
                                      info->parse_flags,
                                      TEST_COMPARE_DOM_XML2XML_RESULT_SUCCESS);
- cleanup:
     VIR_FREE(xml_in);
     VIR_FREE(xml_out);
     return ret;
@@ -57,10 +54,7 @@ mymain(void)
 {
     int ret = 0;
 
-    if ((caps = testLXCCapsInit()) == NULL)
-        return EXIT_FAILURE;
-
-    if (!(xmlopt = lxcDomainXMLConfInit()))
+    if (!(driver = testLXCDriverInit()))
         return EXIT_FAILURE;
 
 # define DO_TEST_FULL(name, is_different, inactive, parse_flags) \
@@ -81,7 +75,7 @@ mymain(void)
     /* Unset or set all envvars here that are copied in lxcdBuildCommandLine
      * using ADD_ENV_COPY, otherwise these tests may fail due to unexpected
      * values for these envvars */
-    setenv("PATH", "/bin", 1);
+    g_setenv("PATH", "/bin", TRUE);
 
     DO_TEST("systemd");
     DO_TEST("hostdev");
@@ -97,8 +91,7 @@ mymain(void)
     DO_TEST("initdir");
     DO_TEST("inituser");
 
-    virObjectUnref(caps);
-    virObjectUnref(xmlopt);
+    testLXCDriverFree(driver);
 
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -51,6 +51,7 @@ typedef enum {
     FLAG_FIPS               = 1 << 2,
     FLAG_REAL_CAPS          = 1 << 3,
     FLAG_SKIP_LEGACY_CPUS   = 1 << 4,
+    FLAG_SLIRP_HELPER       = 1 << 5,
 } testQemuInfoFlags;
 
 struct testQemuInfo {
@@ -62,6 +63,7 @@ struct testQemuInfo {
     int migrateFd;
     unsigned int flags;
     unsigned int parseFlags;
+    virArch arch;
 };
 
 virCapsPtr testQemuCapsInit(void);
@@ -70,17 +72,16 @@ virDomainXMLOptionPtr testQemuXMLConfInit(void);
 
 virQEMUCapsPtr qemuTestParseCapabilitiesArch(virArch arch,
                                              const char *capsFile);
-virQEMUCapsPtr qemuTestParseCapabilities(virCapsPtr caps,
-                                         const char *capsFile);
 
 extern virCPUDefPtr cpuDefault;
 extern virCPUDefPtr cpuHaswell;
 extern virCPUDefPtr cpuPower8;
 extern virCPUDefPtr cpuPower9;
 
-void qemuTestSetHostArch(virCapsPtr caps,
-                        virArch arch);
-void qemuTestSetHostCPU(virCapsPtr caps,
+void qemuTestSetHostArch(virQEMUDriverPtr driver,
+                         virArch arch);
+void qemuTestSetHostCPU(virQEMUDriverPtr driver,
+                        virArch arch,
                         virCPUDefPtr cpu);
 
 int qemuTestDriverInit(virQEMUDriver *driver);
@@ -95,8 +96,11 @@ char *testQemuGetLatestCapsForArch(const char *arch,
                                    const char *suffix);
 virHashTablePtr testQemuGetLatestCaps(void);
 
-typedef int (*testQemuCapsIterateCallback)(const char *base,
+typedef int (*testQemuCapsIterateCallback)(const char *inputDir,
+                                           const char *prefix,
+                                           const char *version,
                                            const char *archName,
+                                           const char *suffix,
                                            void *opaque);
 int testQemuCapsIterate(const char *suffix,
                         testQemuCapsIterateCallback callback,

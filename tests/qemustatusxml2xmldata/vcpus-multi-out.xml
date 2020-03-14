@@ -309,7 +309,8 @@
   <channelTargetDir path='/tmp/channel'/>
   <allowReboot value='yes'/>
   <blockjobs active='no'/>
-  <domain type='kvm'>
+  <agentTimeout>-2</agentTimeout>
+  <domain type='kvm' id='1729'>
     <name>QEMUGuest1</name>
     <uuid>c7a5fdbd-edaf-9455-926a-d65c16db1809</uuid>
     <memory unit='KiB'>219100</memory>

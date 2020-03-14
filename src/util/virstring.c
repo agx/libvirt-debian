@@ -18,11 +18,9 @@
 
 #include <config.h>
 
-#include <regex.h>
+#include <glib/gprintf.h>
 #include <locale.h>
 
-#include "base64.h"
-#include "c-ctype.h"
 #include "virstring.h"
 #include "virthread.h"
 #include "viralloc.h"
@@ -91,8 +89,7 @@ virStringSplitCount(const char *string,
             if (VIR_RESIZE_N(tokens, maxtokens, ntokens, 1) < 0)
                 goto error;
 
-            if (VIR_STRNDUP(tokens[ntokens], remainder, len) < 0)
-                goto error;
+            tokens[ntokens] = g_strndup(remainder, len);
             ntokens++;
             remainder = tmp + delimlen;
             tmp = strstr(remainder, delim);
@@ -102,8 +99,7 @@ virStringSplitCount(const char *string,
         if (VIR_RESIZE_N(tokens, maxtokens, ntokens, 1) < 0)
             goto error;
 
-        if (VIR_STRDUP(tokens[ntokens], remainder) < 0)
-            goto error;
+        tokens[ntokens] = g_strdup(remainder);
         ntokens++;
     }
 
@@ -156,11 +152,9 @@ char *virStringListJoin(const char **strings,
             virBufferAdd(&buf, delim, -1);
         strings++;
     }
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
     ret = virBufferContentAndReset(&buf);
     if (!ret)
-        ignore_value(VIR_STRDUP(ret, ""));
+        ret = g_strdup("");
     return ret;
 }
 
@@ -182,9 +176,10 @@ virStringListAdd(char ***strings,
 {
     size_t i = virStringListLength((const char **) *strings);
 
-    if (VIR_EXPAND_N(*strings, i, 2) < 0 ||
-        VIR_STRDUP((*strings)[i - 2], item) < 0)
+    if (VIR_EXPAND_N(*strings, i, 2) < 0)
         return -1;
+
+    (*strings)[i - 2] = g_strdup(item);
 
     return 0;
 }
@@ -286,10 +281,8 @@ virStringListCopy(char ***dst,
     if (VIR_ALLOC_N(copy, virStringListLength(src) + 1) < 0)
         goto error;
 
-    for (i = 0; src[i]; i++) {
-        if (VIR_STRDUP(copy[i], src[i]) < 0)
-            goto error;
-    }
+    for (i = 0; src[i]; i++)
+        copy[i] = g_strdup(src[i]);
 
     *dst = copy;
     return 0;
@@ -630,7 +623,7 @@ virLocaleRevert(virLocale *oldlocale)
 }
 
 static void
-virLocaleFixupRadix(char **strp ATTRIBUTE_UNUSED)
+virLocaleFixupRadix(char **strp G_GNUC_UNUSED)
 {
 }
 
@@ -639,13 +632,13 @@ virLocaleFixupRadix(char **strp ATTRIBUTE_UNUSED)
 typedef int virLocale;
 
 static int
-virLocaleSetRaw(virLocale *oldlocale ATTRIBUTE_UNUSED)
+virLocaleSetRaw(virLocale *oldlocale G_GNUC_UNUSED)
 {
     return 0;
 }
 
 static void
-virLocaleRevert(virLocale *oldlocale ATTRIBUTE_UNUSED)
+virLocaleRevert(virLocale *oldlocale G_GNUC_UNUSED)
 {
 }
 
@@ -705,64 +698,24 @@ virStrToDouble(char const *s,
  *
  * converts double to string with C locale (thread-safe).
  *
- * Returns -1 on error, size of the string otherwise.
+ * Returns: 0 on success, -1 otherwise.
  */
 int
 virDoubleToStr(char **strp, double number)
 {
     virLocale oldlocale;
-    int ret = -1;
 
     if (virLocaleSetRaw(&oldlocale) < 0)
         return -1;
 
-    ret = virAsprintf(strp, "%lf", number);
+    *strp = g_strdup_printf("%lf", number);
 
     virLocaleRevert(&oldlocale);
     virLocaleFixupRadix(strp);
 
-    return ret;
+    return 0;
 }
 
-
-int
-virVasprintfInternal(bool report,
-                     int domcode,
-                     const char *filename,
-                     const char *funcname,
-                     size_t linenr,
-                     char **strp,
-                     const char *fmt,
-                     va_list list)
-{
-    int ret;
-
-    if ((ret = vasprintf(strp, fmt, list)) == -1) {
-        if (report)
-            virReportOOMErrorFull(domcode, filename, funcname, linenr);
-        *strp = NULL;
-    }
-    return ret;
-}
-
-int
-virAsprintfInternal(bool report,
-                    int domcode,
-                    const char *filename,
-                    const char *funcname,
-                    size_t linenr,
-                    char **strp,
-                    const char *fmt, ...)
-{
-    va_list ap;
-    int ret;
-
-    va_start(ap, fmt);
-    ret = virVasprintfInternal(report, domcode, filename,
-                               funcname, linenr, strp, fmt, ap);
-    va_end(ap);
-    return ret;
-}
 
 /**
  * virStrncpy:
@@ -799,7 +752,7 @@ virStrncpy(char *dest, const char *src, size_t n, size_t destbytes)
     if (n == -1)
         n = src_len;
 
-    if (n <= 0 || n > src_len || n > (destbytes - 1))
+    if (n > src_len || n > (destbytes - 1))
         return -1;
 
     memcpy(dest, src, n);
@@ -839,7 +792,7 @@ virSkipSpaces(const char **str)
 {
     const char *cur = *str;
 
-    while (c_isspace(*cur))
+    while (g_ascii_isspace(*cur))
         cur++;
     *str = cur;
 }
@@ -856,7 +809,7 @@ virSkipSpacesAndBackslash(const char **str)
 {
     const char *cur = *str;
 
-    while (c_isspace(*cur) || *cur == '\\')
+    while (g_ascii_isspace(*cur) || *cur == '\\')
         cur++;
     *str = cur;
 }
@@ -885,7 +838,7 @@ virTrimSpaces(char *str, char **endp)
         end = str + strlen(str);
     else
         end = *endp;
-    while (end > str && c_isspace(end[-1]))
+    while (end > str && g_ascii_isspace(end[-1]))
         end--;
     if (endp) {
         if (!*endp)
@@ -931,91 +884,6 @@ virStringIsEmpty(const char *str)
 
     virSkipSpaces(&str);
     return str[0] == '\0';
-}
-
-/**
- * virStrdup:
- * @dest: where to store duplicated string
- * @src: the source string to duplicate
- * @report: whether to report OOM error, if there is one
- * @domcode: error domain code
- * @filename: caller's filename
- * @funcname: caller's funcname
- * @linenr: caller's line number
- *
- * Wrapper over strdup, which reports OOM error if told so,
- * in which case callers wants to pass @domcode, @filename,
- * @funcname and @linenr which should represent location in
- * caller's body where virStrdup is called from. Consider
- * using VIR_STRDUP which sets these automatically.
- *
- * Returns: 0 for NULL src, 1 on successful copy, -1 otherwise.
- */
-int
-virStrdup(char **dest,
-          const char *src,
-          bool report,
-          int domcode,
-          const char *filename,
-          const char *funcname,
-          size_t linenr)
-{
-    *dest = NULL;
-    if (!src)
-        return 0;
-    if (!(*dest = strdup(src))) {
-        if (report)
-            virReportOOMErrorFull(domcode, filename, funcname, linenr);
-        return -1;
-    }
-
-    return 1;
-}
-
-/**
- * virStrndup:
- * @dest: where to store duplicated string
- * @src: the source string to duplicate
- * @n: how many bytes to copy
- * @report: whether to report OOM error, if there is one
- * @domcode: error domain code
- * @filename: caller's filename
- * @funcname: caller's funcname
- * @linenr: caller's line number
- *
- * Wrapper over strndup, which reports OOM error if told so,
- * in which case callers wants to pass @domcode, @filename,
- * @funcname and @linenr which should represent location in
- * caller's body where virStrndup is called from. Consider
- * using VIR_STRNDUP which sets these automatically.
- *
- * In case @n is smaller than zero, the whole @src string is
- * copied.
- *
- * Returns: 0 for NULL src, 1 on successful copy, -1 otherwise.
- */
-int
-virStrndup(char **dest,
-           const char *src,
-           ssize_t n,
-           bool report,
-           int domcode,
-           const char *filename,
-           const char *funcname,
-           size_t linenr)
-{
-    *dest = NULL;
-    if (!src)
-        return 0;
-    if (n < 0)
-        n = strlen(src);
-    if (!(*dest = strndup(src, n))) {
-        if (report)
-            virReportOOMErrorFull(domcode, filename, funcname, linenr);
-        return -1;
-    }
-
-   return 1;
 }
 
 
@@ -1097,29 +965,26 @@ virStringSearch(const char *str,
                 size_t max_matches,
                 char ***matches)
 {
-    regex_t re;
-    regmatch_t rem;
+    g_autoptr(GRegex) regex = NULL;
+    g_autoptr(GError) err = NULL;
     size_t nmatches = 0;
     ssize_t ret = -1;
-    int rv = -1;
 
     *matches = NULL;
 
     VIR_DEBUG("search '%s' for '%s'", str, regexp);
 
-    if ((rv = regcomp(&re, regexp, REG_EXTENDED)) != 0) {
-        char error[100];
-        regerror(rv, &re, error, sizeof(error));
+    regex = g_regex_new(regexp, 0, 0, &err);
+    if (!regex) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("Error while compiling regular expression '%s': %s"),
-                       regexp, error);
+                       _("Failed to compile regex %s"), err->message);
         return -1;
     }
 
-    if (re.re_nsub != 1) {
+    if (g_regex_get_capture_count(regex) != 1) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("Regular expression '%s' must have exactly 1 match group, not %zu"),
-                       regexp, re.re_nsub);
+                       _("Regular expression '%s' must have exactly 1 match group, not %d"),
+                       regexp, g_regex_get_capture_count(regex));
         goto cleanup;
     }
 
@@ -1130,29 +995,29 @@ virStringSearch(const char *str,
         goto cleanup;
 
     while ((nmatches - 1) < max_matches) {
+        g_autoptr(GMatchInfo) info = NULL;
         char *match;
+        int endpos;
 
-        if (regexec(&re, str, 1, &rem, 0) != 0)
+        if (!g_regex_match(regex, str, 0, &info))
             break;
 
         if (VIR_EXPAND_N(*matches, nmatches, 1) < 0)
             goto cleanup;
 
-        if (VIR_STRNDUP(match, str + rem.rm_so,
-                        rem.rm_eo - rem.rm_so) < 0)
-            goto cleanup;
+        match = g_match_info_fetch(info, 1);
 
         VIR_DEBUG("Got '%s'", match);
 
         (*matches)[nmatches-2] = match;
 
-        str = str + rem.rm_eo;
+        g_match_info_fetch_pos(info, 1, NULL, &endpos);
+        str += endpos;
     }
 
     ret = nmatches - 1; /* don't count the trailing null */
 
  cleanup:
-    regfree(&re);
     if (ret < 0) {
         virStringListFree(*matches);
         *matches = NULL;
@@ -1172,24 +1037,18 @@ bool
 virStringMatch(const char *str,
                const char *regexp)
 {
-    regex_t re;
-    int rv;
+    g_autoptr(GRegex) regex = NULL;
+    g_autoptr(GError) err = NULL;
 
     VIR_DEBUG("match '%s' for '%s'", str, regexp);
 
-    if ((rv = regcomp(&re, regexp, REG_EXTENDED | REG_NOSUB)) != 0) {
-        char error[100];
-        regerror(rv, &re, error, sizeof(error));
-        VIR_WARN("error while compiling regular expression '%s': %s",
-                 regexp, error);
+    regex = g_regex_new(regexp, 0, 0, &err);
+    if (!regex) {
+        VIR_WARN("Failed to compile regex %s", err->message);
         return false;
     }
 
-    rv = regexec(&re, str, 0, NULL, 0);
-
-    regfree(&re);
-
-    return rv == 0;
+    return g_regex_match(regex, str, 0, NULL);
 }
 
 /**
@@ -1228,9 +1087,6 @@ virStringReplace(const char *haystack,
 
         tmp1 = tmp2;
     }
-
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
 
     return virBufferContentAndReset(&buf);
 }
@@ -1350,9 +1206,6 @@ virStringHasControlChars(const char *str)
 }
 
 
-VIR_WARNINGS_NO_WLOGICALOP_STRCHR
-
-
 /**
  * virStringStripControlChars:
  * @str: the string to strip
@@ -1425,7 +1278,7 @@ virStringToUpper(char **dst, const char *src)
         return -1;
 
     for (i = 0; src[i]; i++) {
-        cap[i] = c_toupper(src[i]);
+        cap[i] = g_ascii_toupper(src[i]);
         if (cap[i] == '-')
             cap[i] = '_';
     }
@@ -1446,7 +1299,7 @@ virStringIsPrintable(const char *str)
     size_t i;
 
     for (i = 0; str[i]; i++)
-        if (!c_isprint(str[i]))
+        if (!g_ascii_isprint(str[i]))
             return false;
 
     return true;
@@ -1465,34 +1318,12 @@ virStringBufferIsPrintable(const uint8_t *buf,
     size_t i;
 
     for (i = 0; i < buflen; i++)
-        if (!c_isprint(buf[i]))
+        if (!g_ascii_isprint(buf[i]))
             return false;
 
     return true;
 }
 
-
-/**
- * virStringEncodeBase64:
- * @buf: buffer of bytes to encode
- * @buflen: number of bytes to encode
- *
- * Encodes @buf to base 64 and returns the resulting string. The caller is
- * responsible for freeing the result.
- */
-char *
-virStringEncodeBase64(const uint8_t *buf, size_t buflen)
-{
-    char *ret;
-
-    base64_encode_alloc((const char *) buf, buflen, &ret);
-    if (!ret) {
-        virReportOOMError();
-        return NULL;
-    }
-
-    return ret;
-}
 
 /**
  * virStringTrimOptionalNewline:

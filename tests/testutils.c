@@ -25,7 +25,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <regex.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include "testutils.h"
@@ -38,16 +37,8 @@
 #include "virlog.h"
 #include "vircommand.h"
 #include "virrandom.h"
-#include "dirname.h"
 #include "virprocess.h"
 #include "virstring.h"
-
-#ifdef TEST_OOM
-# ifdef TEST_OOM_TRACE
-#  include <dlfcn.h>
-#  include <execinfo.h>
-# endif
-#endif
 
 #define VIR_FROM_THIS VIR_FROM_NONE
 
@@ -61,28 +52,18 @@ static unsigned int testVerbose = -1;
 static unsigned int testExpensive = -1;
 static unsigned int testRegenerate = -1;
 
-#ifdef TEST_OOM
-static unsigned int testOOM;
-static unsigned int testOOMStart = -1;
-static unsigned int testOOMEnd = -1;
-static unsigned int testOOMTrace;
-# ifdef TEST_OOM_TRACE
-void *testAllocStack[30];
-int ntestAllocStack;
-# endif
-#endif
-static bool testOOMActive;
 
 static size_t testCounter;
 static virBitmapPtr testBitmap;
 
-char *progname;
-static char *perl;
+virArch virTestHostArch = VIR_ARCH_X86_64;
 
-bool virTestOOMActive(void)
+virArch
+virArchFromHost(void)
 {
-    return testOOMActive;
+    return virTestHostArch;
 }
+
 
 static int virTestUseTerminalColors(void)
 {
@@ -104,42 +85,30 @@ virTestGetFlag(const char *name)
     return flag;
 }
 
-#ifdef TEST_OOM_TRACE
-static void virTestAllocHook(int nalloc ATTRIBUTE_UNUSED,
-                             void *opaque ATTRIBUTE_UNUSED)
-{
-    ntestAllocStack = backtrace(testAllocStack, ARRAY_CARDINALITY(testAllocStack));
-}
-#endif
 
-#ifdef TEST_OOM_TRACE
-static void
-virTestShowTrace(void)
+/**
+ * virTestPropagateLibvirtError:
+ *
+ * In cases when a libvirt utility function which reports libvirt errors is
+ * used in the test suite outside of the virTestRun call and the failure of such
+ * a function would cause an test failure the error message reported by that
+ * function will not be propagated to the user as the error callback is not
+ * invoked.
+ *
+ * In cases when the error message may be beneficial in debugging this helper
+ * provides means to dispatch the errors including invocation of the error
+ * callback.
+ */
+void
+virTestPropagateLibvirtError(void)
 {
-    size_t j;
-    for (j = 2; j < ntestAllocStack; j++) {
-        Dl_info info;
-        char *cmd;
+    if (virGetLastErrorCode() == VIR_ERR_OK)
+        return;
 
-        dladdr(testAllocStack[j], &info);
-        if (info.dli_fname &&
-            strstr(info.dli_fname, ".so")) {
-            if (virAsprintf(&cmd, ADDR2LINE " -f -e %s %p",
-                            info.dli_fname,
-                            ((void*)((unsigned long long)testAllocStack[j]
-                                     - (unsigned long long)info.dli_fbase))) < 0)
-                continue;
-        } else {
-            if (virAsprintf(&cmd, ADDR2LINE " -f -e %s %p",
-                            (char*)(info.dli_fname ? info.dli_fname : "<unknown>"),
-                            testAllocStack[j]) < 0)
-                continue;
-        }
-        ignore_value(system(cmd));
-        VIR_FREE(cmd);
-    }
+    if (virTestGetVerbose() || virTestGetDebug())
+        virDispatchError(NULL);
 }
-#endif
+
 
 /*
  * Runs test
@@ -155,7 +124,7 @@ virTestRun(const char *title,
     /* Some test are fragile about environ settings.  If that's
      * the case, don't poison it. */
     if (getenv("VIR_TEST_MOCK_PROGNAME"))
-        setenv("VIR_TEST_MOCK_TESTNAME", title, 1);
+        g_setenv("VIR_TEST_MOCK_TESTNAME", title, TRUE);
 
     if (testCounter == 0 && !virTestGetVerbose())
         fprintf(stderr, "      ");
@@ -172,10 +141,7 @@ virTestRun(const char *title,
 
     virResetLastError();
     ret = body(data);
-    if (virGetLastErrorCode()) {
-        if (virTestGetVerbose() || virTestGetDebug())
-            virDispatchError(NULL);
-    }
+    virTestPropagateLibvirtError();
 
     if (virTestGetVerbose()) {
         if (ret == 0)
@@ -207,77 +173,7 @@ virTestRun(const char *title,
             fprintf(stderr, "!");
     }
 
-#ifdef TEST_OOM
-    if (testOOM && ret != EXIT_AM_SKIP) {
-        int nalloc;
-        int oomret;
-        int start, end;
-        size_t i;
-        virResetLastError();
-        virAllocTestInit();
-# ifdef TEST_OOM_TRACE
-        virAllocTestHook(virTestAllocHook, NULL);
-# endif
-        oomret = body(data);
-        nalloc = virAllocTestCount();
-        fprintf(stderr, "    Test OOM for nalloc=%d ", nalloc);
-        if (testOOMStart == -1 ||
-            testOOMEnd == -1) {
-            start = 0;
-            end = nalloc;
-        } else {
-            start = testOOMStart;
-            end = testOOMEnd + 1;
-        }
-        testOOMActive = true;
-        for (i = start; i < end; i++) {
-            bool missingFail = false;
-# ifdef TEST_OOM_TRACE
-            memset(testAllocStack, 0, sizeof(testAllocStack));
-            ntestAllocStack = 0;
-# endif
-            virAllocTestOOM(i + 1, 1);
-            oomret = body(data);
-
-            /* fprintf() disabled because XML parsing APIs don't allow
-             * distinguish between element / attribute not present
-             * in the XML (which is non-fatal), vs OOM / malformed
-             * which should be fatal. Thus error reporting for
-             * optionally present XML is mostly broken.
-             */
-            if (oomret == 0) {
-                missingFail = true;
-# if 0
-                fprintf(stderr, " alloc %zu failed but no err status\n", i + 1);
-# endif
-            } else {
-                if (virGetLastErrorCode() == VIR_ERR_OK) {
-# if 0
-                    fprintf(stderr, " alloc %zu failed but no error report\n", i + 1);
-# endif
-                    missingFail = true;
-                }
-            }
-            if ((missingFail && testOOMTrace) || (testOOMTrace > 1)) {
-                fprintf(stderr, "%s", "!");
-# ifdef TEST_OOM_TRACE
-                virTestShowTrace();
-# endif
-                ret = -1;
-            } else {
-                fprintf(stderr, "%s", ".");
-            }
-        }
-        testOOMActive = false;
-        if (ret == 0)
-            fprintf(stderr, " OK\n");
-        else
-            fprintf(stderr, " FAILED\n");
-        virAllocTestInit();
-    }
-#endif /* TEST_OOM */
-
-    unsetenv("VIR_TEST_MOCK_TESTNAME");
+    g_unsetenv("VIR_TEST_MOCK_TESTNAME");
     return ret;
 }
 
@@ -301,12 +197,12 @@ virTestLoadFile(const char *file, char **buf)
     int len, tmplen, buflen;
 
     if (!fp) {
-        fprintf(stderr, "%s: failed to open: %s\n", file, strerror(errno));
+        fprintf(stderr, "%s: failed to open: %s\n", file, g_strerror(errno));
         return -1;
     }
 
     if (fstat(fileno(fp), &st) < 0) {
-        fprintf(stderr, "%s: failed to fstat: %s\n", file, strerror(errno));
+        fprintf(stderr, "%s: failed to fstat: %s\n", file, g_strerror(errno));
         VIR_FORCE_FCLOSE(fp);
         return -1;
     }
@@ -337,7 +233,7 @@ virTestLoadFile(const char *file, char **buf)
             tmplen -= len;
         }
         if (ferror(fp)) {
-            fprintf(stderr, "%s: read failed: %s\n", file, strerror(errno));
+            fprintf(stderr, "%s: read failed: %s\n", file, g_strerror(errno));
             VIR_FORCE_FCLOSE(fp);
             VIR_FREE(*buf);
             return -1;
@@ -509,9 +405,9 @@ virTestCaptureProgramOutput(const char *const argv[], char **buf, int maxlen)
 }
 #else /* !WIN32 */
 int
-virTestCaptureProgramOutput(const char *const argv[] ATTRIBUTE_UNUSED,
-                            char **buf ATTRIBUTE_UNUSED,
-                            int maxlen ATTRIBUTE_UNUSED)
+virTestCaptureProgramOutput(const char *const argv[] G_GNUC_UNUSED,
+                            char **buf G_GNUC_UNUSED,
+                            int maxlen G_GNUC_UNUSED)
 {
     return -1;
 }
@@ -528,15 +424,9 @@ virTestRewrapFile(const char *filename)
           virStringHasSuffix(filename, ".ldargs")))
         return 0;
 
-    if (!perl) {
-        fprintf(stderr, "cannot rewrap %s: unable to find perl in path", filename);
-        return -1;
-    }
+    script = g_strdup_printf("%s/scripts/test-wrap-argv.py", abs_top_srcdir);
 
-    if (virAsprintf(&script, "%s/test-wrap-argv.pl", abs_srcdir) < 0)
-        goto cleanup;
-
-    cmd = virCommandNewArgList(perl, script, "--in-place", filename, NULL);
+    cmd = virCommandNewArgList(PYTHON, script, "--in-place", filename, NULL);
     if (virCommandRun(cmd, NULL) < 0)
         goto cleanup;
 
@@ -793,8 +683,7 @@ virTestCompareToFile(const char *actual,
         if (filecontentLen > 0 &&
             filecontent[filecontentLen - 1] == '\n' &&
             (cmpcontentLen == 0 || cmpcontent[cmpcontentLen - 1] != '\n')) {
-            if (virAsprintf(&fixedcontent, "%s\n", cmpcontent) < 0)
-                goto failure;
+            fixedcontent = g_strdup_printf("%s\n", cmpcontent);
             cmpcontent = fixedcontent;
         }
     }
@@ -817,14 +706,12 @@ int
 virTestCompareToULL(unsigned long long expect,
                     unsigned long long actual)
 {
-    VIR_AUTOFREE(char *) expectStr = NULL;
-    VIR_AUTOFREE(char *) actualStr = NULL;
+    g_autofree char *expectStr = NULL;
+    g_autofree char *actualStr = NULL;
 
-    if (virAsprintf(&expectStr, "%llu", expect) < 0)
-        return -1;
+    expectStr = g_strdup_printf("%llu", expect);
 
-    if (virAsprintf(&actualStr, "%llu", actual) < 0)
-        return -1;
+    actualStr = g_strdup_printf("%llu", actual);
 
     return virTestCompareToString(expectStr, actualStr);
 }
@@ -842,8 +729,8 @@ virTestCompareToString(const char *expect,
 }
 
 static void
-virTestErrorFuncQuiet(void *data ATTRIBUTE_UNUSED,
-                      virErrorPtr err ATTRIBUTE_UNUSED)
+virTestErrorFuncQuiet(void *data G_GNUC_UNUSED,
+                      virErrorPtr err G_GNUC_UNUSED)
 { }
 
 
@@ -862,22 +749,19 @@ struct virtTestLogData {
 static struct virtTestLogData testLog = { VIR_BUFFER_INITIALIZER };
 
 static void
-virtTestLogOutput(virLogSourcePtr source ATTRIBUTE_UNUSED,
-                  virLogPriority priority ATTRIBUTE_UNUSED,
-                  const char *filename ATTRIBUTE_UNUSED,
-                  int lineno ATTRIBUTE_UNUSED,
-                  const char *funcname ATTRIBUTE_UNUSED,
+virtTestLogOutput(virLogSourcePtr source G_GNUC_UNUSED,
+                  virLogPriority priority G_GNUC_UNUSED,
+                  const char *filename G_GNUC_UNUSED,
+                  int lineno G_GNUC_UNUSED,
+                  const char *funcname G_GNUC_UNUSED,
                   const char *timestamp,
-                  virLogMetadataPtr metadata ATTRIBUTE_UNUSED,
-                  unsigned int flags,
-                  const char *rawstr ATTRIBUTE_UNUSED,
+                  virLogMetadataPtr metadata G_GNUC_UNUSED,
+                  const char *rawstr G_GNUC_UNUSED,
                   const char *str,
                   void *data)
 {
     struct virtTestLogData *log = data;
-    virCheckFlags(VIR_LOG_STACK_TRACE,);
-    if (!testOOMActive)
-        virBufferAsprintf(&log->buf, "%s: %s", timestamp, str);
+    virBufferAsprintf(&log->buf, "%s: %s", timestamp, str);
 }
 
 static void
@@ -895,11 +779,9 @@ virTestLogContentAndReset(void)
 {
     char *ret;
 
-    if (virBufferError(&testLog.buf))
-        return NULL;
     ret = virBufferContentAndReset(&testLog.buf);
     if (!ret)
-        ignore_value(VIR_STRDUP(ret, ""));
+        ret = g_strdup("");
     return ret;
 }
 
@@ -944,16 +826,14 @@ virTestSetEnvPath(void)
     char *new_path = NULL;
 
     if (path) {
-        if (strstr(path, abs_builddir) != path &&
-            virAsprintf(&new_path, "%s:%s", abs_builddir, path) < 0)
-            goto cleanup;
+        if (strstr(path, abs_builddir) != path)
+            new_path = g_strdup_printf("%s:%s", abs_builddir, path);
     } else {
-        if (VIR_STRDUP(new_path, abs_builddir) < 0)
-            goto cleanup;
+        new_path = g_strdup(abs_builddir);
     }
 
     if (new_path &&
-        setenv("PATH", new_path, 1) < 0)
+        g_setenv("PATH", new_path, TRUE) < 0)
         goto cleanup;
 
     ret = 0;
@@ -961,8 +841,6 @@ virTestSetEnvPath(void)
     VIR_FREE(new_path);
     return ret;
 }
-
-#define TEST_MOCK (abs_builddir "/.libs/virtestmock.so")
 
 int virTestMain(int argc,
                 char **argv,
@@ -973,28 +851,46 @@ int virTestMain(int argc,
     va_list ap;
     int ret;
     char *testRange = NULL;
-#ifdef TEST_OOM
-    char *oomstr;
-#endif
     size_t noutputs = 0;
     virLogOutputPtr output = NULL;
     virLogOutputPtr *outputs = NULL;
+    g_autofree char *baseprogname = NULL;
+    const char *progname;
+    g_autofree const char **preloads = NULL;
+    size_t npreloads = 0;
+    g_autofree char *mock = NULL;
 
-    if (getenv("VIR_TEST_FILE_ACCESS"))
-        VIR_TEST_PRELOAD(TEST_MOCK);
+    if (getenv("VIR_TEST_FILE_ACCESS")) {
+        preloads = g_renew(const char *, preloads, npreloads + 2);
+        preloads[npreloads++] = VIR_TEST_MOCK("virtest");
+        preloads[npreloads] = NULL;
+    }
 
     va_start(ap, func);
-    while ((lib = va_arg(ap, const char *)))
-        VIR_TEST_PRELOAD(lib);
+    while ((lib = va_arg(ap, const char *))) {
+        if (!virFileIsExecutable(lib)) {
+            perror(lib);
+            return EXIT_FAILURE;
+        }
+
+        preloads = g_renew(const char *, preloads, npreloads + 2);
+        preloads[npreloads++] = lib;
+        preloads[npreloads] = NULL;
+    }
     va_end(ap);
 
-    progname = last_component(argv[0]);
+    if (preloads) {
+        mock = g_strjoinv(":", (char **)preloads);
+        VIR_TEST_PRELOAD(mock);
+    }
+
+    progname = baseprogname = g_path_get_basename(argv[0]);
     if (STRPREFIX(progname, "lt-"))
         progname += 3;
 
-    setenv("VIR_TEST_MOCK_PROGNAME", progname, 1);
+    g_setenv("VIR_TEST_MOCK_PROGNAME", progname, TRUE);
 
-    virFileActivateDirOverride(argv[0]);
+    virFileActivateDirOverrideForProg(argv[0]);
 
     if (virTestSetEnvPath() < 0)
         return EXIT_AM_HARDFAIL;
@@ -1006,14 +902,13 @@ int virTestMain(int argc,
         fprintf(stderr, "Usage: %s\n", argv[0]);
         fputs("effective environment variables:\n"
               "VIR_TEST_VERBOSE set to show names of individual tests\n"
-              "VIR_TEST_DEBUG set to show information for debugging failures\n",
+              "VIR_TEST_DEBUG set to show information for debugging failures",
               stderr);
         return EXIT_FAILURE;
     }
     fprintf(stderr, "TEST: %s\n", progname);
 
-    if (virThreadInitialize() < 0 ||
-        virErrorInitialize() < 0)
+    if (virErrorInitialize() < 0)
         return EXIT_FAILURE;
 
     virLogSetFromEnv();
@@ -1036,63 +931,6 @@ int virTestMain(int argc,
         }
     }
 
-#ifdef TEST_OOM
-    if ((oomstr = getenv("VIR_TEST_OOM")) != NULL) {
-        char *next;
-        if (testDebug == -1)
-            testDebug = 1;
-        testOOM = 1;
-        if (oomstr[0] != '\0' &&
-            oomstr[1] == ':') {
-            if (virStrToLong_ui(oomstr + 2, &next, 10, &testOOMStart) < 0) {
-                fprintf(stderr, "Cannot parse range %s\n", oomstr);
-                return EXIT_FAILURE;
-            }
-            if (*next == '\0') {
-                testOOMEnd = testOOMStart;
-            } else {
-                if (*next != '-') {
-                    fprintf(stderr, "Cannot parse range %s\n", oomstr);
-                    return EXIT_FAILURE;
-                }
-                if (virStrToLong_ui(next+1, NULL, 10, &testOOMEnd) < 0) {
-                    fprintf(stderr, "Cannot parse range %s\n", oomstr);
-                    return EXIT_FAILURE;
-                }
-            }
-        } else {
-            testOOMStart = -1;
-            testOOMEnd = -1;
-        }
-    }
-
-# ifdef TEST_OOM_TRACE
-    if ((oomstr = getenv("VIR_TEST_OOM_TRACE")) != NULL) {
-        if (virStrToLong_ui(oomstr, NULL, 10, &testOOMTrace) < 0) {
-            fprintf(stderr, "Cannot parse oom trace %s\n", oomstr);
-            return EXIT_FAILURE;
-        }
-    }
-# else
-    if (getenv("VIR_TEST_OOM_TRACE")) {
-        fprintf(stderr, "%s", "OOM test tracing not enabled in this build\n");
-        return EXIT_FAILURE;
-    }
-# endif
-#else /* TEST_OOM */
-    if (getenv("VIR_TEST_OOM")) {
-        fprintf(stderr, "%s", "OOM testing not enabled in this build\n");
-        return EXIT_FAILURE;
-    }
-    if (getenv("VIR_TEST_OOM_TRACE")) {
-        fprintf(stderr, "%s", "OOM test tracing not enabled in this build\n");
-        return EXIT_FAILURE;
-    }
-#endif /* TEST_OOM */
-
-    /* Find perl early because some tests override PATH */
-    perl = virFindFileInPath("perl");
-
     ret = (func)();
 
     virResetLastError();
@@ -1102,7 +940,6 @@ int virTestMain(int argc,
         fprintf(stderr, " %-3zu %s\n", testCounter, ret == 0 ? "OK" : "FAIL");
     }
     virLogReset();
-    VIR_FREE(perl);
     return ret;
 }
 
@@ -1224,10 +1061,10 @@ virCapsPtr virTestGenericCapsInit(void)
  * Build NUMA topology with cell id starting from (0 + seq)
  * for testing
  */
-int
-virTestCapsBuildNUMATopology(virCapsPtr caps,
-                             int seq)
+virCapsHostNUMAPtr
+virTestCapsBuildNUMATopology(int seq)
 {
+    virCapsHostNUMAPtr caps = virCapabilitiesHostNUMANew();
     virCapsHostNUMACellCPUPtr cell_cpus = NULL;
     int core_id, cell_id;
     int id;
@@ -1248,22 +1085,21 @@ virTestCapsBuildNUMATopology(virCapsPtr caps,
         }
         id++;
 
-        if (virCapabilitiesAddHostNUMACell(caps, cell_id + seq,
-                                           MAX_MEM_IN_CELL,
-                                           MAX_CPUS_IN_CELL, cell_cpus,
-                                           VIR_ARCH_NONE, NULL,
-                                           VIR_ARCH_NONE, NULL) < 0)
-           goto error;
+        virCapabilitiesHostNUMAAddCell(caps, cell_id + seq,
+                                       MAX_MEM_IN_CELL,
+                                       MAX_CPUS_IN_CELL, cell_cpus,
+                                       VIR_ARCH_NONE, NULL,
+                                       VIR_ARCH_NONE, NULL);
 
         cell_cpus = NULL;
     }
 
-    return 0;
+    return caps;
 
  error:
-    virCapabilitiesClearHostNUMACellCPUTopology(cell_cpus, MAX_CPUS_IN_CELL);
+    virCapabilitiesHostNUMAUnref(caps);
     VIR_FREE(cell_cpus);
-    return -1;
+    return NULL;
 }
 
 static virDomainDefParserConfig virTestGenericDomainDefParserConfig = {
@@ -1278,7 +1114,8 @@ virDomainXMLOptionPtr virTestGenericDomainXMLConfInit(void)
 
 
 int
-testCompareDomXML2XMLFiles(virCapsPtr caps, virDomainXMLOptionPtr xmlopt,
+testCompareDomXML2XMLFiles(virCapsPtr caps G_GNUC_UNUSED,
+                           virDomainXMLOptionPtr xmlopt,
                            const char *infile, const char *outfile, bool live,
                            unsigned int parseFlags,
                            testCompareDomXML2XMLResult expectResult)
@@ -1300,7 +1137,7 @@ testCompareDomXML2XMLFiles(virCapsPtr caps, virDomainXMLOptionPtr xmlopt,
     if (!live)
         format_flags |= VIR_DOMAIN_DEF_FORMAT_INACTIVE;
 
-    if (!(def = virDomainDefParseFile(infile, caps, xmlopt, NULL, parse_flags))) {
+    if (!(def = virDomainDefParseFile(infile, xmlopt, NULL, parse_flags))) {
         result = TEST_COMPARE_DOM_XML2XML_RESULT_FAIL_PARSE;
         goto out;
     }
@@ -1311,7 +1148,7 @@ testCompareDomXML2XMLFiles(virCapsPtr caps, virDomainXMLOptionPtr xmlopt,
         goto out;
     }
 
-    if (!(actual = virDomainDefFormat(def, caps, format_flags))) {
+    if (!(actual = virDomainDefFormat(def, xmlopt, format_flags))) {
         result = TEST_COMPARE_DOM_XML2XML_RESULT_FAIL_FORMAT;
         goto out;
     }
@@ -1383,12 +1220,12 @@ virTestCounterReset(const char *prefix)
 const char
 *virTestCounterNext(void)
 {
-    size_t len = ARRAY_CARDINALITY(virtTestCounterStr);
+    size_t len = G_N_ELEMENTS(virtTestCounterStr);
 
     /* calculate length of the rest of the string */
     len -= (virtTestCounterPrefixEndOffset - virtTestCounterStr);
 
-    snprintf(virtTestCounterPrefixEndOffset, len, "%d", ++virtTestCounter);
+    g_snprintf(virtTestCounterPrefixEndOffset, len, "%d", ++virtTestCounter);
 
     return virtTestCounterStr;
 }

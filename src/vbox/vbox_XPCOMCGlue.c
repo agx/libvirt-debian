@@ -85,8 +85,7 @@ tryLoadOne(const char *dir, bool setAppHome, bool ignoreMissing,
     PFNVBOXGETXPCOMCFUNCTIONS pfnGetFunctions;
 
     if (dir != NULL) {
-        if (virAsprintf(&name, "%s/%s", dir, DYNLIB_NAME) < 0)
-            return -1;
+        name = g_strdup_printf("%s/%s", dir, DYNLIB_NAME);
 
         if (!virFileExists(name)) {
             if (!ignoreMissing)
@@ -96,8 +95,7 @@ tryLoadOne(const char *dir, bool setAppHome, bool ignoreMissing,
             return -1;
         }
     } else {
-        if (VIR_STRDUP(name, DYNLIB_NAME) < 0)
-            return -1;
+        name = g_strdup(DYNLIB_NAME);
     }
 
     /*
@@ -106,9 +104,9 @@ tryLoadOne(const char *dir, bool setAppHome, bool ignoreMissing,
      */
     if (setAppHome) {
         if (dir != NULL) {
-            setenv("VBOX_APP_HOME", dir, 1 /* always override */);
+            g_setenv("VBOX_APP_HOME", dir, TRUE);
         } else {
-            unsetenv("VBOX_APP_HOME");
+            g_unsetenv("VBOX_APP_HOME");
         }
     }
 
@@ -190,7 +188,7 @@ VBoxCGlueInit(unsigned int *version)
         "/usr/local/lib/VirtualBox",
         "/Applications/VirtualBox.app/Contents/MacOS"
     };
-    const char *home = virGetEnvBlockSUID("VBOX_APP_HOME");
+    const char *home = getenv("VBOX_APP_HOME");
 
     /* If the user specifies the location, try only that. */
     if (home != NULL) {
@@ -205,7 +203,7 @@ VBoxCGlueInit(unsigned int *version)
     }
 
     /* Try the known locations. */
-    for (i = 0; i < ARRAY_CARDINALITY(knownDirs); ++i) {
+    for (i = 0; i < G_N_ELEMENTS(knownDirs); ++i) {
         if (tryLoadOne(knownDirs[i], true, true, version) >= 0)
             return 0;
     }

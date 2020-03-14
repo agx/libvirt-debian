@@ -47,7 +47,7 @@ struct _virAccessDriverPolkitPrivate {
 };
 
 
-static void virAccessDriverPolkitCleanup(virAccessManagerPtr manager ATTRIBUTE_UNUSED)
+static void virAccessDriverPolkitCleanup(virAccessManagerPtr manager G_GNUC_UNUSED)
 {
 }
 
@@ -59,10 +59,8 @@ virAccessDriverPolkitFormatAction(const char *typename,
     char *actionid = NULL;
     size_t i;
 
-    if (virAsprintf(&actionid, "%s.%s.%s",
-                    VIR_ACCESS_DRIVER_POLKIT_ACTION_PREFIX,
-                    typename, permname) < 0)
-        return NULL;
+    actionid = g_strdup_printf("%s.%s.%s", VIR_ACCESS_DRIVER_POLKIT_ACTION_PREFIX,
+                               typename, permname);
 
     for (i = 0; actionid[i]; i++)
         if (actionid[i] == '_')
@@ -78,8 +76,8 @@ virAccessDriverPolkitGetCaller(const char *actionid,
                                unsigned long long *startTime,
                                uid_t *uid)
 {
-    virIdentityPtr identity = virIdentityGetCurrent();
-    int ret = -1;
+    g_autoptr(virIdentity) identity = virIdentityGetCurrent();
+    int rc;
 
     if (!identity) {
         virAccessError(VIR_ERR_ACCESS_DENIED,
@@ -88,51 +86,57 @@ virAccessDriverPolkitGetCaller(const char *actionid,
         return -1;
     }
 
-    if (virIdentityGetUNIXProcessID(identity, pid) < 0) {
+    if ((rc = virIdentityGetProcessID(identity, pid)) < 0)
+        return -1;
+
+    if (rc == 0) {
         virAccessError(VIR_ERR_INTERNAL_ERROR, "%s",
-                       _("No UNIX process ID available"));
-        goto cleanup;
+                       _("No process ID available"));
+        return -1;
     }
-    if (virIdentityGetUNIXProcessTime(identity, startTime) < 0) {
+
+    if ((rc = virIdentityGetProcessTime(identity, startTime)) < 0)
+        return -1;
+
+    if (rc == 0) {
         virAccessError(VIR_ERR_INTERNAL_ERROR, "%s",
-                       _("No UNIX process start time available"));
-        goto cleanup;
+                       _("No process start time available"));
+        return -1;
     }
-    if (virIdentityGetUNIXUserID(identity, uid) < 0) {
+
+    if ((rc = virIdentityGetUNIXUserID(identity, uid)) < 0)
+        return -1;
+
+    if (rc == 0) {
         virAccessError(VIR_ERR_INTERNAL_ERROR, "%s",
                        _("No UNIX caller UID available"));
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
-
- cleanup:
-    virObjectUnref(identity);
-    return ret;
+    return 0;
 }
 
 
 static int
-virAccessDriverPolkitCheck(virAccessManagerPtr manager ATTRIBUTE_UNUSED,
+virAccessDriverPolkitCheck(virAccessManagerPtr manager G_GNUC_UNUSED,
                            const char *typename,
                            const char *permname,
                            const char **attrs)
 {
-    char *actionid = NULL;
-    int ret = -1;
+    g_autofree char *actionid = NULL;
     pid_t pid;
     uid_t uid;
     unsigned long long startTime;
     int rv;
 
     if (!(actionid = virAccessDriverPolkitFormatAction(typename, permname)))
-        goto cleanup;
+        return -1;
 
     if (virAccessDriverPolkitGetCaller(actionid,
                                        &pid,
                                        &startTime,
                                        &uid) < 0)
-        goto cleanup;
+        return -1;
 
     VIR_DEBUG("Check action '%s' for process '%lld' time %lld uid %d",
               actionid, (long long)pid, startTime, uid);
@@ -145,18 +149,14 @@ virAccessDriverPolkitCheck(virAccessManagerPtr manager ATTRIBUTE_UNUSED,
                             false);
 
     if (rv == 0) {
-        ret = 1; /* Allowed */
+        return 1; /* Allowed */
     } else {
         if (rv == -2) {
-            ret = 0; /* Denied */
+            return 0; /* Denied */
         } else {
-            ret = -1; /* Error */
+            return -1; /* Error */
         }
     }
-
- cleanup:
-    VIR_FREE(actionid);
-    return ret;
 }
 
 

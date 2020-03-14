@@ -1,4 +1,5 @@
 <qemuCaps>
+  <emulator>/usr/bin/qemu-system-riscv64</emulator>
   <qemuctime>0</qemuctime>
   <selfctime>0</selfctime>
   <selfvers>0</selfvers>
@@ -167,14 +168,16 @@
   <flag name='bitmap-merge'/>
   <flag name='nbd-bitmap'/>
   <flag name='bochs-display'/>
+  <flag name='migration-file-drop-cache'/>
+  <flag name='drive-nvme'/>
   <version>4000000</version>
   <kvmVersion>0</kvmVersion>
   <microcodeVersion>0</microcodeVersion>
   <package>v4.0.0</package>
   <arch>riscv64</arch>
-  <machine name='spike_v1.10' maxCpus='1' default='yes'/>
-  <machine name='virt' maxCpus='8'/>
-  <machine name='sifive_u' maxCpus='4'/>
-  <machine name='sifive_e' maxCpus='1'/>
-  <machine name='spike_v1.9.1' maxCpus='1'/>
+  <machine type='tcg' name='spike_v1.10' maxCpus='1' default='yes'/>
+  <machine type='tcg' name='virt' maxCpus='8'/>
+  <machine type='tcg' name='sifive_u' maxCpus='4'/>
+  <machine type='tcg' name='sifive_e' maxCpus='1'/>
+  <machine type='tcg' name='spike_v1.9.1' maxCpus='1'/>
 </qemuCaps>

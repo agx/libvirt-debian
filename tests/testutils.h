@@ -36,23 +36,21 @@
 # define fprintf virFilePrintf
 #endif
 
-extern char *progname;
-
 /* Makefile.am provides these two definitions */
 #if !defined(abs_srcdir) || !defined(abs_builddir)
 # error Fix Makefile.am
 #endif
 
-bool virTestOOMActive(void);
+extern virArch virTestHostArch;
 
 int virTestRun(const char *title,
                int (*body)(const void *data),
                const void *data);
 int virTestLoadFile(const char *file, char **buf);
 char *virTestLoadFilePath(const char *p, ...)
-    ATTRIBUTE_SENTINEL;
+    G_GNUC_NULL_TERMINATED;
 virJSONValuePtr virTestLoadFileJSON(const char *p, ...)
-    ATTRIBUTE_SENTINEL;
+    G_GNUC_NULL_TERMINATED;
 
 int virTestCaptureProgramOutput(const char *const argv[], char **buf, int maxlen);
 
@@ -86,17 +84,18 @@ unsigned int virTestGetDebug(void);
 unsigned int virTestGetVerbose(void);
 unsigned int virTestGetExpensive(void);
 unsigned int virTestGetRegenerate(void);
+void virTestPropagateLibvirtError(void);
 
-#define VIR_TEST_DEBUG(...) \
+#define VIR_TEST_DEBUG(fmt, ...) \
     do { \
         if (virTestGetDebug()) \
-            fprintf(stderr, __VA_ARGS__); \
+            fprintf(stderr, fmt "\n", ## __VA_ARGS__); \
     } while (0)
 
-#define VIR_TEST_VERBOSE(...) \
+#define VIR_TEST_VERBOSE(fmt, ...) \
     do { \
         if (virTestGetVerbose()) \
-            fprintf(stderr, __VA_ARGS__); \
+            fprintf(stderr, fmt "\n", ## __VA_ARGS__); \
     } while (0)
 
 char *virTestLogContentAndReset(void);
@@ -117,22 +116,29 @@ int virTestMain(int argc,
         return virTestMain(argc, argv, func, NULL); \
     }
 
-#define VIR_TEST_PRELOAD(lib) \
+#ifdef __APPLE__
+# define PRELOAD_VAR "DYLD_INSERT_LIBRARIES"
+# define FORCE_FLAT_NAMESPACE \
+            g_setenv("DYLD_FORCE_FLAT_NAMESPACE", "1", TRUE);
+# define MOCK_EXT ".dylib"
+#else
+# define PRELOAD_VAR "LD_PRELOAD"
+# define FORCE_FLAT_NAMESPACE
+# define MOCK_EXT ".so"
+#endif
+
+#define VIR_TEST_PRELOAD(libs) \
     do { \
-        const char *preload = getenv("LD_PRELOAD"); \
-        if (preload == NULL || strstr(preload, lib) == NULL) { \
+        const char *preload = getenv(PRELOAD_VAR); \
+        if (preload == NULL || strstr(preload, libs) == NULL) { \
             char *newenv; \
-            if (!virFileIsExecutable(lib)) { \
-                perror(lib); \
-                return EXIT_FAILURE; \
-            } \
             if (!preload) { \
-                newenv = (char *) lib; \
-            } else if (virAsprintf(&newenv, "%s:%s", lib, preload) < 0) { \
-                perror("virAsprintf"); \
-                return EXIT_FAILURE; \
+                newenv = (char *) libs; \
+            } else { \
+                newenv = g_strdup_printf("%s:%s", libs, preload); \
             } \
-            setenv("LD_PRELOAD", newenv, 1); \
+            g_setenv(PRELOAD_VAR, newenv, TRUE); \
+            FORCE_FLAT_NAMESPACE \
             execv(argv[0], argv); \
         } \
     } while (0)
@@ -142,9 +148,10 @@ int virTestMain(int argc,
         return virTestMain(argc, argv, func, __VA_ARGS__, NULL); \
     }
 
+#define VIR_TEST_MOCK(mock) (abs_builddir "/.libs/lib" mock "mock" MOCK_EXT)
+
 virCapsPtr virTestGenericCapsInit(void);
-int virTestCapsBuildNUMATopology(virCapsPtr caps,
-                                 int seq);
+virCapsHostNUMAPtr virTestCapsBuildNUMATopology(int seq);
 virDomainXMLOptionPtr virTestGenericDomainXMLConfInit(void);
 
 typedef enum {

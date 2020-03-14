@@ -116,9 +116,6 @@ char *virSystemdMakeScopeName(const char *name,
     virSystemdEscapeName(&buf, name);
     virBufferAddLit(&buf, ".scope");
 
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
-
     return virBufferContentAndReset(&buf);
 }
 
@@ -133,13 +130,11 @@ char *virSystemdMakeSliceName(const char *partition)
     virSystemdEscapeName(&buf, partition);
     virBufferAddLit(&buf, ".slice");
 
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
-
     return virBufferContentAndReset(&buf);
 }
 
 static int virSystemdHasMachinedCachedValue = -1;
+static int virSystemdHasLogindCachedValue = -1;
 
 /* Reset the cache from tests for testing the underlying dbus calls
  * as well */
@@ -147,6 +142,12 @@ void virSystemdHasMachinedResetCachedValue(void)
 {
     virSystemdHasMachinedCachedValue = -1;
 }
+
+void virSystemdHasLogindResetCachedValue(void)
+{
+    virSystemdHasLogindCachedValue = -1;
+}
+
 
 /* -2 = machine1 is not supported on this machine
  * -1 = error
@@ -171,6 +172,30 @@ virSystemdHasMachined(void)
     if ((ret = virDBusIsServiceRegistered("org.freedesktop.systemd1")) == -1)
         return ret;
     virAtomicIntSet(&virSystemdHasMachinedCachedValue, ret);
+    return ret;
+}
+
+int
+virSystemdHasLogind(void)
+{
+    int ret;
+    int val;
+
+    val = virAtomicIntGet(&virSystemdHasLogindCachedValue);
+    if (val != -1)
+        return val;
+
+    ret = virDBusIsServiceEnabled("org.freedesktop.login1");
+    if (ret < 0) {
+        if (ret == -2)
+            virAtomicIntSet(&virSystemdHasLogindCachedValue, -2);
+        return ret;
+    }
+
+    if ((ret = virDBusIsServiceRegistered("org.freedesktop.login1")) == -1)
+        return ret;
+
+    virAtomicIntSet(&virSystemdHasLogindCachedValue, ret);
     return ret;
 }
 
@@ -270,15 +295,13 @@ int virSystemdCreateMachine(const char *name,
 
     ret = -1;
 
-    if (virAsprintf(&creatorname, "libvirt-%s", drivername) < 0)
-        goto cleanup;
+    creatorname = g_strdup_printf("libvirt-%s", drivername);
 
     if (partition) {
         if (!(slicename = virSystemdMakeSliceName(partition)))
              goto cleanup;
     } else {
-        if (VIR_STRDUP(slicename, "") < 0)
-            goto cleanup;
+        slicename = g_strdup("");
     }
 
     /*
@@ -509,7 +532,7 @@ virSystemdNotifyStartup(void)
         .msg_iovlen = 1,
     };
 
-    if (!(path = virGetEnvBlockSUID("NOTIFY_SOCKET"))) {
+    if (!(path = getenv("NOTIFY_SOCKET"))) {
         VIR_DEBUG("Skipping systemd notify, not requested");
         return;
     }
@@ -547,11 +570,7 @@ virSystemdPMSupportTarget(const char *methodName, bool *result)
     DBusMessage *message = NULL;
     char *response;
 
-    ret = virDBusIsServiceEnabled("org.freedesktop.login1");
-    if (ret < 0)
-        return ret;
-
-    if ((ret = virDBusIsServiceRegistered("org.freedesktop.login1")) < 0)
+    if ((ret = virSystemdHasLogind()) < 0)
         return ret;
 
     if (!(conn = virDBusGetSystemBus()))
@@ -600,12 +619,12 @@ int virSystemdCanHybridSleep(bool *result)
 
 
 static void
-virSystemdActivationEntryFree(void *data, const void *name)
+virSystemdActivationEntryFree(void *data)
 {
     virSystemdActivationEntryPtr ent = data;
     size_t i;
 
-    VIR_DEBUG("Closing activation FDs for %s", (const char *)name);
+    VIR_DEBUG("Closing activation FDs");
     for (i = 0; i < ent->nfds; i++) {
         VIR_DEBUG("Closing activation FD %d", ent->fds[i]);
         VIR_FORCE_CLOSE(ent->fds[i]);
@@ -628,7 +647,7 @@ virSystemdActivationAddFD(virSystemdActivationPtr act,
             return -1;
 
         if (VIR_ALLOC_N(ent->fds, 1) < 0) {
-            virSystemdActivationEntryFree(ent, name);
+            virSystemdActivationEntryFree(ent);
             return -1;
         }
 
@@ -636,7 +655,7 @@ virSystemdActivationAddFD(virSystemdActivationPtr act,
 
         VIR_DEBUG("Record first FD %d with name %s", fd, name);
         if (virHashAddEntry(act->fds, name, ent) < 0) {
-            virSystemdActivationEntryFree(ent, name);
+            virSystemdActivationEntryFree(ent);
             return -1;
         }
 
@@ -722,29 +741,40 @@ virSystemdActivationInitFromMap(virSystemdActivationPtr act,
             goto error;
         }
 
+        VIR_DEBUG("Got socket family %d for FD %d",
+                  addr.data.sa.sa_family, nextfd);
+
         for (i = 0; i < nmap && !name; i++) {
             if (map[i].name == NULL)
                 continue;
 
             if (addr.data.sa.sa_family == AF_INET) {
-                if (map[i].family == AF_INET &&
-                    addr.data.inet4.sin_port == htons(map[i].port))
-                    name = map[i].name;
+                if (map[i].family == AF_INET) {
+                    VIR_DEBUG("Expect %d got %d",
+                              map[i].port, ntohs(addr.data.inet4.sin_port));
+                    if (addr.data.inet4.sin_port == htons(map[i].port))
+                        name = map[i].name;
+                }
             } else if (addr.data.sa.sa_family == AF_INET6) {
                 /* NB use of AF_INET here is correct. The "map" struct
                  * only refers to AF_INET. The socket may be AF_INET
                  * or AF_INET6
                  */
-                if (map[i].family == AF_INET &&
-                    addr.data.inet6.sin6_port == htons(map[i].port))
-                    name = map[i].name;
+                if (map[i].family == AF_INET) {
+                    VIR_DEBUG("Expect %d got %d",
+                              map[i].port, ntohs(addr.data.inet6.sin6_port));
+                    if (addr.data.inet6.sin6_port == htons(map[i].port))
+                        name = map[i].name;
+                }
 #ifndef WIN32
             } else if (addr.data.sa.sa_family == AF_UNIX) {
-                if (map[i].family == AF_UNIX &&
-                    STREQLEN(map[i].path,
-                             addr.data.un.sun_path,
-                             sizeof(addr.data.un.sun_path)))
-                    name = map[i].name;
+                if (map[i].family == AF_UNIX) {
+                    VIR_DEBUG("Expect %s got %s", map[i].path, addr.data.un.sun_path);
+                    if (STREQLEN(map[i].path,
+                                 addr.data.un.sun_path,
+                                 sizeof(addr.data.un.sun_path)))
+                        name = map[i].name;
+                }
 #endif
             } else {
                 virReportError(VIR_ERR_INTERNAL_ERROR,
@@ -798,7 +828,7 @@ virSystemdGetListenFDs(void)
 
     VIR_DEBUG("Setting up networking from caller");
 
-    if (!(pidstr = virGetEnvAllowSUID("LISTEN_PID"))) {
+    if (!(pidstr = getenv("LISTEN_PID"))) {
         VIR_DEBUG("No LISTEN_PID from caller");
         return 0;
     }
@@ -814,7 +844,7 @@ virSystemdGetListenFDs(void)
         return 0;
     }
 
-    if (!(fdstr = virGetEnvAllowSUID("LISTEN_FDS"))) {
+    if (!(fdstr = getenv("LISTEN_FDS"))) {
         VIR_DEBUG("No LISTEN_FDS from caller");
         return 0;
     }
@@ -824,8 +854,8 @@ virSystemdGetListenFDs(void)
         return 0;
     }
 
-    unsetenv("LISTEN_PID");
-    unsetenv("LISTEN_FDS");
+    g_unsetenv("LISTEN_PID");
+    g_unsetenv("LISTEN_FDS");
 
     VIR_DEBUG("Got %u file descriptors", nfds);
 
@@ -866,7 +896,7 @@ virSystemdActivationNew(virSystemdActivationMap *map,
     if (!(act->fds = virHashCreate(10, virSystemdActivationEntryFree)))
         goto error;
 
-    fdnames = virGetEnvAllowSUID("LISTEN_FDNAMES");
+    fdnames = getenv("LISTEN_FDNAMES");
     if (fdnames) {
         if (virSystemdActivationInitFromNames(act, nfds, fdnames) < 0)
             goto error;
@@ -879,7 +909,7 @@ virSystemdActivationNew(virSystemdActivationMap *map,
     return act;
 
  error:
-    virSystemdActivationFree(&act);
+    virSystemdActivationFree(act);
     return NULL;
 }
 
@@ -1008,12 +1038,12 @@ virSystemdActivationClaimFDs(virSystemdActivationPtr act,
  * associated with the activation object
  */
 void
-virSystemdActivationFree(virSystemdActivationPtr *act)
+virSystemdActivationFree(virSystemdActivationPtr act)
 {
-    if (!*act)
+    if (!act)
         return;
 
-    virHashFree((*act)->fds);
+    virHashFree(act->fds);
 
-    VIR_FREE(*act);
+    VIR_FREE(act);
 }

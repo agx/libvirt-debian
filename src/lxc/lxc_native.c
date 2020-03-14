@@ -59,23 +59,18 @@ lxcCreateFSDef(int type,
 {
     virDomainFSDefPtr def;
 
-    if (!(def = virDomainFSDefNew()))
+    if (!(def = virDomainFSDefNew(NULL)))
         return NULL;
 
     def->type = type;
     def->accessmode = VIR_DOMAIN_FS_ACCESSMODE_PASSTHROUGH;
-    if (src && VIR_STRDUP(def->src->path, src) < 0)
-        goto error;
-    if (VIR_STRDUP(def->dst, dst) < 0)
-        goto error;
+    if (src)
+        def->src->path = g_strdup(src);
+    def->dst = g_strdup(dst);
     def->readonly = readonly;
     def->usage = usage;
 
     return def;
-
- error:
-    virDomainFSDefFree(def);
-    return NULL;
 }
 
 typedef struct _lxcFstab lxcFstab;
@@ -113,8 +108,7 @@ static char ** lxcStringSplit(const char *string)
     char **parts;
     char **result = NULL;
 
-    if (VIR_STRDUP(tmp, string) < 0)
-        return NULL;
+    tmp = g_strdup(string);
 
     /* Replace potential \t by a space */
     for (i = 0; tmp[i]; i++) {
@@ -136,8 +130,7 @@ static char ** lxcStringSplit(const char *string)
         if (VIR_EXPAND_N(result, ntokens, 1) < 0)
             goto error;
 
-        if (VIR_STRDUP(result[ntokens-2], parts[i]) < 0)
-            goto error;
+        result[ntokens - 2] = g_strdup(parts[i]);
     }
 
     VIR_FREE(tmp);
@@ -166,11 +159,10 @@ lxcParseFstabLine(char *fstabLine)
     if (!parts[0] || !parts[1] || !parts[2] || !parts[3])
         goto error;
 
-    if (VIR_STRDUP(fstab->src, parts[0]) < 0 ||
-            VIR_STRDUP(fstab->dst, parts[1]) < 0 ||
-            VIR_STRDUP(fstab->type, parts[2]) < 0 ||
-            VIR_STRDUP(fstab->options, parts[3]) < 0)
-        goto error;
+    fstab->src = g_strdup(parts[0]);
+    fstab->dst = g_strdup(parts[1]);
+    fstab->type = g_strdup(parts[2]);
+    fstab->options = g_strdup(parts[3]);
 
     virStringListFree(parts);
 
@@ -211,7 +203,7 @@ lxcSetRootfs(virDomainDefPtr def,
              virConfPtr properties)
 {
     int type = VIR_DOMAIN_FS_TYPE_MOUNT;
-    VIR_AUTOFREE(char *) value = NULL;
+    g_autofree char *value = NULL;
 
     if (virConfGetValueString(properties, "lxc.rootfs.path", &value) <= 0) {
         virResetLastError();
@@ -273,11 +265,9 @@ lxcAddFstabLine(virDomainDefPtr def, lxcFstabPtr fstab)
         return -1;
 
     if (fstab->dst[0] != '/') {
-        if (virAsprintf(&dst, "/%s", fstab->dst) < 0)
-            goto cleanup;
+        dst = g_strdup_printf("/%s", fstab->dst);
     } else {
-        if (VIR_STRDUP(dst, fstab->dst) < 0)
-            goto cleanup;
+        dst = g_strdup(fstab->dst);
     }
 
     /* Check that we don't add basic mounts */
@@ -359,7 +349,7 @@ lxcCreateNetDef(const char *type,
     virDomainNetDefPtr net = NULL;
     virMacAddr macAddr;
 
-    if (VIR_ALLOC(net) < 0)
+    if (!(net = virDomainNetDefNew(NULL)))
         goto error;
 
     if (STREQ_NULLABLE(flag, "up"))
@@ -367,8 +357,7 @@ lxcCreateNetDef(const char *type,
     else
         net->linkstate = VIR_DOMAIN_NET_INTERFACE_LINK_STATE_DOWN;
 
-    if (VIR_STRDUP(net->ifname_guest, name) < 0)
-        goto error;
+    net->ifname_guest = g_strdup(name);
 
     if (mac && virMacAddrParse(mac, &macAddr) == 0)
         net->mac = macAddr;
@@ -376,16 +365,17 @@ lxcCreateNetDef(const char *type,
     if (STREQ(type, "veth")) {
         if (linkdev) {
             net->type = VIR_DOMAIN_NET_TYPE_BRIDGE;
-            if (VIR_STRDUP(net->data.bridge.brname, linkdev) < 0)
-                goto error;
+            net->data.bridge.brname = g_strdup(linkdev);
         } else {
             net->type = VIR_DOMAIN_NET_TYPE_ETHERNET;
         }
     } else if (STREQ(type, "macvlan")) {
         net->type = VIR_DOMAIN_NET_TYPE_DIRECT;
 
-        if (!linkdev || VIR_STRDUP(net->data.direct.linkdev, linkdev) < 0)
+        if (!linkdev)
             goto error;
+
+        net->data.direct.linkdev = g_strdup(linkdev);
 
         if (!macvlanmode || STREQ(macvlanmode, "private"))
             net->data.direct.mode = VIR_NETDEV_MACVLAN_MODE_PRIVATE;
@@ -415,11 +405,8 @@ lxcCreateHostdevDef(int mode, int type, const char *data)
     hostdev->mode = mode;
     hostdev->source.caps.type = type;
 
-    if (type == VIR_DOMAIN_HOSTDEV_CAPS_TYPE_NET &&
-        VIR_STRDUP(hostdev->source.caps.u.net.ifname, data) < 0) {
-        virDomainHostdevDefFree(hostdev);
-        hostdev = NULL;
-    }
+    if (type == VIR_DOMAIN_HOSTDEV_CAPS_TYPE_NET)
+        hostdev->source.caps.u.net.ifname = g_strdup(data);
 
     return hostdev;
 }
@@ -451,12 +438,9 @@ lxcAddNetworkRouteDefinition(const char *address,
     char *familyStr = NULL;
     char *zero = NULL;
 
-    if (VIR_STRDUP(zero, family == AF_INET ? VIR_SOCKET_ADDR_IPV4_ALL
-                   : VIR_SOCKET_ADDR_IPV6_ALL) < 0)
-        goto error;
+    zero = g_strdup(family == AF_INET ? VIR_SOCKET_ADDR_IPV4_ALL : VIR_SOCKET_ADDR_IPV6_ALL);
 
-    if (VIR_STRDUP(familyStr, family == AF_INET ? "ipv4" : "ipv6") < 0)
-        goto error;
+    familyStr = g_strdup(family == AF_INET ? "ipv4" : "ipv6");
 
     if (!(route = virNetDevIPRouteCreate(_("Domain interface"), familyStr,
                                          zero, NULL, address, 0, false,
@@ -507,9 +491,9 @@ lxcAddNetworkDefinition(lxcNetworkParseData *data)
          * on the host */
         if (isVlan && data->vlanid) {
             VIR_FREE(hostdev->source.caps.u.net.ifname);
-            if (virAsprintf(&hostdev->source.caps.u.net.ifname,
-                            "%s.%s", data->link, data->vlanid) < 0)
-                goto error;
+            hostdev->source.caps.u.net.ifname = g_strdup_printf("%s.%s",
+                                                                data->link,
+                                                                data->vlanid);
         }
 
         hostdev->source.caps.u.net.ip.ips = data->ips;
@@ -718,7 +702,6 @@ static int
 lxcConvertNetworkSettings(virDomainDefPtr def, virConfPtr properties)
 {
     int status;
-    int result = -1;
     size_t i;
     lxcNetworkParseData data = {def, NULL, NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, 0,
@@ -742,9 +725,7 @@ lxcConvertNetworkSettings(virDomainDefPtr def, virConfPtr properties)
         /* When no network type is provided LXC only adds loopback */
         def->features[VIR_DOMAIN_FEATURE_PRIVNET] = VIR_TRISTATE_SWITCH_ON;
     }
-    result = 0;
-
-    return result;
+    return 0;
 
  error:
     for (i = 0; i < data.nips; i++)
@@ -756,7 +737,7 @@ lxcConvertNetworkSettings(virDomainDefPtr def, virConfPtr properties)
 static int
 lxcCreateConsoles(virDomainDefPtr def, virConfPtr properties)
 {
-    VIR_AUTOFREE(char *) value = NULL;
+    g_autofree char *value = NULL;
     int nbttys = 0;
     virDomainChrDefPtr console;
     size_t i;
@@ -841,7 +822,7 @@ lxcIdmapWalkCallback(const char *name, virConfValuePtr value, void *data)
 static int
 lxcSetMemTune(virDomainDefPtr def, virConfPtr properties)
 {
-    VIR_AUTOFREE(char *) value = NULL;
+    g_autofree char *value = NULL;
     unsigned long long size = 0;
 
     if (virConfGetValueString(properties,
@@ -877,7 +858,7 @@ lxcSetMemTune(virDomainDefPtr def, virConfPtr properties)
 static int
 lxcSetCpuTune(virDomainDefPtr def, virConfPtr properties)
 {
-    VIR_AUTOFREE(char *) value = NULL;
+    g_autofree char *value = NULL;
 
     if (virConfGetValueString(properties, "lxc.cgroup.cpu.shares",
                               &value) > 0) {
@@ -911,7 +892,7 @@ lxcSetCpuTune(virDomainDefPtr def, virConfPtr properties)
 static int
 lxcSetCpusetTune(virDomainDefPtr def, virConfPtr properties)
 {
-    VIR_AUTOFREE(char *) value = NULL;
+    g_autofree char *value = NULL;
     virBitmapPtr nodeset = NULL;
 
     if (virConfGetValueString(properties, "lxc.cgroup.cpuset.cpus",
@@ -965,8 +946,7 @@ lxcBlkioDeviceWalkCallback(const char *name, virConfValuePtr value, void *data)
         goto cleanup;
     }
 
-    if (virAsprintf(&path, "/dev/block/%s", parts[0]) < 0)
-        goto cleanup;
+    path = g_strdup_printf("/dev/block/%s", parts[0]);
 
     /* Do we already have a device definition for this path?
      * Get that device or create a new one */
@@ -1033,7 +1013,7 @@ lxcBlkioDeviceWalkCallback(const char *name, virConfValuePtr value, void *data)
 static int
 lxcSetBlkioTune(virDomainDefPtr def, virConfPtr properties)
 {
-    VIR_AUTOFREE(char *) value = NULL;
+    g_autofree char *value = NULL;
 
     if (virConfGetValueString(properties, "lxc.cgroup.blkio.weight",
                               &value) > 0) {
@@ -1053,7 +1033,7 @@ lxcSetBlkioTune(virDomainDefPtr def, virConfPtr properties)
 static void
 lxcSetCapDrop(virDomainDefPtr def, virConfPtr properties)
 {
-    VIR_AUTOFREE(char *) value = NULL;
+    g_autofree char *value = NULL;
     char **toDrop = NULL;
     const char *capString;
     size_t i;
@@ -1061,8 +1041,8 @@ lxcSetCapDrop(virDomainDefPtr def, virConfPtr properties)
     if (virConfGetValueString(properties, "lxc.cap.drop", &value) > 0)
         toDrop = virStringSplit(value, " ", 0);
 
-    for (i = 0; i < VIR_DOMAIN_CAPS_FEATURE_LAST; i++) {
-        capString = virDomainCapsFeatureTypeToString(i);
+    for (i = 0; i < VIR_DOMAIN_PROCES_CAPS_FEATURE_LAST; i++) {
+        capString = virDomainProcessCapsFeatureTypeToString(i);
         if (toDrop != NULL &&
             virStringListHasString((const char **)toDrop, capString))
             def->caps_features[i] = VIR_TRISTATE_SWITCH_OFF;
@@ -1075,12 +1055,12 @@ lxcSetCapDrop(virDomainDefPtr def, virConfPtr properties)
 
 virDomainDefPtr
 lxcParseConfigString(const char *config,
-                     virCapsPtr caps,
+                     virCapsPtr caps G_GNUC_UNUSED,
                      virDomainXMLOptionPtr xmlopt)
 {
     virDomainDefPtr vmdef = NULL;
-    virConfPtr properties = NULL;
-    VIR_AUTOFREE(char *) value = NULL;
+    g_autoptr(virConf) properties = NULL;
+    g_autofree char *value = NULL;
 
     if (!(properties = virConfReadString(config, VIR_CONF_FLAG_LXC_FORMAT)))
         return NULL;
@@ -1123,8 +1103,7 @@ lxcParseConfigString(const char *config,
         VIR_FREE(value);
     }
 
-    if (VIR_STRDUP(vmdef->os.init, "/sbin/init") < 0)
-        goto error;
+    vmdef->os.init = g_strdup("/sbin/init");
 
     if (virConfGetValueString(properties, "lxc.uts.name", &value) <= 0) {
         virResetLastError();
@@ -1134,11 +1113,10 @@ lxcParseConfigString(const char *config,
             goto error;
     }
 
-    if (VIR_STRDUP(vmdef->name, value) < 0)
-        goto error;
+    vmdef->name = g_strdup(value);
 
-    if (!vmdef->name && (VIR_STRDUP(vmdef->name, "unnamed") < 0))
-        goto error;
+    if (!vmdef->name)
+        vmdef->name = g_strdup("unnamed");
 
     if (lxcSetRootfs(vmdef, properties) < 0)
         goto error;
@@ -1188,18 +1166,13 @@ lxcParseConfigString(const char *config,
     /* lxc.cap.drop */
     lxcSetCapDrop(vmdef, properties);
 
-    if (virDomainDefPostParse(vmdef, caps, VIR_DOMAIN_DEF_PARSE_ABI_UPDATE,
+    if (virDomainDefPostParse(vmdef, VIR_DOMAIN_DEF_PARSE_ABI_UPDATE,
                               xmlopt, NULL) < 0)
-        goto cleanup;
+        goto error;
 
-    goto cleanup;
+    return vmdef;
 
  error:
     virDomainDefFree(vmdef);
-    vmdef = NULL;
-
- cleanup:
-    virConfFree(properties);
-
-    return vmdef;
+    return NULL;
 }

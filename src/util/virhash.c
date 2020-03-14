@@ -94,7 +94,7 @@ static bool virHashStrEqual(const void *namea, const void *nameb)
 static void *virHashStrCopy(const void *name)
 {
     char *ret;
-    ignore_value(VIR_STRDUP(ret, name));
+    ret = g_strdup(name);
     return ret;
 }
 
@@ -105,7 +105,7 @@ static void virHashStrFree(void *name)
 
 
 void
-virHashValueFree(void *value, const void *name ATTRIBUTE_UNUSED)
+virHashValueFree(void *value)
 {
     VIR_FREE(value);
 }
@@ -161,6 +161,26 @@ virHashTablePtr virHashCreateFull(ssize_t size,
     }
 
     return table;
+}
+
+
+/**
+ * virHashNew:
+ * @dataFree: callback to free data
+ *
+ * Create a new virHashTablePtr.
+ *
+ * Returns the newly created object, or NULL if an error occurred.
+ */
+virHashTablePtr
+virHashNew(virHashDataFree dataFree)
+{
+    return virHashCreateFull(32,
+                             dataFree,
+                             virHashStrCode,
+                             virHashStrEqual,
+                             virHashStrCopy,
+                             virHashStrFree);
 }
 
 
@@ -297,7 +317,7 @@ virHashFree(virHashTablePtr table)
             virHashEntryPtr next = iter->next;
 
             if (table->dataFree)
-                table->dataFree(iter->payload, iter->name);
+                table->dataFree(iter->payload);
             if (table->keyFree)
                 table->keyFree(iter->name);
             VIR_FREE(iter);
@@ -329,7 +349,7 @@ virHashAddOrUpdateEntry(virHashTablePtr table, const void *name,
         if (table->keyEqual(entry->name, name)) {
             if (is_update) {
                 if (table->dataFree)
-                    table->dataFree(entry->payload, entry->name);
+                    table->dataFree(entry->payload);
                 entry->payload = userdata;
                 return 0;
             } else {
@@ -414,6 +434,26 @@ virHashAtomicUpdate(virHashAtomicPtr table,
 }
 
 
+static virHashEntryPtr
+virHashGetEntry(const virHashTable *table,
+                const void *name)
+{
+    size_t key;
+    virHashEntryPtr entry;
+
+    if (!table || !name)
+        return NULL;
+
+    key = virHashComputeKey(table, name);
+    for (entry = table->table[key]; entry; entry = entry->next) {
+        if (table->keyEqual(entry->name, name))
+            return entry;
+    }
+
+    return NULL;
+}
+
+
 /**
  * virHashLookup:
  * @table: the hash table
@@ -426,18 +466,29 @@ virHashAtomicUpdate(virHashAtomicPtr table,
 void *
 virHashLookup(const virHashTable *table, const void *name)
 {
-    size_t key;
-    virHashEntryPtr entry;
+    virHashEntryPtr entry = virHashGetEntry(table, name);
 
-    if (!table || !name)
+    if (!entry)
         return NULL;
 
-    key = virHashComputeKey(table, name);
-    for (entry = table->table[key]; entry; entry = entry->next) {
-        if (table->keyEqual(entry->name, name))
-            return entry->payload;
-    }
-    return NULL;
+    return entry->payload;
+}
+
+
+/**
+ * virHashHasEntry:
+ * @table: the hash table
+ * @name: the name of the userdata
+ *
+ * Find whether entry specified by @name exists.
+ *
+ * Returns true if the entry exists and false otherwise
+ */
+bool
+virHashHasEntry(const virHashTable *table,
+                const void *name)
+{
+    return !!virHashGetEntry(table, name);
 }
 
 
@@ -536,7 +587,7 @@ virHashRemoveEntry(virHashTablePtr table, const void *name)
     for (entry = *nextptr; entry; entry = entry->next) {
         if (table->keyEqual(entry->name, name)) {
             if (table->dataFree)
-                table->dataFree(entry->payload, entry->name);
+                table->dataFree(entry->payload);
             if (table->keyFree)
                 table->keyFree(entry->name);
             *nextptr = entry->next;
@@ -581,15 +632,13 @@ virHashForEach(virHashTablePtr table, virHashIterator iter, void *data)
             ret = iter(entry->payload, entry->name, data);
 
             if (ret < 0)
-                goto cleanup;
+                return ret;
 
             entry = next;
         }
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -626,7 +675,7 @@ virHashRemoveSet(virHashTablePtr table,
             } else {
                 count++;
                 if (table->dataFree)
-                    table->dataFree(entry->payload, entry->name);
+                    table->dataFree(entry->payload);
                 if (table->keyFree)
                     table->keyFree(entry->name);
                 *nextptr = entry->next;
@@ -640,9 +689,9 @@ virHashRemoveSet(virHashTablePtr table,
 }
 
 static int
-_virHashRemoveAllIter(const void *payload ATTRIBUTE_UNUSED,
-                      const void *name ATTRIBUTE_UNUSED,
-                      const void *data ATTRIBUTE_UNUSED)
+_virHashRemoveAllIter(const void *payload G_GNUC_UNUSED,
+                      const void *name G_GNUC_UNUSED,
+                      const void *data G_GNUC_UNUSED)
 {
     return 1;
 }

@@ -81,6 +81,7 @@ void virSecurityManagerTransactionAbort(virSecurityManagerPtr mgr);
 void *virSecurityManagerGetPrivateData(virSecurityManagerPtr mgr);
 
 const char *virSecurityManagerGetDriver(virSecurityManagerPtr mgr);
+const char *virSecurityManagerGetVirtDriver(virSecurityManagerPtr mgr);
 const char *virSecurityManagerGetDOI(virSecurityManagerPtr mgr);
 const char *virSecurityManagerGetModel(virSecurityManagerPtr mgr);
 const char *virSecurityManagerGetBaseLabel(virSecurityManagerPtr mgr, int virtType);
@@ -121,7 +122,8 @@ int virSecurityManagerCheckAllLabel(virSecurityManagerPtr mgr,
 int virSecurityManagerSetAllLabel(virSecurityManagerPtr mgr,
                                   virDomainDefPtr sec,
                                   const char *stdin_path,
-                                  bool chardevStdioLogd);
+                                  bool chardevStdioLogd,
+                                  bool migrated);
 int virSecurityManagerRestoreAllLabel(virSecurityManagerPtr mgr,
                                       virDomainDefPtr def,
                                       bool migrated,

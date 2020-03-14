@@ -13,19 +13,17 @@ export DEB_LDFLAGS_MAINT_STRIP = -Wl,-Bsymbolic-functions
 ifneq (,$(findstring $(DEB_HOST_ARCH_OS), linux))
   ifneq (,$(findstring $(DEB_HOST_ARCH), i386 amd64))
     WITH_VBOX         = --with-vbox
-    FAIL_CHECK        = 1
   else
     WITH_VBOX         = --without-vbox
   endif
   ifneq (,$(findstring $(DEB_HOST_ARCH), i386 amd64 armhf arm64))
-    MAKE_CHECK        = 1
-    WITH_XEN          = --with-xen
     WITH_LIBXL        = --with-libxl
     XEN_ENABLED       = 1
   else
-    WITH_XEN          = --without-xen
     WITH_LIBXL        = --without-libxl
   endif
+  MAKE_CHECK        = 1
+  FAIL_CHECK        = 1
   WITH_STORAGE_LVM    = --with-storage-lvm
   WITH_STORAGE_ISCSI  = --with-storage-iscsi
   WITH_STORAGE_DISK   =	--with-storage-disk
@@ -84,7 +82,6 @@ else
   WITH_APPARMOR       = --without-apparmor
   WITH_NSS_PLUGIN     = --without-nss-plugin
   WITH_DTRACE         = --without-dtrace
-  WITH_XEN            = --without-xen
   WITH_LIBXL          = --without-libxl
   WITH_VBOX           = --without-vbox
 endif
@@ -94,6 +91,7 @@ DEB_CONFIGURE_EXTRA_ARGS :=      \
 	--with-packager="$(DEB_BUILDUSER) $(DEB_BUILDDATE)" \
 	--with-packager-version="$(DEB_RELEASE)" \
 	--with-default-editor="sensible-editor" \
+	--enable-dependency-tracking \
 	--disable-silent-rules   \
 	--disable-rpath          \
 	--with-qemu		 \
@@ -119,13 +117,11 @@ DEB_CONFIGURE_EXTRA_ARGS :=      \
 	$(WITH_SELINUX)          \
 	$(WITH_APPARMOR)         \
 	--with-esx               \
-	--without-phyp           \
 	$(WITH_CAPNG)		 \
 	--enable-debug		 \
 	$(WITH_MACVTAP)		 \
 	$(WITH_NETWORK)		 \
 	$(WITH_NETCF)		 \
-	$(WITH_XEN)		 \
 	$(WITH_LIBXL)		 \
 	$(WITH_VBOX)		 \
 	$(WITH_LXC)              \
@@ -154,7 +150,9 @@ LIBVIRT_SYSTEM_SERVICES = \
 
 DEB_BUILDDIR := $(CURDIR)/debian/build
 LOGROTATE = $(basename $(basename $(notdir $(wildcard src/remote/libvirtd*.logrotate.in))))
-EXAMPLES_DIR = $(CURDIR)/debian/libvirt-doc/usr/share/doc/libvirt-doc/examples/
+SRV_MONOLITHIC = libvirt-guests virtlogd virtlockd libvirtd libvirtd-tcp libvirtd-tls virt-guest-shutdown
+# For split daemons later, as of 6.0 the remaining elments are
+#SRV_SPLIT = virtnwfilterd virtinterfaced virtlxcd virtnetworkd virtnodedevd virtproxyd virtqemud virtsecretd virtstoraged virtvboxd virtxend virtproxyd-tcp virtproxyd-tls
 
 %:
 	dh $@ --builddirectory=$(DEB_BUILDDIR)
@@ -180,7 +178,7 @@ override_dh_install-arch:
 
 	# Copy upstream files to debian/ so dh_* can find them
 	cp debian/tmp/usr/lib/libvirt/libvirt-guests.sh \
-	    debian/libvirt-daemon-system.libvirt-guests.init
+	    debian/libvirt-daemon-system-sysv.libvirt-guests.init
 	cp tools/libvirt-guests.sysconf \
 	    debian/libvirt-daemon-system.libvirt-guests.default
 	cp src/logging/virtlogd.sysconf \
@@ -192,7 +190,10 @@ override_dh_install-arch:
 	    debian/libvirt-daemon-system/var/lib/polkit-1/localauthority/10-vendor.d/
 ifneq (,$(findstring $(DEB_HOST_ARCH_OS), linux))
 	# Linux supports more nice things:
-	dh_install -p libvirt-daemon-system usr/lib/systemd/system lib/systemd/
+	set -e; for f in $(SRV_MONOLITHIC); do \
+		dh_install -p libvirt-daemon-system  usr/lib/systemd/system/$${f}* \
+			lib/systemd/system/; \
+	done
 	dh_install -p libvirt-daemon-system usr/lib/libvirt/virt-aa-helper
 	dh_install -p libvirt-daemon-system etc/apparmor.d
 	dh_apparmor -p libvirt-daemon-system --profile-name=usr.lib.libvirt.virt-aa-helper
@@ -228,11 +229,16 @@ endif
 	# executable-not-elf-or-script
 	chmod 644 debian/libvirt-daemon/usr/share/bash-completion/completions/vsh
 
-
 override_dh_installinit:
-	dh_installinit -p libvirt-daemon-system --name=virtlogd --no-stop-on-upgrade
-	dh_installinit -p libvirt-daemon-system --name=libvirtd --restart-after-upgrade -- defaults 28 72
-	dh_installinit -p libvirt-daemon-system --name=libvirt-guests --no-stop-on-upgrade -- defaults 29 71
+	dh_installinit -p libvirt-daemon-system-sysv --name=virtlogd --no-stop-on-upgrade
+	dh_installinit -p libvirt-daemon-system-sysv --name=virtlockd --no-stop-on-upgrade
+	dh_installinit -p libvirt-daemon-system-sysv --name=libvirtd --restart-after-upgrade -- defaults 28 72
+	dh_installinit -p libvirt-daemon-system-sysv --name=libvirt-guests --no-stop-on-upgrade -- defaults 29 71
+	# install /etc/default/* files that are shared between sysv and systemd packages
+	dh_installinit -p libvirt-daemon-system --name=virtlockd --no-scripts
+	dh_installinit -p libvirt-daemon-system --name=virtlogd --no-scripts
+	dh_installinit -p libvirt-daemon-system --name=libvirt-guests --no-scripts
+	dh_installinit -p libvirt-daemon-system --name=libvirtd --no-scripts
 
 override_dh_installsystemd:
 	dh_installsystemd -p libvirt-daemon-system --restart-after-upgrade libvirtd.service
@@ -241,14 +247,6 @@ override_dh_installsystemd:
 override_dh_installdocs:
 	dh_installdocs -plibvirt-doc --doc-main-package libvirt-doc
 	dh_installdocs -Nlibvirt-doc
-	# Remove binaries and object files examples
-	[ ! -d $(EXAMPLES_DIR) ] || find $(EXAMPLES_DIR) -name "*.o" -type f -delete -o -name .libs -type d -exec rm -rf {} \;
-	rm -f $(EXAMPLES_DIR)domain-events/events-c/event-test \
-	      $(EXAMPLES_DIR)dominfo/info1 \
-	      $(EXAMPLES_DIR)domsuspend/suspend \
-	      $(EXAMPLES_DIR)hellolibvirt/hellolibvirt \
-	      $(EXAMPLES_DIR)apparmor/* \
-	      $(NULL)
 
 override_dh_auto_clean:
 	[ ! -f Makefile ] || dh_auto_clean

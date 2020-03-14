@@ -5,12 +5,21 @@
   <currentMemory unit='KiB'>219136</currentMemory>
   <vcpu placement='static'>4</vcpu>
   <cputune>
+    <cachetune vcpus='0-1'>
+      <cache id='0' level='3' type='both' size='768' unit='KiB'/>
+      <cache id='1' level='3' type='both' size='768' unit='KiB'/>
+    </cachetune>
     <memorytune vcpus='0-1'>
+      <monitor vcpus='0-1'/>
       <node id='0' bandwidth='20'/>
+      <monitor vcpus='0'/>
       <node id='1' bandwidth='30'/>
     </memorytune>
     <memorytune vcpus='3'>
       <node id='0' bandwidth='50'/>
+    </memorytune>
+    <memorytune vcpus='2'>
+      <monitor vcpus='2'/>
     </memorytune>
   </cputune>
   <os>
@@ -22,7 +31,7 @@
   <on_reboot>restart</on_reboot>
   <on_crash>destroy</on_crash>
   <devices>
-    <emulator>/usr/bin/qemu-system-i686</emulator>
+    <emulator>/usr/bin/qemu-system-i386</emulator>
     <controller type='usb' index='0'/>
     <controller type='ide' index='0'/>
     <controller type='pci' index='0' model='pci-root'/>

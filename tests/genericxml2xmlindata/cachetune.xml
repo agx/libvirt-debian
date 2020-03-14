@@ -6,6 +6,7 @@
   <vcpu placement='static'>4</vcpu>
   <cputune>
     <cachetune vcpus='0-1'>
+      <monitor level='3' vcpus='0-1'/>
       <cache id='0' level='3' type='both' size='3' unit='MiB'/>
       <cache id='1' level='3' type='both' size='3' unit='MiB'/>
     </cachetune>
@@ -22,7 +23,7 @@
   <on_reboot>restart</on_reboot>
   <on_crash>destroy</on_crash>
   <devices>
-    <emulator>/usr/bin/qemu-system-i686</emulator>
+    <emulator>/usr/bin/qemu-system-i386</emulator>
     <controller type='usb' index='0'/>
     <controller type='ide' index='0'/>
     <controller type='pci' index='0' model='pci-root'/>

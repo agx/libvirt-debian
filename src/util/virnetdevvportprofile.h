@@ -77,19 +77,19 @@ struct _virNetDevVPortProfile {
 };
 
 
-bool virNetDevVPortProfileEqual(virNetDevVPortProfilePtr a,
-                                virNetDevVPortProfilePtr b);
+bool virNetDevVPortProfileEqual(const virNetDevVPortProfile *a,
+                                const virNetDevVPortProfile *b);
 int virNetDevVPortProfileCopy(virNetDevVPortProfilePtr *dst,
                               const virNetDevVPortProfile *src);
 
 int virNetDevVPortProfileCheckComplete(virNetDevVPortProfilePtr virtport,
                                        bool generateMissing);
-int virNetDevVPortProfileCheckNoExtras(virNetDevVPortProfilePtr virtport);
+int virNetDevVPortProfileCheckNoExtras(const virNetDevVPortProfile *virtport);
 
 int virNetDevVPortProfileMerge3(virNetDevVPortProfilePtr *result,
-                                virNetDevVPortProfilePtr fromInterface,
-                                virNetDevVPortProfilePtr fromNetwork,
-                                virNetDevVPortProfilePtr fromPortgroup);
+                                const virNetDevVPortProfile *fromInterface,
+                                const virNetDevVPortProfile *fromNetwork,
+                                const virNetDevVPortProfile *fromPortgroup);
 
 int virNetDevVPortProfileAssociate(const char *ifname,
                                    const virNetDevVPortProfile *virtPort,
@@ -99,7 +99,7 @@ int virNetDevVPortProfileAssociate(const char *ifname,
                                    const unsigned char *vmuuid,
                                    virNetDevVPortProfileOp vmOp,
                                    bool setlink_only)
-    ATTRIBUTE_NONNULL(4) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(4) G_GNUC_WARN_UNUSED_RESULT;
 
 int virNetDevVPortProfileDisassociate(const char *ifname,
                                       const virNetDevVPortProfile *virtPort,
@@ -107,4 +107,4 @@ int virNetDevVPortProfileDisassociate(const char *ifname,
                                       const char *linkdev,
                                       int vf,
                                       virNetDevVPortProfileOp vmOp)
-    ATTRIBUTE_NONNULL(4) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(4) G_GNUC_WARN_UNUSED_RESULT;

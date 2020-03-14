@@ -133,7 +133,7 @@ makeSparseFile(const off_t offsets[],
     off_t len = 0;
     size_t i;
 
-    if ((fd = mkostemp(path,  O_CLOEXEC|O_RDWR)) < 0)
+    if ((fd = g_mkstemp_full(path, O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)) < 0)
         goto error;
 
     if (unlink(path) < 0)
@@ -236,8 +236,8 @@ holesSupported(void)
 #else /* !HAVE_DECL_SEEK_HOLE || !defined(__linux__)*/
 
 static int
-makeSparseFile(const off_t offsets[] ATTRIBUTE_UNUSED,
-               const bool startData ATTRIBUTE_UNUSED)
+makeSparseFile(const off_t offsets[] G_GNUC_UNUSED,
+               const bool startData G_GNUC_UNUSED)
 {
     return -1;
 }
@@ -315,7 +315,7 @@ struct testFileIsSharedFSType {
 };
 
 static int
-testFileIsSharedFSType(const void *opaque ATTRIBUTE_UNUSED)
+testFileIsSharedFSType(const void *opaque G_GNUC_UNUSED)
 {
 #ifndef __linux__
     return EXIT_AM_SKIP;
@@ -325,10 +325,9 @@ testFileIsSharedFSType(const void *opaque ATTRIBUTE_UNUSED)
     bool actual;
     int ret = -1;
 
-    if (virAsprintf(&mtabFile, abs_srcdir "/virfiledata/%s", data->mtabFile) < 0)
-        return -1;
+    mtabFile = g_strdup_printf(abs_srcdir "/virfiledata/%s", data->mtabFile);
 
-    if (setenv("LIBVIRT_MTAB", mtabFile, 1) < 0) {
+    if (g_setenv("LIBVIRT_MTAB", mtabFile, TRUE) == FALSE) {
         fprintf(stderr, "Unable to set env variable\n");
         goto cleanup;
     }
@@ -344,7 +343,7 @@ testFileIsSharedFSType(const void *opaque ATTRIBUTE_UNUSED)
     ret = 0;
  cleanup:
     VIR_FREE(mtabFile);
-    unsetenv("LIBVIRT_MTAB");
+    g_unsetenv("LIBVIRT_MTAB");
     return ret;
 #endif
 }
@@ -376,7 +375,7 @@ mymain(void)
 # define DO_TEST_MOUNT_SUBTREE(name, path, prefix, mounts, rev) \
     do { \
         struct testFileGetMountSubtreeData data = { \
-            path, prefix, mounts, ARRAY_CARDINALITY(mounts), rev \
+            path, prefix, mounts, G_N_ELEMENTS(mounts), rev \
         }; \
         if (virTestRun(name, testFileGetMountSubtree, &data) < 0) \
             ret = -1; \
@@ -464,7 +463,7 @@ mymain(void)
 }
 
 #ifdef __linux__
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virfilemock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virfile"))
 #else
 VIR_TEST_MAIN(mymain)
 #endif

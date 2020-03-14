@@ -52,8 +52,8 @@ static virClassPtr virMacMapClass;
 
 static int
 virMacMapHashFree(void *payload,
-                  const void *name ATTRIBUTE_UNUSED,
-                  void *opaque ATTRIBUTE_UNUSED)
+                  const void *name G_GNUC_UNUSED,
+                  void *opaque G_GNUC_UNUSED)
 {
     virStringListFree(payload);
     return 0;
@@ -85,22 +85,18 @@ virMacMapAddLocked(virMacMapPtr mgr,
                    const char *domain,
                    const char *mac)
 {
-    int ret = -1;
     char **macsList = NULL;
 
     if ((macsList = virHashLookup(mgr->macs, domain)) &&
         virStringListHasString((const char**) macsList, mac)) {
-        ret = 0;
-        goto cleanup;
+        return 0;
     }
 
     if (virStringListAdd(&macsList, mac) < 0 ||
         virHashUpdateEntry(mgr->macs, domain, macsList) < 0)
-        goto cleanup;
+        return -1;
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -290,7 +286,7 @@ virMacMapFileName(const char *dnsmasqStateDir,
 {
     char *filename;
 
-    ignore_value(virAsprintf(&filename, "%s/%s.macs", dnsmasqStateDir, bridge));
+    filename = g_strdup_printf("%s/%s.macs", dnsmasqStateDir, bridge);
 
     return filename;
 }

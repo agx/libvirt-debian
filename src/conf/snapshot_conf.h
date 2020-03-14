@@ -87,6 +87,9 @@ struct _virDomainSnapshotDef {
     virObjectPtr cookie;
 };
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virDomainSnapshotDef, virObjectUnref);
+
+
 typedef enum {
     VIR_DOMAIN_SNAPSHOT_PARSE_REDEFINE = 1 << 0,
     VIR_DOMAIN_SNAPSHOT_PARSE_DISKS    = 1 << 1,
@@ -104,20 +107,19 @@ typedef enum {
 unsigned int virDomainSnapshotFormatConvertXMLFlags(unsigned int flags);
 
 virDomainSnapshotDefPtr virDomainSnapshotDefParseString(const char *xmlStr,
-                                                        virCapsPtr caps,
                                                         virDomainXMLOptionPtr xmlopt,
+                                                        void *parseOpaque,
                                                         bool *current,
                                                         unsigned int flags);
 virDomainSnapshotDefPtr virDomainSnapshotDefParseNode(xmlDocPtr xml,
                                                       xmlNodePtr root,
-                                                      virCapsPtr caps,
                                                       virDomainXMLOptionPtr xmlopt,
+                                                      void *parseOpaque,
                                                       bool *current,
                                                       unsigned int flags);
 virDomainSnapshotDefPtr virDomainSnapshotDefNew(void);
 char *virDomainSnapshotDefFormat(const char *uuidstr,
                                  virDomainSnapshotDefPtr def,
-                                 virCapsPtr caps,
                                  virDomainXMLOptionPtr xmlopt,
                                  unsigned int flags);
 int virDomainSnapshotAlignDisks(virDomainSnapshotDefPtr snapshot,
@@ -127,12 +129,10 @@ int virDomainSnapshotAlignDisks(virDomainSnapshotDefPtr snapshot,
 bool virDomainSnapshotDefIsExternal(virDomainSnapshotDefPtr def);
 bool virDomainSnapshotIsExternal(virDomainMomentObjPtr snap);
 
-int virDomainSnapshotRedefinePrep(virDomainPtr domain,
-                                  virDomainObjPtr vm,
+int virDomainSnapshotRedefinePrep(virDomainObjPtr vm,
                                   virDomainSnapshotDefPtr *def,
                                   virDomainMomentObjPtr *snap,
                                   virDomainXMLOptionPtr xmlopt,
-                                  bool *update_current,
                                   unsigned int flags);
 
 int virDomainSnapshotRedefineValidate(virDomainSnapshotDefPtr def,

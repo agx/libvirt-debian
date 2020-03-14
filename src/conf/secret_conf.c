@@ -131,35 +131,33 @@ virSecretDefParseUsage(xmlXPathContextPtr ctxt,
 static virSecretDefPtr
 secretXMLParseNode(xmlDocPtr xml, xmlNodePtr root)
 {
-    xmlXPathContextPtr ctxt = NULL;
-    virSecretDefPtr def = NULL, ret = NULL;
-    char *prop = NULL;
-    char *uuidstr = NULL;
+    g_autoptr(xmlXPathContext) ctxt = NULL;
+    g_autoptr(virSecretDef) def = NULL;
+    g_autofree char *prop = NULL;
+    g_autofree char *uuidstr = NULL;
 
     if (!virXMLNodeNameEqual(root, "secret")) {
         virReportError(VIR_ERR_XML_ERROR,
                        _("unexpected root element <%s>, "
                          "expecting <secret>"),
                        root->name);
-        goto cleanup;
+        return NULL;
     }
 
-    ctxt = xmlXPathNewContext(xml);
-    if (ctxt == NULL) {
-        virReportOOMError();
-        goto cleanup;
-    }
+    if (!(ctxt = virXMLXPathContextNew(xml)))
+        return NULL;
+
     ctxt->node = root;
 
     if (VIR_ALLOC(def) < 0)
-        goto cleanup;
+        return NULL;
 
     prop = virXPathString("string(./@ephemeral)", ctxt);
     if (prop != NULL) {
         if (virStringParseYesNo(prop, &def->isephemeral) < 0) {
             virReportError(VIR_ERR_XML_ERROR, "%s",
                            _("invalid value of 'ephemeral'"));
-            goto cleanup;
+            return NULL;
         }
         VIR_FREE(prop);
     }
@@ -169,7 +167,7 @@ secretXMLParseNode(xmlDocPtr xml, xmlNodePtr root)
         if (virStringParseYesNo(prop, &def->isprivate) < 0) {
             virReportError(VIR_ERR_XML_ERROR, "%s",
                            _("invalid value of 'private'"));
-            goto cleanup;
+            return NULL;
         }
         VIR_FREE(prop);
     }
@@ -179,13 +177,13 @@ secretXMLParseNode(xmlDocPtr xml, xmlNodePtr root)
         if (virUUIDGenerate(def->uuid) < 0) {
             virReportError(VIR_ERR_INTERNAL_ERROR,
                            "%s", _("Failed to generate UUID"));
-            goto cleanup;
+            return NULL;
         }
     } else {
         if (virUUIDParse(uuidstr, def->uuid) < 0) {
             virReportError(VIR_ERR_INTERNAL_ERROR,
                            "%s", _("malformed uuid element"));
-            goto cleanup;
+            return NULL;
         }
         VIR_FREE(uuidstr);
     }
@@ -193,15 +191,9 @@ secretXMLParseNode(xmlDocPtr xml, xmlNodePtr root)
     def->description = virXPathString("string(./description)", ctxt);
     if (virXPathNode("./usage", ctxt) != NULL
         && virSecretDefParseUsage(ctxt, def) < 0)
-        goto cleanup;
-    VIR_STEAL_PTR(ret, def);
+        return NULL;
 
- cleanup:
-    VIR_FREE(prop);
-    VIR_FREE(uuidstr);
-    virSecretDefFree(def);
-    xmlXPathFreeContext(ctxt);
-    return ret;
+    return g_steal_pointer(&def);
 }
 
 static virSecretDefPtr
@@ -305,9 +297,6 @@ virSecretDefFormat(const virSecretDef *def)
         goto error;
     virBufferAdjustIndent(&buf, -2);
     virBufferAddLit(&buf, "</secret>\n");
-
-    if (virBufferCheckError(&buf) < 0)
-        goto error;
 
     return virBufferContentAndReset(&buf);
 

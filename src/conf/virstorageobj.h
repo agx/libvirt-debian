@@ -94,6 +94,12 @@ void
 virStoragePoolObjSetActive(virStoragePoolObjPtr obj,
                            bool active);
 
+void
+virStoragePoolObjSetStarting(virStoragePoolObjPtr obj,
+                             bool starting);
+bool
+virStoragePoolObjIsStarting(virStoragePoolObjPtr obj);
+
 bool
 virStoragePoolObjIsAutostart(virStoragePoolObjPtr obj);
 
@@ -194,10 +200,15 @@ virStoragePoolObjVolumeListExport(virConnectPtr conn,
                                   virStorageVolPtr **vols,
                                   virStoragePoolVolumeACLFilter filter);
 
+typedef enum {
+    VIR_STORAGE_POOL_OBJ_LIST_ADD_LIVE = (1 << 0),
+    VIR_STORAGE_POOL_OBJ_LIST_ADD_CHECK_LIVE = (1 << 1),
+} virStoragePoolObjListFlags;
+
 virStoragePoolObjPtr
-virStoragePoolObjAssignDef(virStoragePoolObjListPtr pools,
-                           virStoragePoolDefPtr def,
-                           bool check_active);
+virStoragePoolObjListAdd(virStoragePoolObjListPtr pools,
+                         virStoragePoolDefPtr def,
+                         unsigned int flags);
 
 int
 virStoragePoolObjSaveDef(virStorageDriverStatePtr driver,

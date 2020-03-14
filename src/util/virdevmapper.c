@@ -38,11 +38,11 @@
 
 #ifdef WITH_DEVMAPPER
 static void
-virDevMapperDummyLogger(int level ATTRIBUTE_UNUSED,
-                        const char *file ATTRIBUTE_UNUSED,
-                        int line ATTRIBUTE_UNUSED,
-                        int dm_errno ATTRIBUTE_UNUSED,
-                        const char *fmt ATTRIBUTE_UNUSED,
+virDevMapperDummyLogger(int level G_GNUC_UNUSED,
+                        const char *file G_GNUC_UNUSED,
+                        int line G_GNUC_UNUSED,
+                        int dm_errno G_GNUC_UNUSED,
+                        const char *fmt G_GNUC_UNUSED,
                         ...)
 {
     return;
@@ -127,10 +127,9 @@ virDevMapperGetTargetsImpl(const char *path,
         goto cleanup;
 
     for (i = 0; i < deps->count; i++) {
-        if (virAsprintfQuiet(&devPaths[i], "/dev/block/%u:%u",
-                             major(deps->device[i]),
-                             minor(deps->device[i])) < 0)
-            goto cleanup;
+        devPaths[i] = g_strdup_printf("/dev/block/%u:%u",
+                                      major(deps->device[i]),
+                                      minor(deps->device[i]));
     }
 
     recursiveDevPaths = NULL;
@@ -150,7 +149,7 @@ virDevMapperGetTargetsImpl(const char *path,
     if (virStringListMerge(&devPaths, &recursiveDevPaths) < 0)
         goto cleanup;
 
-    VIR_STEAL_PTR(*devPaths_ret, devPaths);
+    *devPaths_ret = g_steal_pointer(&devPaths);
     ret = 0;
  cleanup:
     virStringListFree(recursiveDevPaths);
@@ -198,8 +197,8 @@ virDevMapperGetTargets(const char *path,
 #else /* ! WITH_DEVMAPPER */
 
 int
-virDevMapperGetTargets(const char *path ATTRIBUTE_UNUSED,
-                       char ***devPaths ATTRIBUTE_UNUSED)
+virDevMapperGetTargets(const char *path G_GNUC_UNUSED,
+                       char ***devPaths G_GNUC_UNUSED)
 {
     errno = ENOSYS;
     return -1;

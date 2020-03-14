@@ -43,7 +43,8 @@ Build-Depends:
  libdbus-1-dev [linux-any],
  nfs-common,
  systemtap-sdt-dev [amd64 armel armhf i386 ia64 powerpc s390],
- python,
+ python3,
+ python3-docutils,
  xsltproc,
  zfsutils [kfreebsd-amd64 kfreebsd-i386],
  po-debconf,
@@ -251,9 +252,9 @@ Depends:
  ${shlibs:Depends},
  adduser,
  gettext-base,
- lsb-base,
  libvirt-clients (= ${binary:Version}),
  libvirt-daemon (= ${binary:Version}),
+ libvirt-daemon-system-systemd | libvirt-daemon-system-sysv,
  iptables (>= 1.8.1-1) [linux-any] | firewalld,
  logrotate,
  policykit-1,
@@ -284,6 +285,50 @@ Description: Libvirt daemon configuration files
  This package contains the configuration files to run the libvirt daemon as a
  system service.
 
+Package: libvirt-daemon-system-systemd
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ systemd-container,
+ systemd-sysv,
+Section: admin
+Conflicts: libvirt-daemon-system-sysv
+Description: Libvirt daemon configuration files (systemd)
+ Libvirt is a C toolkit to interact with the virtualization capabilities
+ of recent versions of Linux (and other OSes). The library aims at providing
+ a long term stable C API for different virtualization mechanisms. It currently
+ supports QEMU, KVM, XEN, OpenVZ, LXC, and VirtualBox.
+ .
+ This package contains the dependencies to make libvirt work with systemd.
+ (this is the default). This package is useless without the
+ libvirt-daemon-system package installed.
+
+Package: libvirt-daemon-system-sysv
+Architecture: any
+Section: admin
+Pre-Depends:
+ ${misc:Pre-Depends}
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ lsb-base,
+Breaks:
+ libvirt-daemon-system (<< 5.6.0-4~),
+Replaces:
+  libvirt-daemon-system (<< 5.6.0-4~),
+Description: Libvirt daemon configuration files (sysv)
+ Libvirt is a C toolkit to interact with the virtualization capabilities
+ of recent versions of Linux (and other OSes). The library aims at providing
+ a long term stable C API for different virtualization mechanisms. It currently
+ supports QEMU, KVM, XEN, OpenVZ, LXC, and VirtualBox.
+ .
+ This package contains dependencies and init scripts to make libvirt work with
+ sysv based init systems. Using libvirt-daemon-systemd is preferred since the
+ init scripts are incomplete.
+ .
+ This package is useless without the libvirt-daemon-system package installed.
+
 Package: libvirt0
 Architecture: any
 Multi-Arch: same
@@ -302,7 +347,6 @@ Package: libvirt-doc
 Architecture: all
 Section: doc
 Depends: ${misc:Depends}
-Suggests: devhelp
 Description: documentation for the libvirt library
  Libvirt is a C toolkit to interact with the virtualization capabilities
  of recent versions of Linux (and other OSes). The library aims at providing

@@ -229,15 +229,18 @@ daemonStreamEvent(virStreamPtr st, int events, void *opaque)
         int ret;
         virNetMessagePtr msg;
         virNetMessageError rerr;
-        virErrorPtr origErr = virSaveLastError();
+        virErrorPtr origErr;
+
+        virErrorPreserveLast(&origErr);
 
         memset(&rerr, 0, sizeof(rerr));
         stream->closed = true;
         virStreamEventRemoveCallback(stream->st);
         virStreamAbort(stream->st);
         if (origErr && origErr->code != VIR_ERR_OK) {
-            virSetError(origErr);
+            virErrorRestore(&origErr);
         } else {
+            virFreeError(origErr);
             if (events & VIR_STREAM_EVENT_HANGUP)
                 virReportError(VIR_ERR_RPC,
                                "%s", _("stream had unexpected termination"));
@@ -245,7 +248,6 @@ daemonStreamEvent(virStreamPtr st, int events, void *opaque)
                 virReportError(VIR_ERR_RPC,
                                "%s", _("stream had I/O failure"));
         }
-        virFreeError(origErr);
 
         msg = virNetMessageNew(false);
         if (!msg) {
@@ -284,14 +286,31 @@ daemonStreamEvent(virStreamPtr st, int events, void *opaque)
  * -1 on fatal client error
  */
 static int
-daemonStreamFilter(virNetServerClientPtr client ATTRIBUTE_UNUSED,
+daemonStreamFilter(virNetServerClientPtr client,
                    virNetMessagePtr msg,
                    void *opaque)
 {
     daemonClientStream *stream = opaque;
     int ret = 0;
 
+    /* We must honour lock ordering here. Client private data lock must
+     * be acquired before client lock. Bu we are already called with
+     * client locked. To avoid stream disappearing while we unlock
+     * everything, let's increase its refcounter. This has some
+     * implications though. */
+    stream->refs++;
+    virObjectUnlock(client);
     virMutexLock(&stream->priv->lock);
+    virObjectLock(client);
+
+    if (stream->refs == 1) {
+        /* So we are the only ones holding the reference to the stream.
+         * Return 1 to signal to the caller that we've processed the
+         * message. And to "process" means free. */
+        virNetMessageFree(msg);
+        ret = 1;
+        goto cleanup;
+    }
 
     if (msg->header.type != VIR_NET_STREAM &&
         msg->header.type != VIR_NET_STREAM_HOLE)
@@ -314,6 +333,10 @@ daemonStreamFilter(virNetServerClientPtr client ATTRIBUTE_UNUSED,
 
  cleanup:
     virMutexUnlock(&stream->priv->lock);
+    /* Don't pass client here, because client is locked here and this
+     * function might try to lock it again which would result in a
+     * deadlock. */
+    daemonFreeClientStream(NULL, stream);
     return ret;
 }
 
@@ -549,7 +572,9 @@ daemonStreamHandleWriteData(virNetServerClientPtr client,
         return 1;
     } else if (ret < 0) {
         virNetMessageError rerr;
-        virErrorPtr err = virSaveLastError();
+        virErrorPtr err;
+
+        virErrorPreserveLast(&err);
 
         memset(&rerr, 0, sizeof(rerr));
 
@@ -558,10 +583,7 @@ daemonStreamHandleWriteData(virNetServerClientPtr client,
         virStreamEventRemoveCallback(stream->st);
         virStreamAbort(stream->st);
 
-        if (err) {
-            virSetError(err);
-            virFreeError(err);
-        }
+        virErrorRestore(&err);
 
         return virNetServerProgramSendReplyError(stream->prog,
                                                  client,

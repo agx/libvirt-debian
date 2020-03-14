@@ -39,30 +39,21 @@ int
 virLockDaemonConfigFilePath(bool privileged, char **configfile)
 {
     if (privileged) {
-        if (VIR_STRDUP(*configfile, SYSCONFDIR "/libvirt/virtlockd.conf") < 0)
-            goto error;
+        *configfile = g_strdup(SYSCONFDIR "/libvirt/virtlockd.conf");
     } else {
-        char *configdir = NULL;
+        g_autofree char *configdir = NULL;
 
-        if (!(configdir = virGetUserConfigDirectory()))
-            goto error;
+        configdir = virGetUserConfigDirectory();
 
-        if (virAsprintf(configfile, "%s/virtlockd.conf", configdir) < 0) {
-            VIR_FREE(configdir);
-            goto error;
-        }
-        VIR_FREE(configdir);
+        *configfile = g_strdup_printf("%s/virtlockd.conf", configdir);
     }
 
     return 0;
-
- error:
-    return -1;
 }
 
 
 virLockDaemonConfigPtr
-virLockDaemonConfigNew(bool privileged ATTRIBUTE_UNUSED)
+virLockDaemonConfigNew(bool privileged G_GNUC_UNUSED)
 {
     virLockDaemonConfigPtr data;
 
@@ -114,8 +105,7 @@ virLockDaemonConfigLoadFile(virLockDaemonConfigPtr data,
                             const char *filename,
                             bool allow_missing)
 {
-    virConfPtr conf;
-    int ret;
+    g_autoptr(virConf) conf = NULL;
 
     if (allow_missing &&
         access(filename, R_OK) == -1 &&
@@ -126,7 +116,5 @@ virLockDaemonConfigLoadFile(virLockDaemonConfigPtr data,
     if (!conf)
         return -1;
 
-    ret = virLockDaemonConfigLoadOptions(data, conf);
-    virConfFree(conf);
-    return ret;
+    return virLockDaemonConfigLoadOptions(data, conf);
 }

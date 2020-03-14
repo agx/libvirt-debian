@@ -21,7 +21,6 @@
 #include "internal.h"
 #include "virobject.h"
 #include "virutil.h"
-#include "virautoclean.h"
 #include "virenum.h"
 
 typedef enum {
@@ -39,6 +38,9 @@ typedef struct _virMediatedDevice virMediatedDevice;
 typedef virMediatedDevice *virMediatedDevicePtr;
 typedef struct _virMediatedDeviceList virMediatedDeviceList;
 typedef virMediatedDeviceList *virMediatedDeviceListPtr;
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virMediatedDeviceList, virObjectUnref);
+
 
 typedef struct _virMediatedDeviceType virMediatedDeviceType;
 typedef virMediatedDeviceType *virMediatedDeviceTypePtr;
@@ -137,5 +139,5 @@ int
 virMediatedDeviceTypeReadAttrs(const char *sysfspath,
                                virMediatedDeviceTypePtr *type);
 
-VIR_DEFINE_AUTOPTR_FUNC(virMediatedDevice, virMediatedDeviceFree);
-VIR_DEFINE_AUTOPTR_FUNC(virMediatedDeviceType, virMediatedDeviceTypeFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virMediatedDevice, virMediatedDeviceFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virMediatedDeviceType, virMediatedDeviceTypeFree);

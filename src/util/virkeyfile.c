@@ -21,7 +21,6 @@
 #include <config.h>
 
 
-#include "c-ctype.h"
 #include "virlog.h"
 #include "viralloc.h"
 #include "virfile.h"
@@ -77,6 +76,8 @@ struct _virKeyFileParserCtxt {
 
 #define IS_EOF (ctxt->cur >= ctxt->end)
 #define IS_EOL(c) (((c) == '\n') || ((c) == '\r'))
+#define IS_BLANK(c) (((c) == ' ') || ((c) == '\t'))
+#define IS_ASCII(c) (((unsigned char) (c)) < 128)
 #define CUR (*ctxt->cur)
 #define NEXT if (!IS_EOF) ctxt->cur++;
 
@@ -109,15 +110,14 @@ static int virKeyFileParseGroup(virKeyFileParserCtxtPtr ctxt)
     VIR_FREE(ctxt->groupname);
 
     name = ctxt->cur;
-    while (!IS_EOF && c_isascii(CUR) && CUR != ']')
+    while (!IS_EOF && IS_ASCII(CUR) && CUR != ']')
         ctxt->cur++;
     if (CUR != ']') {
         virKeyFileError(ctxt, VIR_ERR_CONF_SYNTAX, "cannot find end of group name, expected ']'");
         return -1;
     }
 
-    if (VIR_STRNDUP(ctxt->groupname, name, ctxt->cur - name) < 0)
-        return -1;
+    ctxt->groupname = g_strndup(name, ctxt->cur - name);
 
     NEXT;
 
@@ -153,15 +153,14 @@ static int virKeyFileParseValue(virKeyFileParserCtxtPtr ctxt)
     }
 
     keystart = ctxt->cur;
-    while (!IS_EOF && c_isalnum(CUR) && CUR != '=')
+    while (!IS_EOF && g_ascii_isalnum(CUR) && CUR != '=')
         ctxt->cur++;
     if (CUR != '=') {
         virKeyFileError(ctxt, VIR_ERR_CONF_SYNTAX, "expected end of value name, expected '='");
         return -1;
     }
 
-    if (VIR_STRNDUP(key, keystart, ctxt->cur - keystart) < 0)
-        return -1;
+    key = g_strndup(keystart, ctxt->cur - keystart);
 
     NEXT;
     valuestart = ctxt->cur;
@@ -174,8 +173,7 @@ static int virKeyFileParseValue(virKeyFileParserCtxtPtr ctxt)
     len = ctxt->cur - valuestart;
     if (IS_EOF && !IS_EOL(CUR))
         len++;
-    if (VIR_STRNDUP(value, valuestart, len) < 0)
-        goto cleanup;
+    value = g_strndup(valuestart, len);
 
     if (virHashAddEntry(ctxt->group, key, value) < 0) {
         VIR_FREE(value);
@@ -205,7 +203,7 @@ static int virKeyFileParseComment(virKeyFileParserCtxtPtr ctxt)
 
 static int virKeyFileParseBlank(virKeyFileParserCtxtPtr ctxt)
 {
-    while ((ctxt->cur < ctxt->end) && c_isblank(CUR))
+    while ((ctxt->cur < ctxt->end) && IS_BLANK(CUR))
         ctxt->cur++;
 
     if (!((ctxt->cur == ctxt->end) || IS_EOL(CUR))) {
@@ -222,11 +220,11 @@ static int virKeyFileParseStatement(virKeyFileParserCtxtPtr ctxt)
 
     if (CUR == '[') {
         ret = virKeyFileParseGroup(ctxt);
-    } else if (c_isalnum(CUR)) {
+    } else if (g_ascii_isalnum(CUR)) {
         ret = virKeyFileParseValue(ctxt);
     } else if (CUR == '#' || CUR == ';') {
         ret = virKeyFileParseComment(ctxt);
-    } else if (c_isblank(CUR) || IS_EOL(CUR)) {
+    } else if (IS_BLANK(CUR) || IS_EOL(CUR)) {
         ret = virKeyFileParseBlank(ctxt);
     } else {
         virKeyFileError(ctxt, VIR_ERR_CONF_SYNTAX, "unexpected statement");
@@ -265,7 +263,7 @@ static int virKeyFileParse(virKeyFilePtr conf,
 }
 
 
-static void virKeyFileEntryFree(void *payload, const void *name ATTRIBUTE_UNUSED)
+static void virKeyFileEntryFree(void *payload)
 {
     virHashFree(payload);
 }

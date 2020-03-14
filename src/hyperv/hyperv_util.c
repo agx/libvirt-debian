@@ -54,8 +54,7 @@ hypervParseUri(hypervParsedUri **parsedUri, virURIPtr uri)
         if (STRCASEEQ(queryParam->name, "transport")) {
             VIR_FREE((*parsedUri)->transport);
 
-            if (VIR_STRDUP((*parsedUri)->transport, queryParam->value) < 0)
-                goto cleanup;
+            (*parsedUri)->transport = g_strdup(queryParam->value);
 
             if (STRNEQ((*parsedUri)->transport, "http") &&
                 STRNEQ((*parsedUri)->transport, "https")) {
@@ -71,9 +70,8 @@ hypervParseUri(hypervParsedUri **parsedUri, virURIPtr uri)
         }
     }
 
-    if (!(*parsedUri)->transport &&
-        VIR_STRDUP((*parsedUri)->transport, "https") < 0)
-        goto cleanup;
+    if (!(*parsedUri)->transport)
+        (*parsedUri)->transport = g_strdup("https");
 
     result = 0;
 

@@ -15,18 +15,22 @@ LANGS := \
 	uk ur vi wba yo zh_CN zh_HK zh_TW zu
 
 
-POTFILE_DEPS := $(shell $(SED) 's,^,$(top_srcdir)/,' $(srcdir)/POTFILES)
-POTFILE := $(srcdir)/$(DOMAIN).pot
-POFILES := $(LANGS:%=$(srcdir)/%.po)
-GMOFILES := $(LANGS:%=$(srcdir)/%.gmo)
+POTFILES_IN = $(srcdir)/POTFILES.in
+POTFILES: $(POTFILES_IN)
+	$(AM_V_GEN) cat $(POTFILES_IN) | \
+		$(SED) 's|[@]SRCDIR[@]|$(top_srcdir)|' | \
+		$(SED) 's|[@]BUILDDIR[@]|$(top_builddir)|' > $@
+POTFILE_DEPS = $(shell cat POTFILES)
+POTFILE := $(DOMAIN).pot
+POMINIFILES := $(LANGS:%=%.mini.po)
+POFILES := $(LANGS:%=%.po)
+GMOFILES := $(LANGS:%=%.gmo)
 
-MAINTAINERCLEANFILES = $(POTFILE) $(POFILES) $(GMOFILES)
+CLEANFILES = $(POTFILE) $(POFILES) $(GMOFILES) POTFILES
 
 EXTRA_DIST = \
-	POTFILES \
-	$(POTFILE) \
-	$(POFILES) \
-	$(GMOFILES)
+	$(POTFILES_IN) \
+	$(POMINIFILES)
 
 if HAVE_GNU_GETTEXT_TOOLS
 
@@ -39,14 +43,22 @@ XGETTEXT_ARGS = \
 	--package-name="$(PACKAGE_NAME)" \
 	--package-version="$(PACKAGE_VERSION)" \
 	--msgid-bugs-address="$(MSGID_BUGS_ADDRESS)" \
-	--directory=$(top_srcdir) \
 	$(NULL)
 
+POT_CREATION_DATE = $(shell \
+	if test -n "$$SOURCE_DATE_EPOCH"; \
+	then \
+		date --date="@$$SOURCE_DATE_EPOCH" +"%F %R%z"; \
+	else \
+		date +'%F %R%z'; \
+	fi)
+
 SED_PO_FIXUP_ARGS = \
-       -e "s|text/plain; charset=CHARSET|text/plain; charset=UTF-8|g" \
-       -e "s|SOME DESCRIPTIVE TITLE|Libvirt package strings|g" \
-       -e "s|Copyright (C) YEAR|Copyright (C) $$(date +'%Y')|" \
-       $(NULL)
+	-e "s|text/plain; charset=CHARSET|text/plain; charset=UTF-8|g" \
+	-e "s|SOME DESCRIPTIVE TITLE|Libvirt package strings|g" \
+	-e "s|Copyright (C) YEAR|Copyright (C) $$(date +'%Y')|" \
+	-e "s|POT-Creation-Date:[^\]*|POT-Creation-Date: $(POT_CREATION_DATE)|" \
+	$(NULL)
 
 update-po: $(POFILES)
 
@@ -58,29 +70,37 @@ update-mini-po: $(POTFILE)
 	  $(MSGMERGE) --no-location --no-fuzzy-matching --sort-output \
 	    $$lang.po $(POTFILE) | \
 	  $(SED) $(SED_PO_FIXUP_ARGS) | \
-	  $(PERL) $(top_srcdir)/build-aux/minimize-po.pl > \
+	  $(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/minimize-po.py > \
 	    $(srcdir)/$$lang.mini.po ; \
 	done
 
 push-pot: $(POTFILE)
-	zanata push --push-type=source
+	zanata push \
+		--project-config $(srcdir)/zanata.xml \
+		--push-type=source \
+		--transdir $(builddir) \
+		--srcdir $(srcdir)
 
 pull-po: $(POTFILE)
-	zanata pull --create-skeletons
+	zanata pull \
+		--project-config $(srcdir)/zanata.xml \
+		--create-skeletons \
+		--transdir $(builddir) \
+		--srcdir $(srcdir)
 	$(MAKE) update-mini-po
 	$(MAKE) update-gmo
 
 $(POTFILE): POTFILES $(POTFILE_DEPS)
 	$(XGETTEXT) -o $@-t $(XGETTEXT_ARGS) \
-	  --files-from=$(abs_srcdir)/POTFILES
+	  --files-from=$(abs_builddir)/POTFILES
 	$(SED) $(SED_PO_FIXUP_ARGS) < $@-t > $@
 	rm -f $@-t
 
-$(srcdir)/%.po: $(srcdir)/%.mini.po $(POTFILE)
+%.po: %.mini.po $(POTFILE)
 	$(MSGMERGE) --no-fuzzy-matching $< $(POTFILE) | \
 	  $(SED) $(SED_PO_FIXUP_ARGS) > $@
 
-$(srcdir)/%.gmo: $(srcdir)/%.po
+%.gmo: %.po
 	rm -f $@ $@-t
 	$(MSGFMT) -c -o $@-t $<
 	mv $@-t $@
@@ -99,7 +119,7 @@ install-data-hook: $(GMOFILES)
 	for lang in $(LANGS); do \
 	  d=$(DESTDIR)$(langinstdir)/$$lang/LC_MESSAGES; \
 	  mkdir -p $$d; \
-	  install -m 0644 $(srcdir)/$$lang.gmo $$d/$(DOMAIN).mo; \
+	  install -m 0644 $$lang.gmo $$d/$(DOMAIN).mo; \
 	done
 
 uninstall-hook:

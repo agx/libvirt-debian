@@ -26,7 +26,6 @@
 #include "virlog.h"
 #include "virstoragefile.h"
 #include "virstring.h"
-#include "dirname.h"
 
 #include "storage/storage_driver.h"
 
@@ -85,8 +84,7 @@ testStorageFileGetMetadata(const char *path,
                            uid_t uid, gid_t gid)
 {
     struct stat st;
-    virStorageSourcePtr ret = NULL;
-    VIR_AUTOUNREF(virStorageSourcePtr) def = NULL;
+    g_autoptr(virStorageSource) def = NULL;
 
     if (!(def = virStorageSourceNew()))
         return NULL;
@@ -102,14 +100,12 @@ testStorageFileGetMetadata(const char *path,
         }
     }
 
-    if (VIR_STRDUP(def->path, path) < 0)
+    def->path = g_strdup(path);
+
+    if (virStorageFileGetMetadata(def, uid, gid, true) < 0)
         return NULL;
 
-    if (virStorageFileGetMetadata(def, uid, gid, false) < 0)
-        return NULL;
-
-    VIR_STEAL_PTR(ret, def);
-    return ret;
+    return g_steal_pointer(&def);
 }
 
 static int
@@ -117,8 +113,8 @@ testPrepImages(void)
 {
     int ret = EXIT_FAILURE;
     bool compat = false;
-    VIR_AUTOPTR(virCommand) cmd = NULL;
-    VIR_AUTOFREE(char *) buf = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    g_autofree char *buf = NULL;
 
     qemuimg = virFindFileInPath("qemu-img");
     if (!qemuimg)
@@ -139,13 +135,12 @@ testPrepImages(void)
         compat = true;
     VIR_FREE(buf);
 
-    if (virAsprintf(&absraw, "%s/raw", datadir) < 0 ||
-        virAsprintf(&absqcow2, "%s/qcow2", datadir) < 0 ||
-        virAsprintf(&abswrap, "%s/wrap", datadir) < 0 ||
-        virAsprintf(&absqed, "%s/qed", datadir) < 0 ||
-        virAsprintf(&absdir, "%s/dir", datadir) < 0 ||
-        virAsprintf(&abslink2, "%s/sub/link2", datadir) < 0)
-        goto cleanup;
+    absraw = g_strdup_printf("%s/raw", datadir);
+    absqcow2 = g_strdup_printf("%s/qcow2", datadir);
+    abswrap = g_strdup_printf("%s/wrap", datadir);
+    absqed = g_strdup_printf("%s/qed", datadir);
+    absdir = g_strdup_printf("%s/dir", datadir);
+    abslink2 = g_strdup_printf("%s/sub/link2", datadir);
 
     if (virFileMakePath(datadir "/sub") < 0) {
         fprintf(stderr, "unable to create directory %s\n", datadir "/sub");
@@ -161,8 +156,8 @@ testPrepImages(void)
         goto cleanup;
     }
 
-    if (virAsprintf(&buf, "%1024d", 0) < 0 ||
-        virFileWriteStr("raw", buf, 0600) < 0) {
+    buf = g_strdup_printf("%1024d", 0);
+    if (virFileWriteStr("raw", buf, 0600) < 0) {
         fprintf(stderr, "unable to create raw file\n");
         goto cleanup;
     }
@@ -246,8 +241,6 @@ struct _testFileData
 enum {
     EXP_PASS = 0,
     EXP_FAIL = 1,
-    EXP_WARN = 2,
-    ALLOW_PROBE = 4,
 };
 
 struct testChainData
@@ -278,8 +271,8 @@ testStorageChain(const void *args)
     const struct testChainData *data = args;
     virStorageSourcePtr elt;
     size_t i = 0;
-    VIR_AUTOUNREF(virStorageSourcePtr) meta = NULL;
-    VIR_AUTOFREE(char *) broken = NULL;
+    g_autoptr(virStorageSource) meta = NULL;
+    g_autofree char *broken = NULL;
 
     meta = testStorageFileGetMetadata(data->start, data->format, -1, -1);
     if (!meta) {
@@ -292,61 +285,47 @@ testStorageChain(const void *args)
         fprintf(stderr, "call should have failed\n");
         return -1;
     }
-    if (data->flags & EXP_WARN) {
-        if (virGetLastErrorCode() == VIR_ERR_OK) {
-            fprintf(stderr, "call should have warned\n");
-            return -1;
-        }
-        virResetLastError();
-        if (virStorageFileChainGetBroken(meta, &broken) || !broken) {
-            fprintf(stderr, "call should identify broken part of chain\n");
-            return -1;
-        }
-    } else {
-        if (virGetLastErrorCode()) {
-            fprintf(stderr, "call should not have warned\n");
-            return -1;
-        }
-        if (virStorageFileChainGetBroken(meta, &broken) || broken) {
-            fprintf(stderr, "chain should not be identified as broken\n");
-            return -1;
-        }
+
+    if (virGetLastErrorCode()) {
+        fprintf(stderr, "call should not have reported error\n");
+        return -1;
+    }
+
+    if (virStorageFileChainGetBroken(meta, &broken) || broken) {
+        fprintf(stderr, "chain should not be identified as broken\n");
+        return -1;
     }
 
     elt = meta;
     while (virStorageSourceIsBacking(elt)) {
-        VIR_AUTOFREE(char *) expect = NULL;
-        VIR_AUTOFREE(char *) actual = NULL;
+        g_autofree char *expect = NULL;
+        g_autofree char *actual = NULL;
 
         if (i == data->nfiles) {
             fprintf(stderr, "probed chain was too long\n");
             return -1;
         }
 
-        if (virAsprintf(&expect,
-                        testStorageChainFormat, i,
-                        NULLSTR(data->files[i]->path),
-                        NULLSTR(data->files[i]->expBackingStoreRaw),
-                        data->files[i]->expCapacity,
-                        data->files[i]->expEncrypted,
-                        NULLSTR(data->files[i]->pathRel),
-                        data->files[i]->type,
-                        data->files[i]->format,
-                        virStorageNetProtocolTypeToString(data->files[i]->protocol),
-                        NULLSTR(data->files[i]->hostname)) < 0 ||
-            virAsprintf(&actual,
-                        testStorageChainFormat, i,
-                        NULLSTR(elt->path),
-                        NULLSTR(elt->backingStoreRaw),
-                        elt->capacity,
-                        !!elt->encryption,
-                        NULLSTR(elt->relPath),
-                        elt->type,
-                        elt->format,
-                        virStorageNetProtocolTypeToString(elt->protocol),
-                        NULLSTR(elt->nhosts ? elt->hosts[0].name : NULL)) < 0) {
-            return -1;
-        }
+        expect = g_strdup_printf(testStorageChainFormat, i,
+                                 NULLSTR(data->files[i]->path),
+                                 NULLSTR(data->files[i]->expBackingStoreRaw),
+                                 data->files[i]->expCapacity,
+                                 data->files[i]->expEncrypted,
+                                 NULLSTR(data->files[i]->pathRel),
+                                 data->files[i]->type,
+                                 data->files[i]->format,
+                                 virStorageNetProtocolTypeToString(data->files[i]->protocol),
+                                 NULLSTR(data->files[i]->hostname));
+        actual = g_strdup_printf(testStorageChainFormat, i,
+                                 NULLSTR(elt->path),
+                                 NULLSTR(elt->backingStoreRaw),
+                                 elt->capacity,
+                                 !!elt->encryption,
+                                 NULLSTR(elt->relPath),
+                                 elt->type,
+                                 elt->format,
+                                 virStorageNetProtocolTypeToString(elt->protocol),
+                                 NULLSTR(elt->nhosts ? elt->hosts[0].name : NULL));
         if (STRNEQ(expect, actual)) {
             virTestDifference(stderr, expect, actual);
             return -1;
@@ -472,16 +451,15 @@ static const char *testPathCanonicalizeSymlinks[][2] =
 static int
 testPathCanonicalizeReadlink(const char *path,
                              char **linkpath,
-                             void *data ATTRIBUTE_UNUSED)
+                             void *data G_GNUC_UNUSED)
 {
     size_t i;
 
     *linkpath = NULL;
 
-    for (i = 0; i < ARRAY_CARDINALITY(testPathCanonicalizeSymlinks); i++) {
+    for (i = 0; i < G_N_ELEMENTS(testPathCanonicalizeSymlinks); i++) {
         if (STREQ(path, testPathCanonicalizeSymlinks[i][0])) {
-            if (VIR_STRDUP(*linkpath, testPathCanonicalizeSymlinks[i][1]) < 0)
-                return -1;
+            *linkpath = g_strdup(testPathCanonicalizeSymlinks[i][1]);
 
             return 0;
         }
@@ -495,7 +473,7 @@ static int
 testPathCanonicalize(const void *args)
 {
     const struct testPathCanonicalizeData *data = args;
-    VIR_AUTOFREE(char *) canon = NULL;
+    g_autofree char *canon = NULL;
 
     canon = virStorageFileCanonicalizePath(data->path,
                                            testPathCanonicalizeReadlink,
@@ -519,9 +497,9 @@ testPathRelativePrepare(void)
 {
     size_t i;
 
-    for (i = 0; i < ARRAY_CARDINALITY(backingchain); i++) {
+    for (i = 0; i < G_N_ELEMENTS(backingchain); i++) {
         backingchain[i].type = VIR_STORAGE_TYPE_FILE;
-        if (i < ARRAY_CARDINALITY(backingchain) - 1)
+        if (i < G_N_ELEMENTS(backingchain) - 1)
             backingchain[i].backingStore = &backingchain[i + 1];
         else
             backingchain[i].backingStore = NULL;
@@ -579,7 +557,7 @@ static int
 testPathRelative(const void *args)
 {
     const struct testPathRelativeBacking *data = args;
-    VIR_AUTOFREE(char *) actual = NULL;
+    g_autofree char *actual = NULL;
 
     if (virStorageFileGetRelativeBackingPath(data->top,
                                              data->base,
@@ -603,34 +581,41 @@ testPathRelative(const void *args)
 struct testBackingParseData {
     const char *backing;
     const char *expect;
+    int rv;
 };
 
 static int
 testBackingParse(const void *args)
 {
     const struct testBackingParseData *data = args;
-    virBuffer buf = VIR_BUFFER_INITIALIZER;
-    int ret = -1;
-    VIR_AUTOFREE(char *) xml = NULL;
-    VIR_AUTOUNREF(virStorageSourcePtr) src = NULL;
+    g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
+    g_autofree char *xml = NULL;
+    g_autoptr(virStorageSource) src = NULL;
+    int rc;
+    int erc = data->rv;
 
-    if (!(src = virStorageSourceNewFromBackingAbsolute(data->backing))) {
-        if (!data->expect)
-            ret = 0;
+    /* expect failure return code with NULL expected data */
+    if (!data->expect)
+        erc = -1;
 
-        goto cleanup;
+    if ((rc = virStorageSourceNewFromBackingAbsolute(data->backing, &src)) != erc) {
+        fprintf(stderr, "expected return value '%d' actual '%d'\n", erc, rc);
+        return -1;
     }
+
+    if (!src)
+        return 0;
 
     if (src && !data->expect) {
         fprintf(stderr, "parsing of backing store string '%s' should "
                         "have failed\n", data->backing);
-        goto cleanup;
+        return -1;
     }
 
-    if (virDomainDiskSourceFormat(&buf, src, "source", 0, false, 0, NULL) < 0 ||
+    if (virDomainDiskSourceFormat(&buf, src, "source", 0, false, 0, true, NULL) < 0 ||
         !(xml = virBufferContentAndReset(&buf))) {
         fprintf(stderr, "failed to format disk source xml\n");
-        goto cleanup;
+        return -1;
     }
 
     if (STRNEQ(xml, data->expect)) {
@@ -638,15 +623,10 @@ testBackingParse(const void *args)
                         "expected storage source xml:\n%s\n"
                         "actual storage source xml:\n%s\n",
                         data->backing, data->expect, xml);
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
-
- cleanup:
-    virBufferFreeAndReset(&buf);
-
-    return ret;
+    return 0;
 }
 
 
@@ -661,8 +641,8 @@ mymain(void)
     struct testBackingParseData data5;
     virStorageSourcePtr chain2; /* short for chain->backingStore */
     virStorageSourcePtr chain3; /* short for chain2->backingStore */
-    VIR_AUTOPTR(virCommand) cmd = NULL;
-    VIR_AUTOUNREF(virStorageSourcePtr) chain = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    g_autoptr(virStorageSource) chain = NULL;
 
     if (storageRegisterAll() < 0)
        return EXIT_FAILURE;
@@ -679,7 +659,7 @@ mymain(void)
         data = (struct testChainData){ \
             start, format, { __VA_ARGS__ }, 0, flags, \
         }; \
-        for (i = 0; i < ARRAY_CARDINALITY(data.files); i++) \
+        for (i = 0; i < G_N_ELEMENTS(data.files); i++) \
             if (data.files[i]) \
                 data.nfiles++; \
         if (virTestRun(virTestCounterNext(), \
@@ -770,7 +750,7 @@ mymain(void)
         .format = VIR_STORAGE_FILE_QCOW2,
     };
     TEST_CHAIN(abswrap, VIR_STORAGE_FILE_QCOW2,
-               (&wrap_as_raw, &qcow2_as_raw), EXP_PASS);
+               (&wrap_as_raw, &qcow2_as_raw), EXP_FAIL);
 
     /* Rewrite qcow2 to a missing backing file, with backing type */
     virCommandFree(cmd);
@@ -782,7 +762,7 @@ mymain(void)
     qcow2.expBackingStoreRaw = datadir "/bogus";
 
     /* Qcow2 file with missing backing file but specified type */
-    TEST_CHAIN(absqcow2, VIR_STORAGE_FILE_QCOW2, (&qcow2), EXP_WARN);
+    TEST_CHAIN(absqcow2, VIR_STORAGE_FILE_QCOW2, (&qcow2), EXP_FAIL);
 
     /* Rewrite qcow2 to a missing backing file, without backing type */
     virCommandFree(cmd);
@@ -792,7 +772,7 @@ mymain(void)
         ret = -1;
 
     /* Qcow2 file with missing backing file and no specified type */
-    TEST_CHAIN(absqcow2, VIR_STORAGE_FILE_QCOW2, (&qcow2), EXP_WARN);
+    TEST_CHAIN(absqcow2, VIR_STORAGE_FILE_QCOW2, (&qcow2), EXP_FAIL);
 
     /* Rewrite qcow2 to use an nbd: protocol as backend */
     virCommandFree(cmd);
@@ -923,7 +903,7 @@ mymain(void)
     qcow2.expBackingStoreRaw = "qcow2";
 
     /* Behavior of an infinite loop chain */
-    TEST_CHAIN(absqcow2, VIR_STORAGE_FILE_QCOW2, (&qcow2), EXP_WARN);
+    TEST_CHAIN(absqcow2, VIR_STORAGE_FILE_QCOW2, (&qcow2), EXP_FAIL);
 
     /* Rewrite wrap and qcow2 to be mutually-referential loop */
     virCommandFree(cmd);
@@ -940,7 +920,7 @@ mymain(void)
     qcow2.expBackingStoreRaw = "wrap";
 
     /* Behavior of an infinite loop chain */
-    TEST_CHAIN(abswrap, VIR_STORAGE_FILE_QCOW2, (&wrap, &qcow2), EXP_WARN);
+    TEST_CHAIN(abswrap, VIR_STORAGE_FILE_QCOW2, (&wrap, &qcow2), EXP_FAIL);
 
     /* Rewrite qcow2 to use an rbd: protocol as backend */
     virCommandFree(cmd);
@@ -1231,14 +1211,18 @@ mymain(void)
 
     virTestCounterReset("Backing store parse ");
 
-#define TEST_BACKING_PARSE(bck, xml) \
+#define TEST_BACKING_PARSE_FULL(bck, xml, rc) \
     do { \
         data5.backing = bck; \
         data5.expect = xml; \
+        data5.rv = rc; \
         if (virTestRun(virTestCounterNext(), \
                        testBackingParse, &data5) < 0) \
             ret = -1; \
     } while (0)
+
+#define TEST_BACKING_PARSE(bck, xml) \
+    TEST_BACKING_PARSE_FULL(bck, xml, 0)
 
     TEST_BACKING_PARSE("path", "<source file='path'/>\n");
     TEST_BACKING_PARSE("://", NULL);
@@ -1254,12 +1238,24 @@ mymain(void)
                        "<source protocol='http' name='file'>\n"
                        "  <host name='example.com' port='80'/>\n"
                        "</source>\n");
+    TEST_BACKING_PARSE_FULL("http://user:pass@example.com/file",
+                            "<source protocol='http' name='file'>\n"
+                            "  <host name='example.com' port='80'/>\n"
+                            "</source>\n", 1);
     TEST_BACKING_PARSE("rbd:testshare:id=asdf:mon_host=example.com",
                        "<source protocol='rbd' name='testshare'>\n"
                        "  <host name='example.com'/>\n"
                        "</source>\n");
     TEST_BACKING_PARSE("nbd:example.org:6000:exportname=blah",
                        "<source protocol='nbd' name='blah'>\n"
+                       "  <host name='example.org' port='6000'/>\n"
+                       "</source>\n");
+    TEST_BACKING_PARSE("nbd:example.org:6000:exportname=:",
+                       "<source protocol='nbd' name=':'>\n"
+                       "  <host name='example.org' port='6000'/>\n"
+                       "</source>\n");
+    TEST_BACKING_PARSE("nbd:example.org:6000:exportname=:test",
+                       "<source protocol='nbd' name=':test'>\n"
                        "  <host name='example.org' port='6000'/>\n"
                        "</source>\n");
     TEST_BACKING_PARSE("nbd://example.org:1234",
@@ -1274,6 +1270,10 @@ mymain(void)
                        "<source protocol='nbd' name='exportname'>\n"
                        "  <host name='example.org' port='1234'/>\n"
                        "</source>\n");
+    TEST_BACKING_PARSE_FULL("iscsi://testuser:testpass@example.org:1234/exportname",
+                            "<source protocol='iscsi' name='exportname'>\n"
+                            "  <host name='example.org' port='1234'/>\n"
+                            "</source>\n", 1);
 
 #ifdef WITH_YAJL
     TEST_BACKING_PARSE("json:", NULL);
@@ -1478,6 +1478,26 @@ mymain(void)
                        "<source protocol='iscsi' name='iqn.2016-12.com.virttest:emulated-iscsi-noauth.target/0'>\n"
                        "  <host name='test.org' port='3260'/>\n"
                        "</source>\n");
+    TEST_BACKING_PARSE_FULL("json:{\"file\":{\"driver\":\"iscsi\","
+                                            "\"transport\":\"tcp\","
+                                            "\"portal\":\"test.org\","
+                                            "\"user\":\"testuser\","
+                                            "\"target\":\"iqn.2016-12.com.virttest:emulated-iscsi-auth.target\""
+                                            "}"
+                            "}",
+                       "<source protocol='iscsi' name='iqn.2016-12.com.virttest:emulated-iscsi-auth.target/0'>\n"
+                       "  <host name='test.org' port='3260'/>\n"
+                       "</source>\n", 1);
+    TEST_BACKING_PARSE_FULL("json:{\"file\":{\"driver\":\"iscsi\","
+                                            "\"transport\":\"tcp\","
+                                            "\"portal\":\"test.org\","
+                                            "\"password\":\"testpass\","
+                                            "\"target\":\"iqn.2016-12.com.virttest:emulated-iscsi-auth.target\""
+                                            "}"
+                            "}",
+                       "<source protocol='iscsi' name='iqn.2016-12.com.virttest:emulated-iscsi-auth.target/0'>\n"
+                       "  <host name='test.org' port='3260'/>\n"
+                       "</source>\n", 1);
     TEST_BACKING_PARSE("json:{\"file\":{\"driver\":\"iscsi\","
                                        "\"transport\":\"tcp\","
                                        "\"portal\":\"test.org:1234\","

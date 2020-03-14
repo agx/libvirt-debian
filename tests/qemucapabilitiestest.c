@@ -35,9 +35,12 @@ typedef struct _testQemuData testQemuData;
 typedef testQemuData *testQemuDataPtr;
 struct _testQemuData {
     virQEMUDriver driver;
-    const char *dataDir;
+    const char *inputDir;
+    const char *outputDir;
+    const char *prefix;
+    const char *version;
     const char *archName;
-    const char *base;
+    const char *suffix;
     int ret;
 };
 
@@ -48,7 +51,7 @@ testQemuDataInit(testQemuDataPtr data)
     if (qemuTestDriverInit(&data->driver) < 0)
         return -1;
 
-    data->dataDir = TEST_QEMU_CAPS_PATH;
+    data->outputDir = TEST_QEMU_CAPS_PATH;
 
     data->ret = 0;
 
@@ -72,15 +75,17 @@ testQemuCaps(const void *opaque)
     char *capsFile = NULL;
     qemuMonitorTestPtr mon = NULL;
     virQEMUCapsPtr capsActual = NULL;
+    char *binary = NULL;
     char *actual = NULL;
     unsigned int fakeMicrocodeVersion = 0;
     const char *p;
 
-    if (virAsprintf(&repliesFile, "%s/%s.%s.replies",
-                    data->dataDir, data->base, data->archName) < 0 ||
-        virAsprintf(&capsFile, "%s/%s.%s.xml",
-                    data->dataDir, data->base, data->archName) < 0)
-        goto cleanup;
+    repliesFile = g_strdup_printf("%s/%s_%s.%s.%s",
+                                  data->inputDir, data->prefix, data->version,
+                                  data->archName, data->suffix);
+    capsFile = g_strdup_printf("%s/%s_%s.%s.xml",
+                               data->outputDir, data->prefix, data->version,
+                               data->archName);
 
     if (!(mon = qemuMonitorTestNewFromFileFull(repliesFile, &data->driver, NULL,
                                                NULL)))
@@ -89,7 +94,10 @@ testQemuCaps(const void *opaque)
     if (qemuProcessQMPInitMonitor(qemuMonitorTestGetMonitor(mon)) < 0)
         goto cleanup;
 
-    if (!(capsActual = virQEMUCapsNew()) ||
+    binary = g_strdup_printf("/usr/bin/qemu-system-%s",
+                             data->archName);
+
+    if (!(capsActual = virQEMUCapsNewBinary(binary)) ||
         virQEMUCapsInitQMPMonitor(capsActual,
                                   qemuMonitorTestGetMonitor(mon)) < 0)
         goto cleanup;
@@ -111,7 +119,7 @@ testQemuCaps(const void *opaque)
 
         fakeMicrocodeVersion *= 100000;
 
-        for (p = data->base; *p; p++)
+        for (p = data->version; *p; p++)
             fakeMicrocodeVersion += *p;
 
         virQEMUCapsSetMicrocodeVersion(capsActual, fakeMicrocodeVersion);
@@ -128,6 +136,7 @@ testQemuCaps(const void *opaque)
     VIR_FREE(repliesFile);
     VIR_FREE(capsFile);
     VIR_FREE(actual);
+    VIR_FREE(binary);
     qemuMonitorTestFree(mon);
     virObjectUnref(capsActual);
     return ret;
@@ -140,20 +149,16 @@ testQemuCapsCopy(const void *opaque)
     int ret = -1;
     const testQemuData *data = opaque;
     char *capsFile = NULL;
-    virCapsPtr caps = NULL;
     virQEMUCapsPtr orig = NULL;
     virQEMUCapsPtr copy = NULL;
     char *actual = NULL;
 
-    if (virAsprintf(&capsFile, "%s/%s.%s.xml",
-                    data->dataDir, data->base, data->archName) < 0)
-        goto cleanup;
+    capsFile = g_strdup_printf("%s/%s_%s.%s.xml",
+                               data->outputDir, data->prefix, data->version,
+                               data->archName);
 
-    if (!(caps = virCapabilitiesNew(virArchFromString(data->archName),
-                                    false, false)))
-        goto cleanup;
-
-    if (!(orig = qemuTestParseCapabilities(caps, capsFile)))
+    if (!(orig = qemuTestParseCapabilitiesArch(
+              virArchFromString(data->archName), capsFile)))
         goto cleanup;
 
     if (!(copy = virQEMUCapsNewCopy(orig)))
@@ -169,7 +174,6 @@ testQemuCapsCopy(const void *opaque)
 
  cleanup:
     VIR_FREE(capsFile);
-    virObjectUnref(caps);
     virObjectUnref(orig);
     virObjectUnref(copy);
     VIR_FREE(actual);
@@ -178,21 +182,25 @@ testQemuCapsCopy(const void *opaque)
 
 
 static int
-doCapsTest(const char *base,
+doCapsTest(const char *inputDir,
+           const char *prefix,
+           const char *version,
            const char *archName,
+           const char *suffix,
            void *opaque)
 {
     testQemuDataPtr data = (testQemuDataPtr) opaque;
-    VIR_AUTOFREE(char *) title = NULL;
-    VIR_AUTOFREE(char *) copyTitle = NULL;
+    g_autofree char *title = NULL;
+    g_autofree char *copyTitle = NULL;
 
-    if (virAsprintf(&title, "%s (%s)", base, archName) < 0 ||
-        virAsprintf(&copyTitle, "copy %s (%s)", base, archName) < 0) {
-        return -1;
-    }
+    title = g_strdup_printf("%s (%s)", version, archName);
+    copyTitle = g_strdup_printf("copy %s (%s)", version, archName);
 
-    data->base = base;
+    data->inputDir = inputDir;
+    data->prefix = prefix;
+    data->version = version;
     data->archName = archName;
+    data->suffix = suffix;
 
     if (virTestRun(title, testQemuCaps, data) < 0)
         data->ret = -1;
@@ -208,14 +216,6 @@ static int
 mymain(void)
 {
     testQemuData data;
-
-#if !WITH_YAJL
-    fputs("libvirt not compiled with JSON support, skipping this test\n", stderr);
-    return EXIT_AM_SKIP;
-#endif
-
-    if (virThreadInitialize() < 0)
-        return EXIT_FAILURE;
 
     virEventRegisterDefaultImpl();
 

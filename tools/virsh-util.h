@@ -39,8 +39,11 @@ virshCommandOptDomain(vshControl *ctl,
                       const vshCmd *cmd,
                       const char **name);
 
+typedef virDomain virshDomain;
+
 void
 virshDomainFree(virDomainPtr dom);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virshDomain, virshDomainFree);
 
 void
 virshDomainCheckpointFree(virDomainCheckpointPtr chk);
@@ -95,7 +98,7 @@ virshDomainGetXMLFromDom(vshControl *ctl,
                          xmlDocPtr *xml,
                          xmlXPathContextPtr *ctxt)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(4)
-    ATTRIBUTE_NONNULL(5) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(5) G_GNUC_WARN_UNUSED_RESULT;
 
 int
 virshDomainGetXML(vshControl *ctl,
@@ -104,4 +107,4 @@ virshDomainGetXML(vshControl *ctl,
                   xmlDocPtr *xml,
                   xmlXPathContextPtr *ctxt)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(4)
-    ATTRIBUTE_NONNULL(5) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(5) G_GNUC_WARN_UNUSED_RESULT;

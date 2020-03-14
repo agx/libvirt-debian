@@ -56,13 +56,11 @@ static int
 virStorageBackendSCSITriggerRescan(uint32_t host)
 {
     VIR_AUTOCLOSE fd = -1;
-    VIR_AUTOFREE(char *) path = NULL;
+    g_autofree char *path = NULL;
 
     VIR_DEBUG("Triggering rescan of host %d", host);
 
-    if (virAsprintf(&path, "%s/host%u/scan",
-                    LINUX_SYSFS_SCSI_HOST_PREFIX, host) < 0)
-        return -1;
+    path = g_strdup_printf("%s/host%u/scan", LINUX_SYSFS_SCSI_HOST_PREFIX, host);
 
     VIR_DEBUG("Scan trigger path is '%s'", path);
 
@@ -184,7 +182,7 @@ getAdapterName(virStorageAdapterPtr adapter)
                                                         unique_id)))
                 return NULL;
         } else {
-            ignore_value(VIR_STRDUP(name, scsi_host->name));
+            name = g_strdup(scsi_host->name);
         }
     } else if (adapter->type == VIR_STORAGE_ADAPTER_TYPE_FC_HOST) {
         virStorageAdapterFCHostPtr fchost = &adapter->data.fchost;
@@ -238,8 +236,8 @@ checkParent(const char *name,
     unsigned int host_num;
     bool retval = false;
     virConnectPtr conn = NULL;
-    VIR_AUTOFREE(char *) scsi_host_name = NULL;
-    VIR_AUTOFREE(char *) vhba_parent = NULL;
+    g_autofree char *scsi_host_name = NULL;
+    g_autofree char *vhba_parent = NULL;
 
     VIR_DEBUG("name=%s, parent_name=%s", name, parent_name);
 
@@ -261,8 +259,7 @@ checkParent(const char *name,
         goto cleanup;
     }
 
-    if (virAsprintf(&scsi_host_name, "scsi_%s", name) < 0)
-        goto cleanup;
+    scsi_host_name = g_strdup_printf("scsi_%s", name);
 
     if (!(vhba_parent = virNodeDeviceGetParentName(conn, scsi_host_name)))
         goto cleanup;
@@ -290,7 +287,7 @@ createVport(virStoragePoolDefPtr def,
 {
     virStoragePoolFCRefreshInfoPtr cbdata = NULL;
     virThread thread;
-    VIR_AUTOFREE(char *) name = NULL;
+    g_autofree char *name = NULL;
 
     VIR_DEBUG("configFile='%s' parent='%s', wwnn='%s' wwpn='%s'",
               NULLSTR(configFile), NULLSTR(fchost->parent),
@@ -335,7 +332,7 @@ createVport(virStoragePoolDefPtr def,
      */
     if (VIR_ALLOC(cbdata) == 0) {
         memcpy(cbdata->pool_uuid, def->uuid, VIR_UUID_BUFLEN);
-        VIR_STEAL_PTR(cbdata->fchost_name, name);
+        cbdata->fchost_name = g_steal_pointer(&name);
 
         if (virThreadCreate(&thread, false, virStoragePoolFCRefreshThread,
                             cbdata) < 0) {
@@ -355,8 +352,8 @@ virStorageBackendSCSICheckPool(virStoragePoolObjPtr pool,
 {
     virStoragePoolDefPtr def = virStoragePoolObjGetDef(pool);
     unsigned int host;
-    VIR_AUTOFREE(char *) path = NULL;
-    VIR_AUTOFREE(char *) name = NULL;
+    g_autofree char *path = NULL;
+    g_autofree char *name = NULL;
 
     *isActive = false;
 
@@ -376,9 +373,7 @@ virStorageBackendSCSICheckPool(virStoragePoolObjPtr pool,
     if (virSCSIHostGetNumber(name, &host) < 0)
         return -1;
 
-    if (virAsprintf(&path, "%s/host%d",
-                    LINUX_SYSFS_SCSI_HOST_PREFIX, host) < 0)
-        return -1;
+    path = g_strdup_printf("%s/host%d", LINUX_SYSFS_SCSI_HOST_PREFIX, host);
 
     *isActive = virFileExists(path);
 
@@ -390,7 +385,7 @@ virStorageBackendSCSIRefreshPool(virStoragePoolObjPtr pool)
 {
     virStoragePoolDefPtr def = virStoragePoolObjGetDef(pool);
     unsigned int host;
-    VIR_AUTOFREE(char *) name = NULL;
+    g_autofree char *name = NULL;
 
     def->allocation = def->capacity = def->available = 0;
 

@@ -74,7 +74,7 @@ testCompareFiles(const char *xml, const char *vmx, int virtualHW_version)
     char *formatted = NULL;
     virDomainDefPtr def = NULL;
 
-    def = virDomainDefParseFile(xml, caps, xmlopt, NULL,
+    def = virDomainDefParseFile(xml, xmlopt, NULL,
                                 VIR_DOMAIN_DEF_PARSE_INACTIVE);
 
     if (def == NULL)
@@ -115,16 +115,13 @@ testCompareHelper(const void *data)
     char *xml = NULL;
     char *vmx = NULL;
 
-    if (virAsprintf(&xml, "%s/xml2vmxdata/xml2vmx-%s.xml", abs_srcdir,
-                    info->input) < 0 ||
-        virAsprintf(&vmx, "%s/xml2vmxdata/xml2vmx-%s.vmx", abs_srcdir,
-                    info->output) < 0) {
-        goto cleanup;
-    }
+    xml = g_strdup_printf("%s/xml2vmxdata/xml2vmx-%s.xml", abs_srcdir,
+                          info->input);
+    vmx = g_strdup_printf("%s/xml2vmxdata/xml2vmx-%s.vmx", abs_srcdir,
+                          info->output);
 
     result = testCompareFiles(xml, vmx, info->virtualHW_version);
 
- cleanup:
     VIR_FREE(xml);
     VIR_FREE(vmx);
 
@@ -132,8 +129,8 @@ testCompareHelper(const void *data)
 }
 
 static int
-testAutodetectSCSIControllerModel(virDomainDiskDefPtr def ATTRIBUTE_UNUSED,
-                                  int *model, void *opaque ATTRIBUTE_UNUSED)
+testAutodetectSCSIControllerModel(virDomainDiskDefPtr def G_GNUC_UNUSED,
+                                  int *model, void *opaque G_GNUC_UNUSED)
 {
     *model = VIR_DOMAIN_CONTROLLER_MODEL_SCSI_LSILOGIC;
 
@@ -141,7 +138,7 @@ testAutodetectSCSIControllerModel(virDomainDiskDefPtr def ATTRIBUTE_UNUSED,
 }
 
 static char *
-testFormatVMXFileName(const char *src, void *opaque ATTRIBUTE_UNUSED)
+testFormatVMXFileName(const char *src, void *opaque G_GNUC_UNUSED)
 {
     bool success = false;
     char *copyOfDatastorePath = NULL;
@@ -153,8 +150,7 @@ testFormatVMXFileName(const char *src, void *opaque ATTRIBUTE_UNUSED)
 
     if (STRPREFIX(src, "[")) {
         /* Found potential datastore path */
-        if (VIR_STRDUP(copyOfDatastorePath, src) < 0)
-            goto cleanup;
+        copyOfDatastorePath = g_strdup(src);
 
         /* Expected format: '[<datastore>] <path>' where <path> is optional */
         if ((tmp = STRSKIP(copyOfDatastorePath, "[")) == NULL || *tmp == ']' ||
@@ -170,12 +166,11 @@ testFormatVMXFileName(const char *src, void *opaque ATTRIBUTE_UNUSED)
             directoryAndFileName += strspn(directoryAndFileName, " ");
         }
 
-        if (virAsprintf(&absolutePath, "/vmfs/volumes/%s/%s", datastoreName,
-                        directoryAndFileName) < 0)
-            goto cleanup;
+        absolutePath = g_strdup_printf("/vmfs/volumes/%s/%s", datastoreName,
+                                       directoryAndFileName);
     } else if (STRPREFIX(src, "/")) {
         /* Found absolute path */
-        ignore_value(VIR_STRDUP(absolutePath, src));
+        absolutePath = g_strdup(src);
     } else {
         /* Found relative path, this is not supported */
         goto cleanup;
@@ -212,7 +207,7 @@ mymain(void)
     if (caps == NULL)
         return EXIT_FAILURE;
 
-    if (!(xmlopt = virVMXDomainXMLConfInit()))
+    if (!(xmlopt = virVMXDomainXMLConfInit(caps)))
         return EXIT_FAILURE;
 
     ctx.opaque = NULL;

@@ -71,14 +71,9 @@ testFileCacheObjNew(const char *data)
     if (!(obj = virObjectNew(testFileCacheObjClass)))
         return NULL;
 
-    if (VIR_STRDUP(obj->data, data) < 0)
-        goto error;
+    obj->data = g_strdup(data);
 
     return obj;
-
- error:
-    virObjectUnref(obj);
-    return NULL;
 }
 
 
@@ -103,7 +98,7 @@ testFileCacheIsValid(void *data,
 
 
 static void *
-testFileCacheNewData(const char *name ATTRIBUTE_UNUSED,
+testFileCacheNewData(const char *name G_GNUC_UNUSED,
                      void *priv)
 {
     testFileCachePrivPtr testPriv = priv;
@@ -114,8 +109,8 @@ testFileCacheNewData(const char *name ATTRIBUTE_UNUSED,
 
 static void *
 testFileCacheLoadFile(const char *filename,
-                      const char *name ATTRIBUTE_UNUSED,
-                      void *priv ATTRIBUTE_UNUSED)
+                      const char *name G_GNUC_UNUSED,
+                      void *priv G_GNUC_UNUSED)
 {
     testFileCacheObjPtr obj;
     char *data;
@@ -131,8 +126,8 @@ testFileCacheLoadFile(const char *filename,
 
 
 static int
-testFileCacheSaveFile(void *data ATTRIBUTE_UNUSED,
-                      const char *filename ATTRIBUTE_UNUSED,
+testFileCacheSaveFile(void *data G_GNUC_UNUSED,
+                      const char *filename G_GNUC_UNUSED,
                       void *priv)
 {
     testFileCachePrivPtr testPriv = priv;
@@ -233,4 +228,4 @@ mymain(void)
     return ret != 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virfilecachemock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virfilecache"))

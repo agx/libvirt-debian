@@ -99,45 +99,45 @@ static ISession *vboxSession;
  */
 
 static nsresult __stdcall
-vboxSupports_QueryInterface(nsISupports *pThis ATTRIBUTE_UNUSED,
-                            const nsID *iid ATTRIBUTE_UNUSED,
-                            void **resultp ATTRIBUTE_UNUSED)
+vboxSupports_QueryInterface(nsISupports *pThis G_GNUC_UNUSED,
+                            const nsID *iid G_GNUC_UNUSED,
+                            void **resultp G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxSupports_AddRef(nsISupports *pThis ATTRIBUTE_UNUSED)
+vboxSupports_AddRef(nsISupports *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxSupports_Release(nsISupports *pThis ATTRIBUTE_UNUSED)
+vboxSupports_Release(nsISupports *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxSupports_GetTypeInfoCount(nsISupports *pThis ATTRIBUTE_UNUSED)
+vboxSupports_GetTypeInfoCount(nsISupports *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxSupports_GetTypeInfo(nsISupports *pThis ATTRIBUTE_UNUSED)
+vboxSupports_GetTypeInfo(nsISupports *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxSupports_GetIDsOfNames(nsISupports *pThis ATTRIBUTE_UNUSED)
+vboxSupports_GetIDsOfNames(nsISupports *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxSupports_Invoke(nsISupports *pThis ATTRIBUTE_UNUSED)
+vboxSupports_Invoke(nsISupports *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -149,15 +149,15 @@ vboxSupports_Invoke(nsISupports *pThis ATTRIBUTE_UNUSED)
  */
 
 static nsresult __stdcall
-vboxEventTarget_PostEvent(nsIEventTarget *pThis ATTRIBUTE_UNUSED,
-                          PLEvent *aEvent ATTRIBUTE_UNUSED)
+vboxEventTarget_PostEvent(nsIEventTarget *pThis G_GNUC_UNUSED,
+                          PLEvent *aEvent G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventTarget_IsOnCurrentThread(nsIEventTarget *pThis ATTRIBUTE_UNUSED,
-                                  PRBool *_retval ATTRIBUTE_UNUSED)
+vboxEventTarget_IsOnCurrentThread(nsIEventTarget *pThis G_GNUC_UNUSED,
+                                  PRBool *_retval G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -169,133 +169,133 @@ vboxEventTarget_IsOnCurrentThread(nsIEventTarget *pThis ATTRIBUTE_UNUSED,
  */
 
 static nsresult __stdcall
-vboxEventQueue_InitEvent(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                         PLEvent *aEvent ATTRIBUTE_UNUSED,
-                         void *owner ATTRIBUTE_UNUSED,
-                         PLHandleEventProc handler ATTRIBUTE_UNUSED,
-                         PLDestroyEventProc destructor ATTRIBUTE_UNUSED)
+vboxEventQueue_InitEvent(nsIEventQueue *pThis G_GNUC_UNUSED,
+                         PLEvent *aEvent G_GNUC_UNUSED,
+                         void *owner G_GNUC_UNUSED,
+                         PLHandleEventProc handler G_GNUC_UNUSED,
+                         PLDestroyEventProc destructor G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_PostSynchronousEvent(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                                    PLEvent *aEvent ATTRIBUTE_UNUSED,
-                                    void **aResult ATTRIBUTE_UNUSED)
+vboxEventQueue_PostSynchronousEvent(nsIEventQueue *pThis G_GNUC_UNUSED,
+                                    PLEvent *aEvent G_GNUC_UNUSED,
+                                    void **aResult G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_PendingEvents(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                             PRBool *_retval ATTRIBUTE_UNUSED)
+vboxEventQueue_PendingEvents(nsIEventQueue *pThis G_GNUC_UNUSED,
+                             PRBool *_retval G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_ProcessPendingEvents(nsIEventQueue *pThis ATTRIBUTE_UNUSED)
+vboxEventQueue_ProcessPendingEvents(nsIEventQueue *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_EventLoop(nsIEventQueue *pThis ATTRIBUTE_UNUSED)
+vboxEventQueue_EventLoop(nsIEventQueue *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_EventAvailable(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                              PRBool *aResult ATTRIBUTE_UNUSED)
+vboxEventQueue_EventAvailable(nsIEventQueue *pThis G_GNUC_UNUSED,
+                              PRBool *aResult G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_GetEvent(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                        PLEvent **_retval ATTRIBUTE_UNUSED)
+vboxEventQueue_GetEvent(nsIEventQueue *pThis G_GNUC_UNUSED,
+                        PLEvent **_retval G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_HandleEvent(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                           PLEvent *aEvent ATTRIBUTE_UNUSED)
+vboxEventQueue_HandleEvent(nsIEventQueue *pThis G_GNUC_UNUSED,
+                           PLEvent *aEvent G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_WaitForEvent(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                            PLEvent **_retval ATTRIBUTE_UNUSED)
+vboxEventQueue_WaitForEvent(nsIEventQueue *pThis G_GNUC_UNUSED,
+                            PLEvent **_retval G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static PRInt32 __stdcall
-vboxEventQueue_GetEventQueueSelectFD(nsIEventQueue *pThis ATTRIBUTE_UNUSED)
+vboxEventQueue_GetEventQueueSelectFD(nsIEventQueue *pThis G_GNUC_UNUSED)
 {
     return -1;
 }
 
 static nsresult __stdcall
-vboxEventQueue_Init(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                    PRBool aNative ATTRIBUTE_UNUSED)
+vboxEventQueue_Init(nsIEventQueue *pThis G_GNUC_UNUSED,
+                    PRBool aNative G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_InitFromPRThread(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                                PRThread *thread ATTRIBUTE_UNUSED,
-                                PRBool aNative ATTRIBUTE_UNUSED)
+vboxEventQueue_InitFromPRThread(nsIEventQueue *pThis G_GNUC_UNUSED,
+                                PRThread *thread G_GNUC_UNUSED,
+                                PRBool aNative G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_InitFromPLQueue(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                               PLEventQueue *aQueue ATTRIBUTE_UNUSED)
+vboxEventQueue_InitFromPLQueue(nsIEventQueue *pThis G_GNUC_UNUSED,
+                               PLEventQueue *aQueue G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_EnterMonitor(nsIEventQueue *pThis ATTRIBUTE_UNUSED)
+vboxEventQueue_EnterMonitor(nsIEventQueue *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_ExitMonitor(nsIEventQueue *pThis ATTRIBUTE_UNUSED)
+vboxEventQueue_ExitMonitor(nsIEventQueue *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_RevokeEvents(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                            void *owner ATTRIBUTE_UNUSED)
+vboxEventQueue_RevokeEvents(nsIEventQueue *pThis G_GNUC_UNUSED,
+                            void *owner G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_GetPLEventQueue(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                               PLEventQueue **_retval ATTRIBUTE_UNUSED)
+vboxEventQueue_GetPLEventQueue(nsIEventQueue *pThis G_GNUC_UNUSED,
+                               PLEventQueue **_retval G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_IsQueueNative(nsIEventQueue *pThis ATTRIBUTE_UNUSED,
-                             PRBool *_retval ATTRIBUTE_UNUSED)
+vboxEventQueue_IsQueueNative(nsIEventQueue *pThis G_GNUC_UNUSED,
+                             PRBool *_retval G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 static nsresult __stdcall
-vboxEventQueue_StopAcceptingEvents(nsIEventQueue *pThis ATTRIBUTE_UNUSED)
+vboxEventQueue_StopAcceptingEvents(nsIEventQueue *pThis G_GNUC_UNUSED)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -357,24 +357,24 @@ vboxLookupRegistryValue(HKEY key, const char *keyName, const char *valueName)
     if (status != ERROR_SUCCESS) {
         VIR_ERROR(_("Could not query registry value '%s\\%s'"),
                   keyName, valueName);
-        goto cleanup;
+        return NULL;
     }
 
     if (type != REG_SZ) {
         VIR_ERROR(_("Registry value '%s\\%s' has unexpected type"),
                   keyName, valueName);
-        goto cleanup;
+        return NULL;
     }
 
     if (length < 2) {
         VIR_ERROR(_("Registry value '%s\\%s' is too short"),
                   keyName, valueName);
-        goto cleanup;
+        return NULL;
     }
 
     /* +1 for the null-terminator if it's missing */
     if (VIR_ALLOC_N(value, length + 1) < 0)
-        goto cleanup;
+        return NULL;
 
     status = RegQueryValueEx(key, valueName, NULL, NULL, (LPBYTE)value, &length);
 
@@ -382,13 +382,12 @@ vboxLookupRegistryValue(HKEY key, const char *keyName, const char *valueName)
         VIR_FREE(value);
         VIR_ERROR(_("Could not query registry value '%s\\%s'"),
                   keyName, valueName);
-        goto cleanup;
+        return NULL;
     }
 
     if (value[length - 1] != '\0')
         value[length] = '\0';
 
- cleanup:
     return value;
 }
 
@@ -525,8 +524,8 @@ vboxComInitialize_v2(const char *pszVirtualBoxIID, IVirtualBox **ppVirtualBox,
 
     CoInitialize(NULL);
 
-    if (virAsprintf(&mbsVirtualBoxIID, "{%s}", pszVirtualBoxIID) < 0 ||
-        virAsprintf(&mbsSessionIID, "{%s}", pszSessionIID) < 0)
+    mbsVirtualBoxIID = g_strdup_printf("{%s}", pszVirtualBoxIID);
+    mbsSessionIID = g_strdup_printf("{%s}", pszSessionIID)
         goto cleanup;
 
     if (vboxUtf8ToUtf16(mbsVirtualBoxIID, &wcsVirtualBoxIID) < 0 ||

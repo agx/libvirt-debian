@@ -1,5 +1,5 @@
 /* Guts of POSIX spawn interface.  Generic POSIX.1 version.
-   Copyright (C) 2000-2006, 2008-2019 Free Software Foundation, Inc.
+   Copyright (C) 2000-2006, 2008-2020 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 
    This program is free software: you can redistribute it and/or modify
@@ -288,6 +288,12 @@ __spawni (pid_t *pid, const char *file,
             case spawn_do_chdir:
               if (chdir (action->action.chdir_action.path) < 0)
                 /* The 'chdir' call failed.  */
+                _exit (SPAWN_ERROR);
+              break;
+
+            case spawn_do_fchdir:
+              if (fchdir (action->action.fchdir_action.fd) < 0)
+                /* The 'fchdir' call failed.  */
                 _exit (SPAWN_ERROR);
               break;
             }

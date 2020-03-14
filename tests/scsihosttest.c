@@ -72,13 +72,10 @@ create_scsihost(const char *fakesysfsdir, const char *devicepath,
     int ret = -1;
     int fd = -1;
 
-    if (virAsprintfQuiet(&unique_id_path, "%s/devices/pci0000:00/%s/unique_id",
-                         fakesysfsdir, devicepath) < 0 ||
-        virAsprintfQuiet(&link_path, "%s/class/scsi_host/%s",
-                         fakesysfsdir, hostname) < 0) {
-        fprintf(stderr, "Out of memory\n");
-        goto cleanup;
-    }
+    unique_id_path = g_strdup_printf("%s/devices/pci0000:00/%s/unique_id",
+                                     fakesysfsdir, devicepath);
+    link_path = g_strdup_printf("%s/class/scsi_host/%s",
+                                fakesysfsdir, hostname);
 
     /* Rather than create path & file, temporarily snip off the file to
      * create the path
@@ -168,7 +165,7 @@ init_scsihost_sysfs(const char *fakesysfsdir)
 
 /* Test virReadSCSIUniqueId */
 static int
-testVirReadSCSIUniqueId(const void *data ATTRIBUTE_UNUSED)
+testVirReadSCSIUniqueId(const void *data G_GNUC_UNUSED)
 {
     int hostnum, unique_id;
 
@@ -198,7 +195,7 @@ testVirReadSCSIUniqueId(const void *data ATTRIBUTE_UNUSED)
 
 /* Test virSCSIHostFindByPCI */
 static int
-testVirFindSCSIHostByPCI(const void *data ATTRIBUTE_UNUSED)
+testVirFindSCSIHostByPCI(const void *data G_GNUC_UNUSED)
 {
     unsigned int unique_id1 = 1;
     unsigned int unique_id2 = 2;
@@ -208,9 +205,7 @@ testVirFindSCSIHostByPCI(const void *data ATTRIBUTE_UNUSED)
     char *ret_host = NULL;
     int ret = -1;
 
-    if (virAsprintf(&path_addr, "%s/%s", abs_srcdir,
-                    "sysfs/class/scsi_host") < 0)
-        goto cleanup;
+    path_addr = g_strdup_printf("%s/%s", abs_srcdir, "sysfs/class/scsi_host");
 
     if (!(ret_host = virSCSIHostFindByPCI(TEST_SCSIHOST_CLASS_PATH,
                                           pci_addr1, unique_id1)) ||
@@ -253,31 +248,21 @@ mymain(void)
     char *fakerootdir = NULL;
     char *fakesysfsdir = NULL;
 
-    if (VIR_STRDUP_QUIET(fakerootdir, FAKEROOTDIRTEMPLATE) < 0) {
-        fprintf(stderr, "Out of memory\n");
-        goto cleanup;
-    }
+    fakerootdir = g_strdup(FAKEROOTDIRTEMPLATE);
 
-    if (!mkdtemp(fakerootdir)) {
+    if (!g_mkdtemp(fakerootdir)) {
         fprintf(stderr, "Cannot create fakerootdir");
         goto cleanup;
     }
 
-    if (virAsprintfQuiet(&fakesysfsdir, "%s/sys", fakerootdir) < 0) {
-        fprintf(stderr, "Out of memory\n");
-        goto cleanup;
-    }
+    fakesysfsdir = g_strdup_printf("%s/sys", fakerootdir);
 
     if (init_scsihost_sysfs(fakesysfsdir) < 0) {
         fprintf(stderr, "Failed to create fakesysfs='%s'\n", fakesysfsdir);
         goto cleanup;
     }
 
-    if (virAsprintfQuiet(&scsihost_class_path, "%s/class/scsi_host",
-                         fakesysfsdir) < 0) {
-        fprintf(stderr, "Out of memory\n");
-        goto cleanup;
-    }
+    scsihost_class_path = g_strdup_printf("%s/class/scsi_host", fakesysfsdir);
     VIR_DEBUG("Reading from '%s'", scsihost_class_path);
 
     if (virTestRun("testVirReadSCSIUniqueId",

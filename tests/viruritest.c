@@ -171,6 +171,7 @@ mymain(void)
 
     TEST_PARSE("test://example.com", "test", "example.com", 0, NULL, NULL, NULL, NULL, NULL);
     TEST_PARSE("test://foo@example.com", "test", "example.com", 0, NULL, NULL, NULL, "foo", NULL);
+    TEST_PARSE("test://foo:pass@example.com", "test", "example.com", 0, NULL, NULL, NULL, "foo:pass", NULL);
     TEST_PARSE("test://example.com:123", "test", "example.com", 123, NULL, NULL, NULL, NULL, NULL);
     TEST_PARSE("test://example.com:123/system?name=value#foo", "test", "example.com", 123, "/system", "name=value", "foo", NULL, params);
     TEST_PARSE("test://127.0.0.1:123/system", "test", "127.0.0.1", 123, "/system", NULL, NULL, NULL, NULL);
@@ -183,7 +184,7 @@ mymain(void)
         { NULL, NULL, false },
     };
     TEST_FULL("spice://[3ffe::104]:5900/?tlsSubject=C=XX,L=Testtown,O=Test%20Company,CN=tester.test",
-              "spice://[3ffe::104]:5900/?tlsSubject=C%3dXX%2cL%3dTesttown%2cO%3dTest%20Company%2cCN%3dtester%2etest",
+              "spice://[3ffe::104]:5900/?tlsSubject=C%3DXX%2CL%3DTesttown%2CO%3DTest%20Company%2CCN%3Dtester.test",
               "spice", "3ffe::104", 5900, "/", "tlsSubject=C=XX,L=Testtown,O=Test%20Company,CN=tester.test", NULL, NULL, spiceparams);
 
     virURIParam params1[] = {
@@ -196,23 +197,19 @@ mymain(void)
         { (char*)"foo", (char*)"two", false },
         { NULL, NULL, false },
     };
-#ifdef HAVE_XMLURI_QUERY_RAW
     virURIParam params3[] = {
         { (char*)"foo", (char*)"&one", false },
         { (char*)"bar", (char*)"&two", false },
         { NULL, NULL, false },
     };
-#endif
     virURIParam params4[] = {
         { (char*)"foo", (char*)"", false },
         { NULL, NULL, false },
     };
-#ifdef HAVE_XMLURI_QUERY_RAW
     virURIParam params5[] = {
         { (char*)"foo", (char*)"one two", false },
         { NULL, NULL, false },
     };
-#endif
     virURIParam params6[] = {
         { (char*)"foo", (char*)"one", false },
         { NULL, NULL, false },
@@ -222,16 +219,12 @@ mymain(void)
     TEST_PARAMS("foo=one&foo=two", "", params2);
     TEST_PARAMS("foo=one&&foo=two", "foo=one&foo=two", params2);
     TEST_PARAMS("foo=one;foo=two", "foo=one&foo=two", params2);
-#ifdef HAVE_XMLURI_QUERY_RAW
     TEST_PARAMS("foo=%26one&bar=%26two", "", params3);
-#endif
     TEST_PARAMS("foo", "foo=", params4);
     TEST_PARAMS("foo=", "", params4);
     TEST_PARAMS("foo=&", "foo=", params4);
     TEST_PARAMS("foo=&&", "foo=", params4);
-#ifdef HAVE_XMLURI_QUERY_RAW
     TEST_PARAMS("foo=one%20two", "", params5);
-#endif
     TEST_PARAMS("=bogus&foo=one", "foo=one", params6);
 
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

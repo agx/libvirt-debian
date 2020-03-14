@@ -35,6 +35,7 @@
 # include "virstring.h"
 # include "virfile.h"
 # include "viralloc.h"
+# include "vircgroupv2devices.h"
 
 static int (*real_open)(const char *path, int flags, ...);
 static FILE *(*real_fopen)(const char *path, const char *mode);
@@ -103,7 +104,6 @@ static int make_file(const char *path,
 
 static int make_controller_v1(const char *path, mode_t mode)
 {
-    int ret = -1;
     const char *controller;
 
     if (!STRPREFIX(path, fakesysfscgroupdir)) {
@@ -118,12 +118,12 @@ static int make_controller_v1(const char *path, mode_t mode)
         return symlink("cpu,cpuacct", path);
 
     if (real_mkdir(path, mode) < 0)
-        goto cleanup;
+        return -1;
 
 # define MAKE_FILE(name, value) \
     do { \
         if (make_file(path, name, value) < 0) \
-            goto cleanup; \
+            return -1; \
     } while (0)
 
     if (STRPREFIX(controller, "cpu,cpuacct")) {
@@ -224,14 +224,12 @@ static int make_controller_v1(const char *path, mode_t mode)
 
     } else {
         errno = EINVAL;
-        goto cleanup;
+        return -1;
     }
 
 # undef MAKE_FILE
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -376,9 +374,8 @@ static void init_sysfs(void)
 
     VIR_FREE(fakesysfscgroupdir);
 
-    if (virAsprintfQuiet(&fakesysfscgroupdir, "%s%s",
-                         fakerootdir, SYSFS_CGROUP_PREFIX) < 0)
-        abort();
+    fakesysfscgroupdir = g_strdup_printf("%s%s",
+                                         fakerootdir, SYSFS_CGROUP_PREFIX);
 
     if (virFileMakePath(fakesysfscgroupdir) < 0) {
         fprintf(stderr, "Cannot create %s\n", fakesysfscgroupdir);
@@ -459,10 +456,8 @@ FILE *fopen(const char *path, const char *mode)
             errno = EACCES;
             return NULL;
         }
-        if (virAsprintfQuiet(&filepath, "%s/vircgroupdata/%s.%s",
-                             abs_srcdir, filename, type) < 0) {
-            abort();
-        }
+        filepath = g_strdup_printf("%s/vircgroupdata/%s.%s",
+                                   abs_srcdir, filename, type);
         rc = real_fopen(filepath, mode);
         free(filepath);
         return rc;
@@ -599,6 +594,12 @@ int open(const char *path, int flags, ...)
     }
     free(newpath);
     return ret;
+}
+
+bool
+virCgroupV2DevicesAvailable(virCgroupPtr group G_GNUC_UNUSED)
+{
+    return true;
 }
 #else
 /* Nothing to override on non-__linux__ platforms */

@@ -18,7 +18,6 @@
 
 #include <config.h>
 
-#include "dirname.h"
 #include "virmdev.h"
 #include "virlog.h"
 #include "virerror.h"
@@ -76,12 +75,11 @@ static int
 virMediatedDeviceGetSysfsDeviceAPI(virMediatedDevicePtr dev,
                                    char **device_api)
 {
-    VIR_AUTOFREE(char *) buf = NULL;
-    VIR_AUTOFREE(char *) file = NULL;
+    g_autofree char *buf = NULL;
+    g_autofree char *file = NULL;
     char *tmp = NULL;
 
-    if (virAsprintf(&file, "%s/mdev_type/device_api", dev->path) < 0)
-        return -1;
+    file = g_strdup_printf("%s/mdev_type/device_api", dev->path);
 
     /* TODO - make this a generic method to access sysfs files for various
      * kinds of devices
@@ -108,7 +106,7 @@ static int
 virMediatedDeviceCheckModel(virMediatedDevicePtr dev,
                             virMediatedDeviceModelType model)
 {
-    VIR_AUTOFREE(char *) dev_api = NULL;
+    g_autofree char *dev_api = NULL;
     int actual_model;
 
     if (virMediatedDeviceGetSysfsDeviceAPI(dev, &dev_api) < 0)
@@ -140,9 +138,8 @@ virMediatedDeviceCheckModel(virMediatedDevicePtr dev,
 virMediatedDevicePtr
 virMediatedDeviceNew(const char *uuidstr, virMediatedDeviceModelType model)
 {
-    virMediatedDevicePtr ret = NULL;
-    VIR_AUTOPTR(virMediatedDevice) dev = NULL;
-    VIR_AUTOFREE(char *) sysfspath = NULL;
+    g_autoptr(virMediatedDevice) dev = NULL;
+    g_autofree char *sysfspath = NULL;
 
     if (!(sysfspath = virMediatedDeviceGetSysfsPath(uuidstr)))
         return NULL;
@@ -156,7 +153,7 @@ virMediatedDeviceNew(const char *uuidstr, virMediatedDeviceModelType model)
     if (VIR_ALLOC(dev) < 0)
         return NULL;
 
-    VIR_STEAL_PTR(dev->path, sysfspath);
+    dev->path = g_steal_pointer(&sysfspath);
 
     /* Check whether the user-provided model corresponds with the actually
      * supported mediated device's API.
@@ -165,16 +162,14 @@ virMediatedDeviceNew(const char *uuidstr, virMediatedDeviceModelType model)
         return NULL;
 
     dev->model = model;
-    VIR_STEAL_PTR(ret, dev);
-
-    return ret;
+    return g_steal_pointer(&dev);
 }
 
 #else
 
 virMediatedDevicePtr
-virMediatedDeviceNew(const char *uuidstr ATTRIBUTE_UNUSED,
-                     virMediatedDeviceModelType model ATTRIBUTE_UNUSED)
+virMediatedDeviceNew(const char *uuidstr G_GNUC_UNUSED,
+                     virMediatedDeviceModelType model G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                    _("mediated devices are not supported on non-linux "
@@ -210,16 +205,16 @@ virMediatedDeviceGetPath(virMediatedDevicePtr dev)
 char *
 virMediatedDeviceGetIOMMUGroupDev(const char *uuidstr)
 {
-    VIR_AUTOFREE(char *) result_path = NULL;
-    VIR_AUTOFREE(char *) iommu_path = NULL;
-    VIR_AUTOFREE(char *) dev_path = virMediatedDeviceGetSysfsPath(uuidstr);
+    g_autofree char *result_path = NULL;
+    g_autofree char *result_file = NULL;
+    g_autofree char *iommu_path = NULL;
+    g_autofree char *dev_path = virMediatedDeviceGetSysfsPath(uuidstr);
     char *vfio_path = NULL;
 
     if (!dev_path)
         return NULL;
 
-    if (virAsprintf(&iommu_path, "%s/iommu_group", dev_path) < 0)
-        return NULL;
+    iommu_path = g_strdup_printf("%s/iommu_group", dev_path);
 
     if (!virFileExists(iommu_path)) {
         virReportSystemError(errno, _("failed to access '%s'"), iommu_path);
@@ -231,8 +226,9 @@ virMediatedDeviceGetIOMMUGroupDev(const char *uuidstr)
         return NULL;
     }
 
-    if (virAsprintf(&vfio_path, "/dev/vfio/%s", last_component(result_path)) < 0)
-        return NULL;
+    result_file = g_path_get_basename(result_path);
+
+    vfio_path = g_strdup_printf("/dev/vfio/%s", result_file);
 
     return vfio_path;
 }
@@ -241,14 +237,14 @@ virMediatedDeviceGetIOMMUGroupDev(const char *uuidstr)
 int
 virMediatedDeviceGetIOMMUGroupNum(const char *uuidstr)
 {
-    VIR_AUTOFREE(char *) vfio_path = NULL;
-    char *group_num_str = NULL;
+    g_autofree char *vfio_path = NULL;
+    g_autofree char *group_num_str = NULL;
     unsigned int group_num = -1;
 
     if (!(vfio_path = virMediatedDeviceGetIOMMUGroupDev(uuidstr)))
         return -1;
 
-    group_num_str = last_component(vfio_path);
+    group_num_str = g_path_get_basename(vfio_path);
     ignore_value(virStrToLong_ui(group_num_str, NULL, 10, &group_num));
 
     return group_num;
@@ -271,10 +267,8 @@ virMediatedDeviceSetUsedBy(virMediatedDevicePtr dev,
 {
     VIR_FREE(dev->used_by_drvname);
     VIR_FREE(dev->used_by_domname);
-    if (VIR_STRDUP(dev->used_by_drvname, drvname) < 0)
-        return -1;
-    if (VIR_STRDUP(dev->used_by_domname, domname) < 0)
-        return -1;
+    dev->used_by_drvname = g_strdup(drvname);
+    dev->used_by_domname = g_strdup(domname);
 
     return 0;
 }
@@ -430,7 +424,7 @@ virMediatedDeviceGetSysfsPath(const char *uuidstr)
 {
     char *ret = NULL;
 
-    ignore_value(virAsprintf(&ret, MDEV_SYSFS_DEVICES "%s", uuidstr));
+    ret = g_strdup_printf(MDEV_SYSFS_DEVICES "%s", uuidstr);
     return ret;
 }
 
@@ -495,7 +489,7 @@ int
 virMediatedDeviceTypeReadAttrs(const char *sysfspath,
                                virMediatedDeviceTypePtr *type)
 {
-    VIR_AUTOPTR(virMediatedDeviceType) tmp = NULL;
+    g_autoptr(virMediatedDeviceType) tmp = NULL;
 
 #define MDEV_GET_SYSFS_ATTR(attr, dst, cb, optional) \
     do { \
@@ -509,8 +503,7 @@ virMediatedDeviceTypeReadAttrs(const char *sysfspath,
     if (VIR_ALLOC(tmp) < 0)
         return -1;
 
-    if (VIR_STRDUP(tmp->id, last_component(sysfspath)) < 0)
-        return -1;
+    tmp->id = g_path_get_basename(sysfspath);
 
     /* @name sysfs attribute is optional, so getting ENOENT is fine */
     MDEV_GET_SYSFS_ATTR("name", &tmp->name, virFileReadValueString, true);
@@ -521,7 +514,7 @@ virMediatedDeviceTypeReadAttrs(const char *sysfspath,
 
 #undef MDEV_GET_SYSFS_ATTR
 
-    VIR_STEAL_PTR(*type, tmp);
+    *type = g_steal_pointer(&tmp);
 
     return 0;
 }

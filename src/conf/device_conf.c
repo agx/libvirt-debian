@@ -45,6 +45,7 @@ VIR_ENUM_IMPL(virDomainDeviceAddress,
               "virtio-mmio",
               "isa",
               "dimm",
+              "unassigned",
 );
 
 static int
@@ -120,6 +121,7 @@ virDomainDeviceInfoAddressIsEqual(const virDomainDeviceInfo *a,
     /* address types below don't have any specific data */
     case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_VIRTIO_MMIO:
     case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_VIRTIO_S390:
+    case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_UNASSIGNED:
         break;
 
     case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI:
@@ -293,8 +295,8 @@ virPCIDeviceAddressFormat(virBufferPtr buf,
                           virPCIDeviceAddress addr,
                           bool includeTypeInAddr)
 {
-    virBufferAsprintf(buf, "<address %sdomain='0x%.4x' bus='0x%.2x' "
-                      "slot='0x%.2x' function='0x%.1x'/>\n",
+    virBufferAsprintf(buf, "<address %sdomain='0x%04x' bus='0x%02x' "
+                      "slot='0x%02x' function='0x%d'/>\n",
                       includeTypeInAddr ? "type='pci' " : "",
                       addr.domain,
                       addr.bus,

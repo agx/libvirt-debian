@@ -22,7 +22,6 @@
 #include <config.h>
 
 #include <poll.h>
-#include <regex.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <sys/stat.h>
@@ -217,6 +216,10 @@ virCommandFDSet(virCommandPtr cmd,
 
 #ifndef WIN32
 
+static void virDummyHandler(int sig G_GNUC_UNUSED)
+{
+}
+
 /**
  * virFork:
  *
@@ -312,6 +315,14 @@ virFork(void)
             ignore_value(sigaction(i, &sig_action, NULL));
         }
 
+        /* Code that runs between fork & execve might trigger
+         * SIG_PIPE, so we must explicitly set that to a no-op
+         * handler. This handler will get reset to SIG_DFL when
+         * execve() runs
+         */
+        sig_action.sa_handler = virDummyHandler;
+        ignore_value(sigaction(SIGPIPE, &sig_action, NULL));
+
         /* Unmask all signals in child, since we've no idea what the
          * caller's done with their signal mask and don't want to
          * propagate that to children */
@@ -405,8 +416,6 @@ virCommandHandshakeChild(virCommandPtr cmd)
 static int
 virExecCommon(virCommandPtr cmd, gid_t *groups, int ngroups)
 {
-    int ret = -1;
-
     if (cmd->uid != (uid_t)-1 || cmd->gid != (gid_t)-1 ||
         cmd->capabilities || (cmd->flags & VIR_EXEC_CLEAR_CAPS)) {
         VIR_DEBUG("Setting child uid:gid to %d:%d with caps %llx",
@@ -414,7 +423,7 @@ virExecCommon(virCommandPtr cmd, gid_t *groups, int ngroups)
         if (virSetUIDGIDWithCaps(cmd->uid, cmd->gid, groups, ngroups,
                                  cmd->capabilities,
                                  !!(cmd->flags & VIR_EXEC_CLEAR_CAPS)) < 0)
-            goto cleanup;
+            return -1;
     }
 
     if (cmd->pwd) {
@@ -422,13 +431,10 @@ virExecCommon(virCommandPtr cmd, gid_t *groups, int ngroups)
         if (chdir(cmd->pwd) < 0) {
             virReportSystemError(errno,
                                  _("Unable to change to %s"), cmd->pwd);
-            goto cleanup;
+            return -1;
         }
     }
-    ret = 0;
-
- cleanup:
-    return ret;
+    return 0;
 }
 
 # ifdef __linux__
@@ -437,7 +443,7 @@ virExecCommon(virCommandPtr cmd, gid_t *groups, int ngroups)
  * onto child process (well, the one we will exec soon since this
  * is called from the child). */
 static int
-virCommandMassCloseGetFDsLinux(virCommandPtr cmd ATTRIBUTE_UNUSED,
+virCommandMassCloseGetFDsLinux(virCommandPtr cmd G_GNUC_UNUSED,
                                virBitmapPtr fds)
 {
     DIR *dp = NULL;
@@ -474,7 +480,7 @@ virCommandMassCloseGetFDsLinux(virCommandPtr cmd ATTRIBUTE_UNUSED,
 # else /* !__linux__ */
 
 static int
-virCommandMassCloseGetFDsGeneric(virCommandPtr cmd ATTRIBUTE_UNUSED,
+virCommandMassCloseGetFDsGeneric(virCommandPtr cmd G_GNUC_UNUSED,
                                  virBitmapPtr fds)
 {
     virBitmapSetAll(fds);
@@ -488,7 +494,7 @@ virCommandMassClose(virCommandPtr cmd,
                     int childout,
                     int childerr)
 {
-    VIR_AUTOPTR(virBitmap) fds = NULL;
+    g_autoptr(virBitmap) fds = NULL;
     int openmax = sysconf(_SC_OPEN_MAX);
     int fd = -1;
 
@@ -547,11 +553,10 @@ virExec(virCommandPtr cmd)
     int childin = cmd->infd;
     int childout = -1;
     int childerr = -1;
-    VIR_AUTOFREE(char *) binarystr = NULL;
+    g_autofree char *binarystr = NULL;
     const char *binary = NULL;
     int ret;
-    struct sigaction waxon, waxoff;
-    VIR_AUTOFREE(gid_t *) groups = NULL;
+    g_autofree gid_t *groups = NULL;
     int ngroups;
 
     if (cmd->args[0][0] != '/') {
@@ -718,21 +723,6 @@ virExec(virCommandPtr cmd)
         }
     }
 
-    /* virFork reset all signal handlers to the defaults.
-     * This is good for the child process, but our hook
-     * risks running something that generates SIGPIPE,
-     * so we need to temporarily block that again
-     */
-    memset(&waxoff, 0, sizeof(waxoff));
-    waxoff.sa_handler = SIG_IGN;
-    sigemptyset(&waxoff.sa_mask);
-    memset(&waxon, 0, sizeof(waxon));
-    if (sigaction(SIGPIPE, &waxoff, &waxon) < 0) {
-        virReportSystemError(errno, "%s",
-                             _("Could not disable SIGPIPE"));
-        goto fork_error;
-    }
-
     if (virProcessSetMaxMemLock(0, cmd->maxMemLock) < 0)
         goto fork_error;
     if (virProcessSetMaxProcesses(0, cmd->maxProcesses) < 0)
@@ -782,12 +772,6 @@ virExec(virCommandPtr cmd)
 
     if (virCommandHandshakeChild(cmd) < 0)
        goto fork_error;
-
-    if (sigaction(SIGPIPE, &waxon, NULL) < 0) {
-        virReportSystemError(errno, "%s",
-                             _("Could not re-enable SIGPIPE"));
-        goto fork_error;
-    }
 
     /* Close logging again to ensure no FDs leak to child */
     virLogReset();
@@ -839,7 +823,7 @@ virExec(virCommandPtr cmd)
 int
 virRun(const char *const*argv, int *status)
 {
-    VIR_AUTOPTR(virCommand) cmd = virCommandNewArgs(argv);
+    g_autoptr(virCommand) cmd = virCommandNewArgs(argv);
 
     return virCommandRun(cmd, status);
 }
@@ -847,7 +831,7 @@ virRun(const char *const*argv, int *status)
 #else /* WIN32 */
 
 int
-virRun(const char *const *argv ATTRIBUTE_UNUSED,
+virRun(const char *const *argv G_GNUC_UNUSED,
        int *status)
 {
     if (status)
@@ -859,7 +843,7 @@ virRun(const char *const *argv ATTRIBUTE_UNUSED,
 }
 
 static int
-virExec(virCommandPtr cmd ATTRIBUTE_UNUSED)
+virExec(virCommandPtr cmd G_GNUC_UNUSED)
 {
     /* XXX: Some day we can implement pieces of virCommand/virExec on
      * top of _spawn() or CreateProcess(), but we can't implement
@@ -1061,8 +1045,7 @@ virCommandSetPidFile(virCommandPtr cmd, const char *pidfile)
         return;
 
     VIR_FREE(cmd->pidfile);
-    if (VIR_STRDUP_QUIET(cmd->pidfile, pidfile) < 0)
-        cmd->has_error = ENOMEM;
+    cmd->pidfile = g_strdup(pidfile);
 }
 
 
@@ -1187,15 +1170,14 @@ virCommandAllowCap(virCommandPtr cmd,
  */
 void
 virCommandSetSELinuxLabel(virCommandPtr cmd,
-                          const char *label ATTRIBUTE_UNUSED)
+                          const char *label G_GNUC_UNUSED)
 {
     if (!cmd || cmd->has_error)
         return;
 
 #if defined(WITH_SECDRIVER_SELINUX)
     VIR_FREE(cmd->seLinuxLabel);
-    if (VIR_STRDUP_QUIET(cmd->seLinuxLabel, label) < 0)
-        cmd->has_error = ENOMEM;
+    cmd->seLinuxLabel = g_strdup(label);
 #endif
     return;
 }
@@ -1212,15 +1194,14 @@ virCommandSetSELinuxLabel(virCommandPtr cmd,
  */
 void
 virCommandSetAppArmorProfile(virCommandPtr cmd,
-                             const char *profile ATTRIBUTE_UNUSED)
+                             const char *profile G_GNUC_UNUSED)
 {
     if (!cmd || cmd->has_error)
         return;
 
 #if defined(WITH_SECDRIVER_APPARMOR)
     VIR_FREE(cmd->appArmorProfile);
-    if (VIR_STRDUP_QUIET(cmd->appArmorProfile, profile) < 0)
-        cmd->has_error = ENOMEM;
+    cmd->appArmorProfile = g_strdup(profile);
 #endif
     return;
 }
@@ -1327,11 +1308,7 @@ virCommandAddEnvFormat(virCommandPtr cmd, const char *format, ...)
         return;
 
     va_start(list, format);
-    if (virVasprintf(&env, format, list) < 0) {
-        cmd->has_error = ENOMEM;
-        va_end(list);
-        return;
-    }
+    env = g_strdup_vprintf(format, list);
     va_end(list);
 
     virCommandAddEnv(cmd, env);
@@ -1369,10 +1346,7 @@ virCommandAddEnvString(virCommandPtr cmd, const char *str)
     if (!cmd || cmd->has_error)
         return;
 
-    if (VIR_STRDUP_QUIET(env, str) < 0) {
-        cmd->has_error = ENOMEM;
-        return;
-    }
+    env = g_strdup(str);
 
     virCommandAddEnv(cmd, env);
 }
@@ -1395,11 +1369,6 @@ virCommandAddEnvBuffer(virCommandPtr cmd, virBufferPtr buf)
         return;
     }
 
-    if (virBufferError(buf)) {
-        cmd->has_error = ENOMEM;
-        virBufferFreeAndReset(buf);
-        return;
-    }
     if (!virBufferUse(buf)) {
         cmd->has_error = EINVAL;
         return;
@@ -1410,49 +1379,21 @@ virCommandAddEnvBuffer(virCommandPtr cmd, virBufferPtr buf)
 
 
 /**
- * virCommandAddEnvPassAllowSUID:
+ * virCommandAddEnvPass:
  * @cmd: the command to modify
  * @name: the name to look up in current environment
  *
  * Pass an environment variable to the child
  * using current process' value
- *
- * Allow to be passed even if setuid
  */
 void
-virCommandAddEnvPassAllowSUID(virCommandPtr cmd, const char *name)
+virCommandAddEnvPass(virCommandPtr cmd, const char *name)
 {
     const char *value;
     if (!cmd || cmd->has_error)
         return;
 
-    value = virGetEnvAllowSUID(name);
-    if (value)
-        virCommandAddEnvPair(cmd, name, value);
-}
-
-
-/**
- * virCommandAddEnvPassBlockSUID:
- * @cmd: the command to modify
- * @name: the name to look up in current environment
- * @defvalue: value to return if running setuid, may be NULL
- *
- * Pass an environment variable to the child
- * using current process' value.
- *
- * Do not pass if running setuid
- */
-void
-virCommandAddEnvPassBlockSUID(virCommandPtr cmd, const char *name, const char *defvalue)
-{
-    const char *value;
-    if (!cmd || cmd->has_error)
-        return;
-
-    value = virGetEnvBlockSUID(name);
-    if (!value)
-        value = defvalue;
+    value = getenv(name);
     if (value)
         virCommandAddEnvPair(cmd, name, value);
 }
@@ -1478,13 +1419,13 @@ virCommandAddEnvPassCommon(virCommandPtr cmd)
 
     virCommandAddEnvPair(cmd, "LC_ALL", "C");
 
-    virCommandAddEnvPassBlockSUID(cmd, "LD_PRELOAD", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "LD_LIBRARY_PATH", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "PATH", "/bin:/usr/bin");
-    virCommandAddEnvPassBlockSUID(cmd, "HOME", NULL);
-    virCommandAddEnvPassAllowSUID(cmd, "USER");
-    virCommandAddEnvPassAllowSUID(cmd, "LOGNAME");
-    virCommandAddEnvPassBlockSUID(cmd, "TMPDIR", NULL);
+    virCommandAddEnvPass(cmd, "LD_PRELOAD");
+    virCommandAddEnvPass(cmd, "LD_LIBRARY_PATH");
+    virCommandAddEnvPass(cmd, "PATH");
+    virCommandAddEnvPass(cmd, "HOME");
+    virCommandAddEnvPass(cmd, "USER");
+    virCommandAddEnvPass(cmd, "LOGNAME");
+    virCommandAddEnvPass(cmd, "TMPDIR");
 }
 
 
@@ -1529,10 +1470,7 @@ virCommandAddArg(virCommandPtr cmd, const char *val)
         return;
     }
 
-    if (VIR_STRDUP_QUIET(arg, val) < 0) {
-        cmd->has_error = ENOMEM;
-        return;
-    }
+    arg = g_strdup(val);
 
     /* Arg plus trailing NULL. */
     if (VIR_RESIZE_N(cmd->args, cmd->maxargs, cmd->nargs, 1 + 1) < 0) {
@@ -1562,20 +1500,15 @@ virCommandAddArgBuffer(virCommandPtr cmd, virBufferPtr buf)
     }
 
     /* Arg plus trailing NULL. */
-    if (virBufferError(buf) ||
-        VIR_RESIZE_N(cmd->args, cmd->maxargs, cmd->nargs, 1 + 1) < 0) {
+    if (VIR_RESIZE_N(cmd->args, cmd->maxargs, cmd->nargs, 1 + 1) < 0) {
         cmd->has_error = ENOMEM;
         virBufferFreeAndReset(buf);
         return;
     }
 
     cmd->args[cmd->nargs] = virBufferContentAndReset(buf);
-    if (!cmd->args[cmd->nargs]) {
-        if (VIR_STRDUP_QUIET(cmd->args[cmd->nargs], "") < 0) {
-            cmd->has_error = ENOMEM;
-            return;
-        }
-    }
+    if (!cmd->args[cmd->nargs])
+        cmd->args[cmd->nargs] = g_strdup("");
     cmd->nargs++;
 }
 
@@ -1598,11 +1531,7 @@ virCommandAddArgFormat(virCommandPtr cmd, const char *format, ...)
         return;
 
     va_start(list, format);
-    if (virVasprintf(&arg, format, list) < 0) {
-        cmd->has_error = ENOMEM;
-        va_end(list);
-        return;
-    }
+    arg = g_strdup_vprintf(format, list);
     va_end(list);
 
     /* Arg plus trailing NULL. */
@@ -1666,10 +1595,7 @@ virCommandAddArgSet(virCommandPtr cmd, const char *const*vals)
     while (vals[narg] != NULL) {
         char *arg;
 
-        if (VIR_STRDUP_QUIET(arg, vals[narg++]) < 0) {
-            cmd->has_error = ENOMEM;
-            return;
-        }
+        arg = g_strdup(vals[narg++]);
         cmd->args[cmd->nargs++] = arg;
     }
 }
@@ -1706,11 +1632,7 @@ virCommandAddArgList(virCommandPtr cmd, ...)
         char *arg = va_arg(list, char *);
         if (!arg)
             break;
-        if (VIR_STRDUP_QUIET(arg, arg) < 0) {
-            cmd->has_error = ENOMEM;
-            va_end(list);
-            return;
-        }
+        arg = g_strdup(arg);
         cmd->args[cmd->nargs++] = arg;
     }
     va_end(list);
@@ -1735,8 +1657,7 @@ virCommandSetWorkingDirectory(virCommandPtr cmd, const char *pwd)
         cmd->has_error = -1;
         VIR_DEBUG("cannot set directory twice");
     } else {
-        if (VIR_STRDUP_QUIET(cmd->pwd, pwd) < 0)
-            cmd->has_error = ENOMEM;
+        cmd->pwd = g_strdup(pwd);
     }
 }
 
@@ -1807,9 +1728,9 @@ virCommandSetSendBuffer(virCommandPtr cmd,
 
 int
 virCommandSetSendBuffer(virCommandPtr cmd,
-                        int fd ATTRIBUTE_UNUSED,
-                        unsigned char *buffer ATTRIBUTE_UNUSED,
-                        size_t buflen ATTRIBUTE_UNUSED)
+                        int fd G_GNUC_UNUSED,
+                        unsigned char *buffer G_GNUC_UNUSED,
+                        size_t buflen G_GNUC_UNUSED)
 {
     if (!cmd || cmd->has_error)
         return -1;
@@ -1897,8 +1818,7 @@ virCommandSetInputBuffer(virCommandPtr cmd, const char *inbuf)
         return;
     }
 
-    if (VIR_STRDUP_QUIET(cmd->inbuf, inbuf) < 0)
-        cmd->has_error = ENOMEM;
+    cmd->inbuf = g_strdup(inbuf);
 }
 
 
@@ -2181,9 +2101,6 @@ virCommandToString(virCommandPtr cmd, bool linebreaks)
         prevopt = (cmd->args[i][0] == '-');
     }
 
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
-
     return virBufferContentAndReset(&buf);
 }
 
@@ -2198,7 +2115,7 @@ virCommandProcessIO(virCommandPtr cmd)
     size_t inlen = 0, outlen = 0, errlen = 0;
     size_t inoff = 0;
     int ret = 0;
-    VIR_AUTOFREE(struct pollfd *) fds = NULL;
+    g_autofree struct pollfd *fds = NULL;
 
     if (dryRunBuffer || dryRunCallback) {
         VIR_DEBUG("Dry run requested, skipping I/O processing");
@@ -2383,8 +2300,8 @@ int virCommandExec(virCommandPtr cmd, gid_t *groups, int ngroups)
     return -1;
 }
 #else
-int virCommandExec(virCommandPtr cmd ATTRIBUTE_UNUSED, gid_t *groups ATTRIBUTE_UNUSED,
-                   int ngroups ATTRIBUTE_UNUSED)
+int virCommandExec(virCommandPtr cmd G_GNUC_UNUSED, gid_t *groups G_GNUC_UNUSED,
+                   int ngroups G_GNUC_UNUSED)
 {
     /* Mingw execve() has a broken signature. Disable this
      * function until gnulib fixes the signature, since we
@@ -2569,7 +2486,7 @@ int
 virCommandRunAsync(virCommandPtr cmd, pid_t *pid)
 {
     int ret = -1;
-    VIR_AUTOFREE(char *) str = NULL;
+    g_autofree char *str = NULL;
     size_t i;
     bool synchronous = false;
     int infd[2] = {-1, -1};
@@ -2785,8 +2702,8 @@ virCommandWait(virCommandPtr cmd, int *exitstatus)
         if (exitstatus && (cmd->rawStatus || WIFEXITED(status))) {
             *exitstatus = cmd->rawStatus ? status : WEXITSTATUS(status);
         } else if (status) {
-            VIR_AUTOFREE(char *) str = virCommandToString(cmd, false);
-            VIR_AUTOFREE(char *) st = virProcessTranslateStatus(status);
+            g_autofree char *str = virCommandToString(cmd, false);
+            g_autofree char *st = virProcessTranslateStatus(status);
             bool haveErrMsg = cmd->errbuf && *cmd->errbuf && (*cmd->errbuf)[0];
 
             virReportError(VIR_ERR_INTERNAL_ERROR,
@@ -2823,7 +2740,7 @@ virCommandAbort(virCommandPtr cmd)
 }
 #else /* WIN32 */
 void
-virCommandAbort(virCommandPtr cmd ATTRIBUTE_UNUSED)
+virCommandAbort(virCommandPtr cmd G_GNUC_UNUSED)
 {
     /* Mingw lacks WNOHANG and kill().  But since we haven't ported
      * virExec to mingw yet, there's no process to be killed,
@@ -2913,7 +2830,7 @@ int virCommandHandshakeWait(virCommandPtr cmd)
         return -1;
     }
     if (c != '1') {
-        VIR_AUTOFREE(char *) msg = NULL;
+        g_autofree char *msg = NULL;
         ssize_t len;
         if (VIR_ALLOC_N(msg, 1024) < 0) {
             VIR_FORCE_CLOSE(cmd->handshakeWait[0]);
@@ -3048,8 +2965,8 @@ virCommandFree(virCommandPtr cmd)
  * This requests asynchronous string IO on @cmd. It is useful in
  * combination with virCommandRunAsync():
  *
- *      VIR_AUTOPTR(virCommand) cmd = virCommandNew*(...);
- *      VIR_AUTOFREE(char *) buf = NULL;
+ *      g_autoptr(virCommand) cmd = virCommandNew*(...);
+ *      g_autofree char *buf = NULL;
  *
  *      ...
  *
@@ -3159,13 +3076,11 @@ virCommandRunRegex(virCommandPtr cmd,
                    const char *prefix,
                    int *exitstatus)
 {
-    int err;
-    regex_t *reg;
-    VIR_AUTOFREE(regmatch_t *) vars = NULL;
+    GRegex **reg = NULL;
     size_t i, j, k;
-    int totgroups = 0, ngroup = 0, maxvars = 0;
+    int totgroups = 0, ngroup = 0;
     char **groups;
-    VIR_AUTOFREE(char *) outbuf = NULL;
+    g_autofree char *outbuf = NULL;
     VIR_AUTOSTRINGLIST lines = NULL;
     int ret = -1;
 
@@ -3174,28 +3089,22 @@ virCommandRunRegex(virCommandPtr cmd,
         return -1;
 
     for (i = 0; i < nregex; i++) {
-        err = regcomp(&reg[i], regex[i], REG_EXTENDED);
-        if (err != 0) {
-            char error[100];
-            regerror(err, &reg[i], error, sizeof(error));
+        g_autoptr(GError) err = NULL;
+        reg[i] = g_regex_new(regex[i], G_REGEX_OPTIMIZE, 0, &err);
+        if (!reg[i]) {
             virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("Failed to compile regex %s"), error);
+                           _("Failed to compile regex %s"), err->message);
             for (j = 0; j < i; j++)
-                regfree(&reg[j]);
+                g_regex_unref(reg[j]);
             VIR_FREE(reg);
             return -1;
         }
 
         totgroups += nvars[i];
-        if (nvars[i] > maxvars)
-            maxvars = nvars[i];
-
     }
 
     /* Storage for matched variables */
     if (VIR_ALLOC_N(groups, totgroups) < 0)
-        goto cleanup;
-    if (VIR_ALLOC_N(vars, maxvars+1) < 0)
         goto cleanup;
 
     virCommandSetOutputBuffer(cmd, &outbuf);
@@ -3212,6 +3121,7 @@ virCommandRunRegex(virCommandPtr cmd,
         goto cleanup;
 
     for (k = 0; lines[k]; k++) {
+        g_autoptr(GMatchInfo) info = NULL;
         const char *p = NULL;
 
         /* ignore any command prefix */
@@ -3222,16 +3132,12 @@ virCommandRunRegex(virCommandPtr cmd,
 
         ngroup = 0;
         for (i = 0; i < nregex; i++) {
-            if (regexec(&reg[i], p, nvars[i]+1, vars, 0) != 0)
+            if (!(g_regex_match(reg[i], p, 0, &info)))
                 break;
 
-            /* NB vars[0] is the full pattern, so we offset j by 1 */
-            for (j = 1; j <= nvars[i]; j++) {
-                if (VIR_STRNDUP(groups[ngroup++], p + vars[j].rm_so,
-                                vars[j].rm_eo - vars[j].rm_so) < 0)
-                    goto cleanup;
-            }
-
+            /* NB match #0 is the full pattern, so we offset j by 1 */
+            for (j = 1; j <= nvars[i]; j++)
+                groups[ngroup++] = g_match_info_fetch(info, j);
         }
         /* We've matched on the last regex, so callback time */
         if (i == nregex) {
@@ -3252,7 +3158,7 @@ virCommandRunRegex(virCommandPtr cmd,
     }
 
     for (i = 0; i < nregex; i++)
-        regfree(&reg[i]);
+        g_regex_unref(reg[i]);
 
     VIR_FREE(reg);
     return ret;
@@ -3345,14 +3251,14 @@ virCommandRunNul(virCommandPtr cmd,
 #else /* WIN32 */
 
 int
-virCommandRunRegex(virCommandPtr cmd ATTRIBUTE_UNUSED,
-                   int nregex ATTRIBUTE_UNUSED,
-                   const char **regex ATTRIBUTE_UNUSED,
-                   int *nvars ATTRIBUTE_UNUSED,
-                   virCommandRunRegexFunc func ATTRIBUTE_UNUSED,
-                   void *data ATTRIBUTE_UNUSED,
-                   const char *prefix ATTRIBUTE_UNUSED,
-                   int *exitstatus ATTRIBUTE_UNUSED)
+virCommandRunRegex(virCommandPtr cmd G_GNUC_UNUSED,
+                   int nregex G_GNUC_UNUSED,
+                   const char **regex G_GNUC_UNUSED,
+                   int *nvars G_GNUC_UNUSED,
+                   virCommandRunRegexFunc func G_GNUC_UNUSED,
+                   void *data G_GNUC_UNUSED,
+                   const char *prefix G_GNUC_UNUSED,
+                   int *exitstatus G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    _("%s not implemented on Win32"), __FUNCTION__);
@@ -3360,10 +3266,10 @@ virCommandRunRegex(virCommandPtr cmd ATTRIBUTE_UNUSED,
 }
 
 int
-virCommandRunNul(virCommandPtr cmd ATTRIBUTE_UNUSED,
-                 size_t n_columns ATTRIBUTE_UNUSED,
-                 virCommandRunNulFunc func ATTRIBUTE_UNUSED,
-                 void *data ATTRIBUTE_UNUSED)
+virCommandRunNul(virCommandPtr cmd G_GNUC_UNUSED,
+                 size_t n_columns G_GNUC_UNUSED,
+                 virCommandRunNulFunc func G_GNUC_UNUSED,
+                 void *data G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    _("%s not implemented on Win32"), __FUNCTION__);

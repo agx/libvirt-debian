@@ -31,12 +31,11 @@
 VIR_LOG_INIT("bhyve.bhyve_device");
 
 static int
-bhyveCollectPCIAddress(virDomainDefPtr def ATTRIBUTE_UNUSED,
-                       virDomainDeviceDefPtr device ATTRIBUTE_UNUSED,
+bhyveCollectPCIAddress(virDomainDefPtr def G_GNUC_UNUSED,
+                       virDomainDeviceDefPtr device G_GNUC_UNUSED,
                        virDomainDeviceInfoPtr info,
                        void *opaque)
 {
-    int ret = -1;
     if (info->type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DRIVE)
         return 0;
 
@@ -56,12 +55,10 @@ bhyveCollectPCIAddress(virDomainDefPtr def ATTRIBUTE_UNUSED,
 
     if (virDomainPCIAddressReserveAddr(addrs, addr,
                                        VIR_PCI_CONNECT_TYPE_PCI_DEVICE, 0) < 0) {
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 virDomainPCIAddressSetPtr
@@ -100,7 +97,7 @@ bhyveAssignDevicePCISlots(virDomainDefPtr def,
 
     if (virDomainPCIAddressReserveAddr(addrs, &lpc_addr,
                                        VIR_PCI_CONNECT_TYPE_PCI_DEVICE, 0) < 0) {
-        goto error;
+        return -1;
     }
 
     for (i = 0; i < def->ncontrollers; i++) {
@@ -116,7 +113,7 @@ bhyveAssignDevicePCISlots(virDomainDefPtr def,
                                                    &def->controllers[i]->info,
                                                    VIR_PCI_CONNECT_TYPE_PCI_DEVICE,
                                                    -1) < 0)
-                goto error;
+                return -1;
         }
     }
 
@@ -127,7 +124,7 @@ bhyveAssignDevicePCISlots(virDomainDefPtr def,
                                                &def->nets[i]->info,
                                                VIR_PCI_CONNECT_TYPE_PCI_DEVICE,
                                                -1) < 0)
-            goto error;
+            return -1;
     }
 
     for (i = 0; i < def->ndisks; i++) {
@@ -143,7 +140,7 @@ bhyveAssignDevicePCISlots(virDomainDefPtr def,
         if (virDomainPCIAddressReserveNextAddr(addrs, &def->disks[i]->info,
                                                VIR_PCI_CONNECT_TYPE_PCI_DEVICE,
                                                -1) < 0)
-            goto error;
+            return -1;
     }
 
     for (i = 0; i < def->nvideos; i++) {
@@ -153,14 +150,11 @@ bhyveAssignDevicePCISlots(virDomainDefPtr def,
                                                &def->videos[i]->info,
                                                VIR_PCI_CONNECT_TYPE_PCI_DEVICE,
                                                -1) < 0)
-            goto error;
+            return -1;
     }
 
 
     return 0;
-
- error:
-    return -1;
 }
 
 int bhyveDomainAssignPCIAddresses(virDomainDefPtr def,
@@ -169,13 +163,11 @@ int bhyveDomainAssignPCIAddresses(virDomainDefPtr def,
     virDomainPCIAddressSetPtr addrs = NULL;
     bhyveDomainObjPrivatePtr priv = NULL;
 
-    int ret = -1;
-
     if (!(addrs = bhyveDomainPCIAddressSetCreate(def, 1)))
-        goto cleanup;
+        return -1;
 
     if (bhyveAssignDevicePCISlots(def, addrs) < 0)
-        goto cleanup;
+        return -1;
 
     if (obj && obj->privateData) {
         priv = obj->privateData;
@@ -188,10 +180,7 @@ int bhyveDomainAssignPCIAddresses(virDomainDefPtr def,
         }
     }
 
-    ret = 0;
-
- cleanup:
-    return ret;
+    return 0;
 }
 
 int bhyveDomainAssignAddresses(virDomainDefPtr def, virDomainObjPtr obj)

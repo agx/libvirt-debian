@@ -23,12 +23,18 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir) \
 	$(NULL)
 
-WARN_CFLAGS += $(STRICT_FRAME_LIMIT_CFLAGS)
+# We do not want to accidentally include stuff from gnulib
+# or the main src/ dir or public API dir. Specific files can
+# still be included via their path relative to the root if
+# needed
+STANDALONE_CPPFLAGS = -I$(top_srcdir)
 
 AM_CFLAGS = \
 	$(WARN_CFLAGS) \
+	$(COVERAGE_CFLAGS) \
 	$(PIE_CFLAGS) \
 	$(LIBXML_CFLAGS) \
+	$(GLIB_CFLAGS) \
 	$(NULL)
 
 AM_LDFLAGS = \
@@ -44,26 +50,6 @@ ICON_FILES = \
 	libvirt_win_icon_64x64.ico \
 	virsh_win_icon.rc
 
-PODFILES = \
-	virt-admin.pod \
-	virt-host-validate.pod \
-	virt-login-shell.pod \
-	virt-pki-validate.pod \
-	virt-sanlock-cleanup.pod \
-	virt-xml-validate.pod \
-	virsh.pod \
-	$(NULL)
-
-MANINFILES = \
-	virt-admin.1.in \
-	virt-host-validate.1.in \
-	virt-login-shell.1.in \
-	virt-pki-validate.1.in \
-	virt-sanlock-cleanup.8.in \
-	virt-xml-validate.1.in \
-	virsh.1.in \
-	$(NULL)
-
 EXTRA_DIST = \
 	$(ICON_FILES) \
 	$(conf_DATA) \
@@ -75,8 +61,6 @@ EXTRA_DIST = \
 	virsh-edit.c \
 	bash-completion/vsh \
 	libvirt_recover_xattrs.sh \
-	$(PODFILES) \
-	$(MANINFILES) \
 	$(NULL)
 
 
@@ -90,27 +74,20 @@ conf_DATA =
 bin_SCRIPTS = virt-xml-validate virt-pki-validate
 bin_PROGRAMS = virsh virt-admin
 libexec_SCRIPTS = libvirt-guests.sh
-man1_MANS = \
-		virt-pki-validate.1 \
-		virt-xml-validate.1 \
-		virsh.1 \
-		virt-admin.1
 
 if WITH_SANLOCK
 sbin_SCRIPTS = virt-sanlock-cleanup
-man8_MANS = virt-sanlock-cleanup.8
 DISTCLEANFILES += virt-sanlock-cleanup
 endif WITH_SANLOCK
 
 if WITH_LOGIN_SHELL
 conf_DATA += virt-login-shell.conf
 bin_PROGRAMS += virt-login-shell
-man1_MANS += virt-login-shell.1
+libexec_PROGRAMS = virt-login-shell-helper
 endif WITH_LOGIN_SHELL
 
 if WITH_HOST_VALIDATE
 bin_PROGRAMS += virt-host-validate
-man1_MANS += virt-host-validate.1
 endif WITH_HOST_VALIDATE
 
 virt-xml-validate: virt-xml-validate.in Makefile
@@ -136,11 +113,13 @@ libvirt_shell_la_CFLAGS = \
 libvirt_shell_la_LDFLAGS = \
 		$(AM_LDFLAGS) \
 		$(PIE_LDFLAGS) \
+		$(COVERAGE_LDFLAGS) \
 		$(NULL)
 libvirt_shell_la_LIBADD = \
 		../src/libvirt.la \
 		$(LIBXML_LIBS) \
 		$(READLINE_LIBS) \
+		$(GLIB_LIBS) \
 		../gnulib/lib/libgnu.la \
 		$(NULL)
 libvirt_shell_la_SOURCES = \
@@ -181,10 +160,12 @@ endif ! WITH_BHYVE
 virt_host_validate_LDFLAGS = \
 		$(AM_LDFLAGS) \
 		$(PIE_LDFLAGS) \
+		$(COVERAGE_LDFLAGS) \
 		$(NULL)
 
 virt_host_validate_LDADD = \
 		../src/libvirt.la \
+		$(GLIB_LIBS) \
 		../gnulib/lib/libgnu.la \
 		$(NULL)
 
@@ -192,32 +173,48 @@ virt_host_validate_CFLAGS = \
 		$(AM_CFLAGS) \
 		$(NULL)
 
-# Since virt-login-shell will be setuid, we must do everything
-# we can to avoid linking to other libraries. Many of them do
-# unsafe things in functions marked __atttribute__((constructor)).
-# This we statically link to a library containing only the minimal
-# libvirt client code, not libvirt.so itself.
+# virt-login-shell will be setuid, and must not link to anything
+# except glibc. It wil scrub the environment and then invoke the
+# real virt-login-shell-helper binary.
 virt_login_shell_SOURCES = \
 		virt-login-shell.c
 
-virt_login_shell_LDFLAGS = \
+virt_login_shell_CPPFLAGS = $(STANDALONE_CPPFLAGS)
+
+virt_login_shell_helper_SOURCES = \
+		virt-login-shell-helper.c
+
+virt_login_shell_helper_LDFLAGS = \
 		$(AM_LDFLAGS) \
 		$(PIE_LDFLAGS) \
+		$(COVERAGE_LDFLAGS) \
 		$(NULL)
-virt_login_shell_LDADD = \
-		$(STATIC_BINARIES) \
-		../src/libvirt-setuid-rpc-client.la \
+virt_login_shell_helper_LDADD = \
+		../src/libvirt.la \
+		../src/libvirt-lxc.la \
+		$(GLIB_LIBS) \
 		../gnulib/lib/libgnu.la
 
-virt_login_shell_CFLAGS = \
-		-DLIBVIRT_SETUID_RPC_CLIENT \
+virt_login_shell_helper_CFLAGS = \
 		$(AM_CFLAGS) \
 		$(NULL)
 
 virsh_SOURCES = \
 		virsh.c virsh.h \
+		virsh-backup.c virsh-backup.h \
 		virsh-checkpoint.c virsh-checkpoint.h \
 		virsh-completer.c virsh-completer.h \
+		virsh-completer-domain.c virsh-completer-domain.h \
+		virsh-completer-checkpoint.c virsh-completer-checkpoint.h \
+		virsh-completer-host.c virsh-completer-host.h \
+		virsh-completer-interface.c virsh-completer-interface.h \
+		virsh-completer-network.c virsh-completer-network.h \
+		virsh-completer-nodedev.c virsh-completer-nodedev.h \
+		virsh-completer-nwfilter.c virsh-completer-nwfilter.h \
+		virsh-completer-pool.c virsh-completer-pool.h \
+		virsh-completer-secret.c virsh-completer-secret.h \
+		virsh-completer-snapshot.c virsh-completer-snapshot.h \
+		virsh-completer-volume.c virsh-completer-volume.h \
 		virsh-console.c virsh-console.h \
 		virsh-domain.c virsh-domain.h \
 		virsh-domain-monitor.c virsh-domain-monitor.h \
@@ -236,6 +233,7 @@ virsh_SOURCES = \
 virsh_LDFLAGS = \
 		$(AM_LDFLAGS) \
 		$(PIE_LDFLAGS) \
+		$(COVERAGE_LDFLAGS) \
 		$(NULL)
 virsh_LDADD = \
 		$(STATIC_BINARIES) \
@@ -253,6 +251,7 @@ virt_admin_SOURCES = \
 
 virt_admin_LDFLAGS = \
 		$(AM_LDFLAGS) \
+		$(COVERAGE_LDFLAGS) \
 		$(STATIC_BINARIES) \
 		$(PIE_LDFLAGS) \
 		$(NULL)
@@ -291,42 +290,6 @@ virsh_win_icon.$(OBJEXT): virsh_win_icon.rc
 	  --input-format rc --input $< \
 	  --output-format coff --output $@
 endif WITH_WIN_ICON
-
-POD2MAN = pod2man -c "Virtualization Support" -r "$(PACKAGE)-$(VERSION)"
-
-%.1.in: %.pod
-	$(AM_V_GEN)$(POD2MAN) $< $@-t1 && \
-	if grep 'POD ERROR' $@-t1; then rm $@-t1; exit 1; fi && \
-	sed \
-		-e 's|SYSCONFDIR|\@sysconfdir\@|g' \
-		-e 's|LOCALSTATEDIR|\@localstatedir\@|g' \
-	< $@-t1 > $@-t2 && \
-	rm -f $@-t1 && \
-	mv $@-t2 $@
-
-%.8.in: %.pod
-	$(AM_V_GEN)$(POD2MAN) --section=8 $< $@-t1 && \
-	if grep 'POD ERROR' $@-t1; then rm $@-t1; exit 1; fi && \
-	sed \
-		-e 's|SYSCONFDIR|\@sysconfdir\@|g' \
-		-e 's|LOCALSTATEDIR|\@localstatedir\@|g' \
-		< $@-t1 > $@-t2 && \
-	rm -f $@-t1 && \
-	mv $@-t2 $@
-
-%.1: %.1.in $(top_srcdir)/configure.ac
-	$(AM_V_GEN)sed \
-		-e 's|[@]sysconfdir[@]|$(sysconfdir)|g' \
-		-e 's|[@]localstatedir[@]|$(localstatedir)|g' \
-		< $< > $@-t && \
-	mv $@-t $@
-
-%.8: %.8.in $(top_srcdir)/configure.ac
-	$(AM_V_GEN)sed \
-		-e 's|[@]sysconfdir[@]|$(sysconfdir)|g' \
-		-e 's|[@]localstatedir[@]|$(localstatedir)|g' \
-		< $< > $@-t && \
-	mv $@-t $@
 
 install-data-local: install-systemd install-nss \
 	install-bash-completion
@@ -475,21 +438,26 @@ endif ! WITH_BSD_NSS
 
 LIBVIRT_NSS_SOURCES = \
 	nss/libvirt_nss.c \
-	nss/libvirt_nss.h
+	nss/libvirt_nss.h \
+	nss/libvirt_nss_leases.c \
+	nss/libvirt_nss_leases.h \
+	$(NULL)
 
 if WITH_NSS
 noinst_LTLIBRARIES += nss/libnss_libvirt_impl.la
 nss_libnss_libvirt_impl_la_SOURCES = \
 	$(LIBVIRT_NSS_SOURCES)
 
+nss_libnss_libvirt_impl_la_CPPFLAGS = $(STANDALONE_CPPFLAGS)
 nss_libnss_libvirt_impl_la_CFLAGS = \
 	-DLIBVIRT_NSS \
+	$(YAJL_CFLAGS) \
 	$(AM_CFLAGS) \
 	$(NULL)
 
 nss_libnss_libvirt_impl_la_LIBADD = \
-	../gnulib/lib/libgnu.la \
-	../src/libvirt-nss.la
+	$(YAJL_LIBS) \
+	$(NULL)
 
 nss_libnss_libvirt_la_SOURCES =
 nss_libnss_libvirt_la_LDFLAGS = \
@@ -504,19 +472,28 @@ nss_libnss_libvirt_la_LDFLAGS = \
 nss_libnss_libvirt_la_LIBADD = \
 	nss/libnss_libvirt_impl.la
 
+nss_libnss_libvirt_la_DEPENDENCIES = \
+	$(nss_libnss_libvirt_la_LIBADD) \
+	$(LIBVIRT_NSS_SYMBOL_FILE)
+
 noinst_LTLIBRARIES += nss/libnss_libvirt_guest_impl.la
 nss_libnss_libvirt_guest_impl_la_SOURCES = \
-	$(LIBVIRT_NSS_SOURCES)
+	$(LIBVIRT_NSS_SOURCES) \
+	nss/libvirt_nss_macs.h \
+	nss/libvirt_nss_macs.c \
+	$(NULL)
 
+nss_libnss_libvirt_guest_impl_la_CPPFLAGS = $(STANDALONE_CPPFLAGS)
 nss_libnss_libvirt_guest_impl_la_CFLAGS = \
 	-DLIBVIRT_NSS \
 	-DLIBVIRT_NSS_GUEST \
+	$(YAJL_CFLAGS) \
 	$(AM_CFLAGS) \
 	$(NULL)
 
 nss_libnss_libvirt_guest_impl_la_LIBADD = \
-	../gnulib/lib/libgnu.la \
-	../src/libvirt-nss.la
+	$(YAJL_LIBS) \
+	$(NULL)
 
 nss_libnss_libvirt_guest_la_SOURCES =
 nss_libnss_libvirt_guest_la_LDFLAGS = \
@@ -530,6 +507,10 @@ nss_libnss_libvirt_guest_la_LDFLAGS = \
 
 nss_libnss_libvirt_guest_la_LIBADD = \
 	nss/libnss_libvirt_guest_impl.la
+
+nss_libnss_libvirt_guest_la_DEPENDENCIES = \
+	$(nss_libnss_libvirt_guest_la_LIBADD) \
+	$(LIBVIRT_GUEST_NSS_SYMBOL_FILE)
 
 lib_LTLIBRARIES = \
 	nss/libnss_libvirt.la \
@@ -547,8 +528,5 @@ clean-local:
 
 CLEANFILES += $(bin_SCRIPTS)
 CLEANFILES += *.gcov .libs/*.gcda .libs/*.gcno *.gcno *.gcda *.i *.s
-CLEANFILES += $(man1_MANS) $(man8_MANS)
 
 DISTCLEANFILES += $(BUILT_SOURCES)
-
-MAINTAINERCLEANFILES += $(MANINFILES)

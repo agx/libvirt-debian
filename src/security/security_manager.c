@@ -96,7 +96,7 @@ virSecurityManagerNewDriver(virSecurityDriverPtr drv,
     mgr->drv = drv;
     mgr->flags = flags;
     mgr->virtDriver = virtDriver;
-    VIR_STEAL_PTR(mgr->privateData, privateData);
+    mgr->privateData = g_steal_pointer(&privateData);
 
     if (drv->open(mgr) < 0)
         goto error;
@@ -114,7 +114,7 @@ virSecurityManagerNewStack(virSecurityManagerPtr primary)
 {
     virSecurityManagerPtr mgr =
         virSecurityManagerNewDriver(&virSecurityDriverStack,
-                                    virSecurityManagerGetDriver(primary),
+                                    virSecurityManagerGetVirtDriver(primary),
                                     primary->flags);
 
     if (!mgr)
@@ -326,9 +326,16 @@ virSecurityManagerGetPrivateData(virSecurityManagerPtr mgr)
 
 
 const char *
-virSecurityManagerGetDriver(virSecurityManagerPtr mgr)
+virSecurityManagerGetVirtDriver(virSecurityManagerPtr mgr)
 {
     return mgr->virtDriver;
+}
+
+
+const char *
+virSecurityManagerGetDriver(virSecurityManagerPtr mgr)
+{
+    return mgr->drv->name;
 }
 
 
@@ -762,7 +769,7 @@ static int virSecurityManagerCheckModel(virSecurityManagerPtr mgr,
     }
 
     virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                   _("Unable to find security driver for model %s"),
+                   _("Security driver model '%s' is not available"),
                    secmodel);
  cleanup:
     VIR_FREE(sec_managers);
@@ -816,7 +823,7 @@ virSecurityManagerCheckChardevLabel(virSecurityManagerPtr mgr,
 
 
 static int
-virSecurityManagerCheckChardevCallback(virDomainDefPtr def ATTRIBUTE_UNUSED,
+virSecurityManagerCheckChardevCallback(virDomainDefPtr def G_GNUC_UNUSED,
                                        virDomainChrDefPtr dev,
                                        void *opaque)
 {
@@ -852,13 +859,15 @@ int
 virSecurityManagerSetAllLabel(virSecurityManagerPtr mgr,
                               virDomainDefPtr vm,
                               const char *stdin_path,
-                              bool chardevStdioLogd)
+                              bool chardevStdioLogd,
+                              bool migrated)
 {
     if (mgr->drv->domainSetSecurityAllLabel) {
         int ret;
         virObjectLock(mgr);
         ret = mgr->drv->domainSetSecurityAllLabel(mgr, vm, stdin_path,
-                                                  chardevStdioLogd);
+                                                  chardevStdioLogd,
+                                                  migrated);
         virObjectUnlock(mgr);
         return ret;
     }
@@ -1277,7 +1286,7 @@ cmpstringp(const void *p1, const void *p2)
  *          NULL on failure.
  */
 virSecurityManagerMetadataLockStatePtr
-virSecurityManagerMetadataLock(virSecurityManagerPtr mgr ATTRIBUTE_UNUSED,
+virSecurityManagerMetadataLock(virSecurityManagerPtr mgr G_GNUC_UNUSED,
                                const char **paths,
                                size_t npaths)
 {
@@ -1349,7 +1358,7 @@ virSecurityManagerMetadataLock(virSecurityManagerPtr mgr ATTRIBUTE_UNUSED,
                 if (retries && (errno == EACCES || errno == EAGAIN)) {
                     /* File is locked. Try again. */
                     retries--;
-                    usleep(1000);
+                    g_usleep(1000);
                     continue;
                 } else {
                     virReportSystemError(errno,
@@ -1369,7 +1378,7 @@ virSecurityManagerMetadataLock(virSecurityManagerPtr mgr ATTRIBUTE_UNUSED,
     if (VIR_ALLOC(ret) < 0)
         goto cleanup;
 
-    VIR_STEAL_PTR(ret->fds, fds);
+    ret->fds = g_steal_pointer(&fds);
     ret->nfds = nfds;
     nfds = 0;
 
@@ -1382,7 +1391,7 @@ virSecurityManagerMetadataLock(virSecurityManagerPtr mgr ATTRIBUTE_UNUSED,
 
 
 void
-virSecurityManagerMetadataUnlock(virSecurityManagerPtr mgr ATTRIBUTE_UNUSED,
+virSecurityManagerMetadataUnlock(virSecurityManagerPtr mgr G_GNUC_UNUSED,
                                  virSecurityManagerMetadataLockStatePtr *state)
 {
     size_t i;

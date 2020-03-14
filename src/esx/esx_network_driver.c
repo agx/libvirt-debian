@@ -73,12 +73,10 @@ esxConnectNumOfNetworks(virConnectPtr conn)
 static int
 esxConnectListNetworks(virConnectPtr conn, char **const names, int maxnames)
 {
-    bool success = false;
     esxPrivate *priv = conn->privateData;
     esxVI_HostVirtualSwitch *hostVirtualSwitchList = NULL;
     esxVI_HostVirtualSwitch *hostVirtualSwitch = NULL;
     int count = 0;
-    size_t i;
 
     if (maxnames == 0)
         return 0;
@@ -91,20 +89,9 @@ esxConnectListNetworks(virConnectPtr conn, char **const names, int maxnames)
 
     for (hostVirtualSwitch = hostVirtualSwitchList; hostVirtualSwitch;
          hostVirtualSwitch = hostVirtualSwitch->_next) {
-        if (VIR_STRDUP(names[count], hostVirtualSwitch->name) < 0)
-            goto cleanup;
+        names[count] = g_strdup(hostVirtualSwitch->name);
 
         ++count;
-    }
-
-    success = true;
-
- cleanup:
-    if (! success) {
-        for (i = 0; i < count; ++i)
-            VIR_FREE(names[i]);
-
-        count = -1;
     }
 
     esxVI_HostVirtualSwitch_Free(&hostVirtualSwitchList);
@@ -115,7 +102,7 @@ esxConnectListNetworks(virConnectPtr conn, char **const names, int maxnames)
 
 
 static int
-esxConnectNumOfDefinedNetworks(virConnectPtr conn ATTRIBUTE_UNUSED)
+esxConnectNumOfDefinedNetworks(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* ESX networks are always active */
     return 0;
@@ -124,9 +111,9 @@ esxConnectNumOfDefinedNetworks(virConnectPtr conn ATTRIBUTE_UNUSED)
 
 
 static int
-esxConnectListDefinedNetworks(virConnectPtr conn ATTRIBUTE_UNUSED,
-                              char **const names ATTRIBUTE_UNUSED,
-                              int maxnames ATTRIBUTE_UNUSED)
+esxConnectListDefinedNetworks(virConnectPtr conn G_GNUC_UNUSED,
+                              char **const names G_GNUC_UNUSED,
+                              int maxnames G_GNUC_UNUSED)
 {
     /* ESX networks are always active */
     return 0;
@@ -180,19 +167,10 @@ esxNetworkLookupByUUID(virConnectPtr conn, const unsigned char *uuid)
 
 
 static virNetworkPtr
-esxNetworkLookupByName(virConnectPtr conn, const char *name)
+virtualswitchToNetwork(virConnectPtr conn,
+                       esxVI_HostVirtualSwitch *hostVirtualSwitch)
 {
-    virNetworkPtr network = NULL;
-    esxPrivate *priv = conn->privateData;
-    esxVI_HostVirtualSwitch *hostVirtualSwitch = NULL;
     unsigned char md5[VIR_CRYPTO_HASH_SIZE_MD5]; /* VIR_CRYPTO_HASH_SIZE_MD5 = VIR_UUID_BUFLEN = 16 */
-
-    if (esxVI_EnsureSession(priv->primary) < 0 ||
-        esxVI_LookupHostVirtualSwitchByName(priv->primary, name,
-                                            &hostVirtualSwitch,
-                                            esxVI_Occurrence_RequiredItem) < 0) {
-        return NULL;
-    }
 
     /*
      * HostVirtualSwitch doesn't have a UUID, but we can use the key property
@@ -205,7 +183,26 @@ esxNetworkLookupByName(virConnectPtr conn, const char *name)
     if (virCryptoHashBuf(VIR_CRYPTO_HASH_MD5, hostVirtualSwitch->key, md5) < 0)
         return NULL;
 
-    network = virGetNetwork(conn, hostVirtualSwitch->name, md5);
+    return virGetNetwork(conn, hostVirtualSwitch->name, md5);
+}
+
+
+
+static virNetworkPtr
+esxNetworkLookupByName(virConnectPtr conn, const char *name)
+{
+    virNetworkPtr network = NULL;
+    esxPrivate *priv = conn->privateData;
+    esxVI_HostVirtualSwitch *hostVirtualSwitch = NULL;
+
+    if (esxVI_EnsureSession(priv->primary) < 0 ||
+        esxVI_LookupHostVirtualSwitchByName(priv->primary, name,
+                                            &hostVirtualSwitch,
+                                            esxVI_Occurrence_RequiredItem) < 0) {
+        return NULL;
+    }
+
+    network = virtualswitchToNetwork(conn, hostVirtualSwitch);
 
     esxVI_HostVirtualSwitch_Free(&hostVirtualSwitch);
 
@@ -447,11 +444,12 @@ esxNetworkDefineXML(virConnectPtr conn, const char *xml)
 
         if (esxVI_HostPortGroupSpec_Alloc(&hostPortGroupSpec) < 0 ||
             esxVI_HostNetworkPolicy_Alloc(&hostPortGroupSpec->policy) < 0 ||
-            esxVI_Int_Alloc(&hostPortGroupSpec->vlanId) < 0 ||
-            VIR_STRDUP(hostPortGroupSpec->name, def->portGroups[i].name) < 0 ||
-            VIR_STRDUP(hostPortGroupSpec->vswitchName, def->name) < 0) {
+            esxVI_Int_Alloc(&hostPortGroupSpec->vlanId) < 0) {
             goto cleanup;
         }
+
+        hostPortGroupSpec->name = g_strdup(def->portGroups[i].name);
+        hostPortGroupSpec->vswitchName = g_strdup(def->name);
 
         hostPortGroupSpec->vlanId->value = 0;
 
@@ -670,8 +668,7 @@ esxNetworkGetXMLDesc(virNetworkPtr network_, unsigned int flags)
     if (virCryptoHashBuf(VIR_CRYPTO_HASH_MD5, hostVirtualSwitch->key, def->uuid) < 0)
         goto cleanup;
 
-    if (VIR_STRDUP(def->name, hostVirtualSwitch->name) < 0)
-        goto cleanup;
+    def->name = g_strdup(hostVirtualSwitch->name);
 
     def->forward.type = VIR_NETWORK_FORWARD_NONE;
 
@@ -702,9 +699,7 @@ esxNetworkGetXMLDesc(virNetworkPtr network_, unsigned int flags)
                 if (STREQ(physicalNicKey->value, physicalNic->key)) {
                     def->forward.ifs[def->forward.nifs].type
                         = VIR_NETWORK_FORWARD_HOSTDEV_DEVICE_NETDEV;
-                    if (VIR_STRDUP(def->forward.ifs[def->forward.nifs].device.dev,
-                                   physicalNic->device) < 0)
-                        goto cleanup;
+                    def->forward.ifs[def->forward.nifs].device.dev = g_strdup(physicalNic->device);
 
                     ++def->forward.nifs;
 
@@ -766,9 +761,7 @@ esxNetworkGetXMLDesc(virNetworkPtr network_, unsigned int flags)
                     for (networkName = networkNameList; networkName;
                          networkName = networkName->_next) {
                         if (STREQ(networkName->value, hostPortGroup->spec->name)) {
-                            if (VIR_STRDUP(def->portGroups[def->nPortGroups].name,
-                                           networkName->value) < 0)
-                                goto cleanup;
+                            def->portGroups[def->nPortGroups].name = g_strdup(networkName->value);
 
                             if (hostPortGroup->spec->policy) {
                                 if (esxShapingPolicyToBandwidth
@@ -823,7 +816,7 @@ esxNetworkGetXMLDesc(virNetworkPtr network_, unsigned int flags)
 
 
 static int
-esxNetworkGetAutostart(virNetworkPtr network ATTRIBUTE_UNUSED,
+esxNetworkGetAutostart(virNetworkPtr network G_GNUC_UNUSED,
                        int *autostart)
 {
     /* ESX networks are always active */
@@ -835,7 +828,7 @@ esxNetworkGetAutostart(virNetworkPtr network ATTRIBUTE_UNUSED,
 
 
 static int
-esxNetworkSetAutostart(virNetworkPtr network ATTRIBUTE_UNUSED,
+esxNetworkSetAutostart(virNetworkPtr network G_GNUC_UNUSED,
                        int autostart)
 {
     /* Just accept autostart activation, but fail on autostart deactivation */
@@ -853,7 +846,7 @@ esxNetworkSetAutostart(virNetworkPtr network ATTRIBUTE_UNUSED,
 
 
 static int
-esxNetworkIsActive(virNetworkPtr network ATTRIBUTE_UNUSED)
+esxNetworkIsActive(virNetworkPtr network G_GNUC_UNUSED)
 {
     /* ESX networks are always active */
     return 1;
@@ -862,7 +855,7 @@ esxNetworkIsActive(virNetworkPtr network ATTRIBUTE_UNUSED)
 
 
 static int
-esxNetworkIsPersistent(virNetworkPtr network ATTRIBUTE_UNUSED)
+esxNetworkIsPersistent(virNetworkPtr network G_GNUC_UNUSED)
 {
     /* ESX has no concept of transient networks, so all of them are persistent */
     return 1;

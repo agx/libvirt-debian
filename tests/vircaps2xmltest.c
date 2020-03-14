@@ -45,13 +45,11 @@ test_virCapabilities(const void *opaque)
     char *resctrl = NULL;
     int ret = -1;
 
-    if (virAsprintf(&system, "%s/vircaps2xmldata/linux-%s/system",
-                    abs_srcdir, data->filename) < 0)
-        goto cleanup;
+    system = g_strdup_printf("%s/vircaps2xmldata/linux-%s/system", abs_srcdir,
+                             data->filename);
 
-    if (virAsprintf(&resctrl, "%s/vircaps2xmldata/linux-%s/resctrl",
-                    abs_srcdir, data->filename) < 0)
-        goto cleanup;
+    resctrl = g_strdup_printf("%s/vircaps2xmldata/linux-%s/resctrl", abs_srcdir,
+                              data->filename);
 
     virFileWrapperAddPrefix("/sys/devices/system", system);
     virFileWrapperAddPrefix("/sys/fs/resctrl", resctrl);
@@ -60,8 +58,10 @@ test_virCapabilities(const void *opaque)
     if (!caps)
         goto cleanup;
 
-    if (virCapabilitiesInitNUMA(caps) < 0 ||
-        virCapabilitiesInitCaches(caps) < 0)
+    if (!(caps->host.numa = virCapabilitiesHostNUMANewHost()))
+        goto cleanup;
+
+    if (virCapabilitiesInitCaches(caps) < 0)
         goto cleanup;
 
     virFileWrapperClearPrefixes();
@@ -69,9 +69,8 @@ test_virCapabilities(const void *opaque)
     if (!(capsXML = virCapabilitiesFormatXML(caps)))
         goto cleanup;
 
-    if (virAsprintf(&path, "%s/vircaps2xmldata/vircaps-%s-%s.xml",
-                    abs_srcdir, archStr, data->filename) < 0)
-        goto cleanup;
+    path = g_strdup_printf("%s/vircaps2xmldata/vircaps-%s-%s.xml", abs_srcdir,
+                           archStr, data->filename);
 
     if (virTestCompareToFile(capsXML, path) < 0)
         goto cleanup;
@@ -116,4 +115,4 @@ mymain(void)
     return ret;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virnumamock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virnuma"))

@@ -33,6 +33,7 @@
 #include "qemu_conf.h"
 #include "qemu_capabilities.h"
 #include "qemu_migration_params.h"
+#include "qemu_slirp.h"
 #include "virmdev.h"
 #include "virchrdev.h"
 #include "virobject.h"
@@ -103,6 +104,7 @@ typedef enum {
     QEMU_ASYNC_JOB_DUMP,
     QEMU_ASYNC_JOB_SNAPSHOT,
     QEMU_ASYNC_JOB_START,
+    QEMU_ASYNC_JOB_BACKUP,
 
     QEMU_ASYNC_JOB_LAST
 } qemuDomainAsyncJob;
@@ -125,6 +127,7 @@ typedef enum {
     QEMU_DOMAIN_JOB_STATS_TYPE_MIGRATION,
     QEMU_DOMAIN_JOB_STATS_TYPE_SAVEDUMP,
     QEMU_DOMAIN_JOB_STATS_TYPE_MEMDUMP,
+    QEMU_DOMAIN_JOB_STATS_TYPE_BACKUP,
 } qemuDomainJobStatsType;
 
 
@@ -133,6 +136,14 @@ typedef qemuDomainMirrorStats *qemuDomainMirrorStatsPtr;
 struct _qemuDomainMirrorStats {
     unsigned long long transferred;
     unsigned long long total;
+};
+
+typedef struct _qemuDomainBackupStats qemuDomainBackupStats;
+struct _qemuDomainBackupStats {
+    unsigned long long transferred;
+    unsigned long long total;
+    unsigned long long tmp_used;
+    unsigned long long tmp_total;
 };
 
 typedef struct _qemuDomainJobInfo qemuDomainJobInfo;
@@ -159,6 +170,7 @@ struct _qemuDomainJobInfo {
     union {
         qemuMonitorMigrationStats mig;
         qemuMonitorDumpStats dump;
+        qemuDomainBackupStats backup;
     } stats;
     qemuDomainMirrorStats mirrorStats;
 };
@@ -292,6 +304,7 @@ struct _qemuDomainObjPrivate {
     virDomainChrSourceDefPtr monConfig;
     bool monError;
     unsigned long long monStart;
+    int agentTimeout;
 
     qemuAgentPtr agent;
     bool agentError;
@@ -306,6 +319,7 @@ struct _qemuDomainObjPrivate {
     char *lockState;
 
     bool fakeReboot;
+    bool pausedShutdown;
     virTristateBool allowReboot;
 
     int jobs_queued;
@@ -392,6 +406,18 @@ struct _qemuDomainObjPrivate {
 
     /* running block jobs */
     virHashTablePtr blockjobs;
+
+    virHashTablePtr dbusVMStates;
+    bool disableSlirp;
+
+    /* Until we add full support for backing chains for pflash drives, these
+     * pointers hold the temporary virStorageSources for creating the -blockdev
+     * commandline for pflash drives. */
+    virStorageSourcePtr pflash0;
+    virStorageSourcePtr pflash1;
+
+    /* running backup job */
+    virDomainBackupDefPtr backup;
 };
 
 #define QEMU_DOMAIN_PRIVATE(vm) \
@@ -449,6 +475,9 @@ struct _qemuDomainVcpuPrivate {
     char *alias;
     virTristateBool halted;
 
+    /* copy of the data that qemu returned */
+    virJSONValuePtr props;
+
     /* information for hotpluggable cpus */
     char *type;
     int socket_id;
@@ -494,6 +523,18 @@ struct _qemuDomainVsockPrivate {
 };
 
 
+#define QEMU_DOMAIN_VIDEO_PRIVATE(dev) \
+    ((qemuDomainVideoPrivatePtr) (dev)->privateData)
+
+typedef struct _qemuDomainVideoPrivate qemuDomainVideoPrivate;
+typedef qemuDomainVideoPrivate *qemuDomainVideoPrivatePtr;
+struct _qemuDomainVideoPrivate {
+    virObject parent;
+
+    int vhost_user_fd;
+};
+
+
 #define QEMU_DOMAIN_GRAPHICS_PRIVATE(dev) \
     ((qemuDomainGraphicsPrivatePtr) (dev)->privateData)
 
@@ -504,6 +545,30 @@ struct _qemuDomainGraphicsPrivate {
 
     char *tlsAlias;
     qemuDomainSecretInfoPtr secinfo;
+};
+
+
+#define QEMU_DOMAIN_NETWORK_PRIVATE(dev) \
+    ((qemuDomainNetworkPrivatePtr) (dev)->privateData)
+
+typedef struct _qemuDomainNetworkPrivate qemuDomainNetworkPrivate;
+typedef qemuDomainNetworkPrivate *qemuDomainNetworkPrivatePtr;
+struct _qemuDomainNetworkPrivate {
+    virObject parent;
+
+    qemuSlirpPtr slirp;
+};
+
+
+#define QEMU_DOMAIN_FS_PRIVATE(dev) \
+    ((qemuDomainFSPrivatePtr) (dev)->privateData)
+
+typedef struct _qemuDomainFSPrivate qemuDomainFSPrivate;
+typedef qemuDomainFSPrivate *qemuDomainFSPrivatePtr;
+struct _qemuDomainFSPrivate {
+    virObject parent;
+
+    int dummy;
 };
 
 
@@ -534,6 +599,7 @@ void qemuProcessEventFree(struct qemuProcessEvent *event);
 
 typedef struct _qemuDomainLogContext qemuDomainLogContext;
 typedef qemuDomainLogContext *qemuDomainLogContextPtr;
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(qemuDomainLogContext, virObjectUnref);
 
 typedef struct _qemuDomainSaveCookie qemuDomainSaveCookie;
 typedef qemuDomainSaveCookie *qemuDomainSaveCookiePtr;
@@ -541,6 +607,7 @@ struct _qemuDomainSaveCookie {
     virObject parent;
 
     virCPUDefPtr cpu;
+    bool slirpHelper;
 };
 
 
@@ -561,6 +628,7 @@ struct _qemuDomainXmlNsDef {
     char **capsdel;
 };
 
+virDomainObjPtr qemuDomainObjFromDomain(virDomainPtr domain);
 
 qemuDomainSaveCookiePtr qemuDomainSaveCookieNew(virDomainObjPtr vm);
 
@@ -577,30 +645,30 @@ void qemuDomainEventEmitJobCompleted(virQEMUDriverPtr driver,
 int qemuDomainObjBeginJob(virQEMUDriverPtr driver,
                           virDomainObjPtr obj,
                           qemuDomainJob job)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int qemuDomainObjBeginAgentJob(virQEMUDriverPtr driver,
                                virDomainObjPtr obj,
                                qemuDomainAgentJob agentJob)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int qemuDomainObjBeginJobWithAgent(virQEMUDriverPtr driver,
                                    virDomainObjPtr obj,
                                    qemuDomainJob job,
                                    qemuDomainAgentJob agentJob)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int qemuDomainObjBeginAsyncJob(virQEMUDriverPtr driver,
                                virDomainObjPtr obj,
                                qemuDomainAsyncJob asyncJob,
                                virDomainJobOperation operation,
                                unsigned long apiFlags)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int qemuDomainObjBeginNestedJob(virQEMUDriverPtr driver,
                                 virDomainObjPtr obj,
                                 qemuDomainAsyncJob asyncJob)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int qemuDomainObjBeginJobNowait(virQEMUDriverPtr driver,
                                 virDomainObjPtr obj,
                                 qemuDomainJob job)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 
 void qemuDomainObjEndJob(virQEMUDriverPtr driver,
                          virDomainObjPtr obj);
@@ -629,11 +697,11 @@ void qemuDomainObjEnterMonitor(virQEMUDriverPtr driver,
 int qemuDomainObjExitMonitor(virQEMUDriverPtr driver,
                              virDomainObjPtr obj)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int qemuDomainObjEnterMonitorAsync(virQEMUDriverPtr driver,
                                    virDomainObjPtr obj,
                                    qemuDomainAsyncJob asyncJob)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 
 
 qemuAgentPtr qemuDomainObjEnterAgent(virDomainObjPtr obj)
@@ -646,18 +714,21 @@ void qemuDomainObjEnterRemote(virDomainObjPtr obj)
     ATTRIBUTE_NONNULL(1);
 int qemuDomainObjExitRemote(virDomainObjPtr obj,
                             bool checkActive)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;
 
 virDomainDefPtr qemuDomainDefCopy(virQEMUDriverPtr driver,
+                                  virQEMUCapsPtr qemuCaps,
                                   virDomainDefPtr src,
                                   unsigned int flags);
 
 int qemuDomainDefFormatBuf(virQEMUDriverPtr driver,
+                           virQEMUCapsPtr qemuCaps,
                            virDomainDefPtr vm,
                            unsigned int flags,
                            virBuffer *buf);
 
 char *qemuDomainDefFormatXML(virQEMUDriverPtr driver,
+                             virQEMUCapsPtr qemuCaps,
                              virDomainDefPtr vm,
                              unsigned int flags);
 
@@ -666,6 +737,7 @@ char *qemuDomainFormatXML(virQEMUDriverPtr driver,
                           unsigned int flags);
 
 char *qemuDomainDefFormatLive(virQEMUDriverPtr driver,
+                              virQEMUCapsPtr qemuCaps,
                               virDomainDefPtr def,
                               virCPUDefPtr origCPU,
                               bool inactive,
@@ -702,7 +774,7 @@ qemuDomainLogContextPtr qemuDomainLogContextNew(virQEMUDriverPtr driver,
                                                 virDomainObjPtr vm,
                                                 qemuDomainLogContextMode mode);
 int qemuDomainLogContextWrite(qemuDomainLogContextPtr ctxt,
-                              const char *fmt, ...) ATTRIBUTE_FMT_PRINTF(2, 3);
+                              const char *fmt, ...) G_GNUC_PRINTF(2, 3);
 ssize_t qemuDomainLogContextRead(qemuDomainLogContextPtr ctxt,
                                  char **msg);
 int qemuDomainLogContextGetWriteFD(qemuDomainLogContextPtr ctxt);
@@ -713,13 +785,12 @@ virLogManagerPtr qemuDomainLogContextGetManager(qemuDomainLogContextPtr ctxt);
 int qemuDomainLogAppendMessage(virQEMUDriverPtr driver,
                                virDomainObjPtr vm,
                                const char *fmt,
-                               ...) ATTRIBUTE_FMT_PRINTF(3, 4);
+                               ...) G_GNUC_PRINTF(3, 4);
 
 const char *qemuFindQemuImgBinary(virQEMUDriverPtr driver);
 
 int qemuDomainSnapshotWriteMetadata(virDomainObjPtr vm,
                                     virDomainMomentObjPtr snapshot,
-                                    virCapsPtr caps,
                                     virDomainXMLOptionPtr xmlopt,
                                     const char *snapshotDir);
 
@@ -755,21 +826,6 @@ int qemuDomainMomentDiscardAll(void *payload,
 int qemuDomainSnapshotDiscardAllMetadata(virQEMUDriverPtr driver,
                                          virDomainObjPtr vm);
 
-int qemuDomainCheckpointWriteMetadata(virDomainObjPtr vm,
-                                      virDomainMomentObjPtr checkpoint,
-                                      virCapsPtr caps,
-                                      virDomainXMLOptionPtr xmlopt,
-                                      const char *checkpointDir);
-
-int qemuDomainCheckpointDiscard(virQEMUDriverPtr driver,
-                                virDomainObjPtr vm,
-                                virDomainMomentObjPtr chk,
-                                bool update_current,
-                                bool metadata_only);
-
-int qemuDomainCheckpointDiscardAllMetadata(virQEMUDriverPtr driver,
-                                           virDomainObjPtr vm);
-
 void qemuDomainRemoveInactive(virQEMUDriverPtr driver,
                               virDomainObjPtr vm);
 
@@ -795,6 +851,10 @@ int qemuDomainCheckDiskPresence(virQEMUDriverPtr driver,
                                 virDomainObjPtr vm,
                                 unsigned int flags);
 
+int qemuDomainStorageSourceValidateDepth(virStorageSourcePtr src,
+                                         int add,
+                                         const char *diskdst);
+
 int qemuDomainDetermineDiskChain(virQEMUDriverPtr driver,
                                  virDomainObjPtr vm,
                                  virDomainDiskDefPtr disk,
@@ -807,6 +867,13 @@ bool qemuDomainDiskChangeSupported(virDomainDiskDefPtr disk,
 const char *qemuDomainDiskNodeFormatLookup(virDomainObjPtr vm,
                                            const char *disk);
 
+void qemuDomainGetImageIds(virQEMUDriverConfigPtr cfg,
+                           virDomainObjPtr vm,
+                           virStorageSourcePtr src,
+                           virStorageSourcePtr parentSrc,
+                           uid_t *uid,
+                           gid_t *gid);
+
 int qemuDomainStorageFileInit(virQEMUDriverPtr driver,
                               virDomainObjPtr vm,
                               virStorageSourcePtr src,
@@ -817,7 +884,7 @@ int qemuDomainDiskGetBackendAlias(virDomainDiskDefPtr disk,
                                   virQEMUCapsPtr qemuCaps,
                                   char **backendAlias)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
-    ATTRIBUTE_NONNULL(3) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(3) G_GNUC_WARN_UNUSED_RESULT;
 
 int qemuDomainStorageSourceChainAccessAllow(virQEMUDriverPtr driver,
                                             virDomainObjPtr vm,
@@ -850,7 +917,7 @@ void qemuDomainCleanupRun(virQEMUDriverPtr driver,
 void qemuDomainObjPrivateDataClear(qemuDomainObjPrivatePtr priv);
 
 extern virDomainXMLPrivateDataCallbacks virQEMUDriverPrivateDataCallbacks;
-extern virDomainXMLNamespace virQEMUDriverDomainXMLNamespace;
+extern virXMLNamespace virQEMUDriverDomainXMLNamespace;
 extern virDomainDefParserConfig virQEMUDriverDomainDefParserConfig;
 extern virDomainABIStability virQEMUDriverDomainABIStability;
 extern virSaveCookieCallbacks virQEMUDriverDomainSaveCookie;
@@ -863,6 +930,7 @@ int qemuDomainUpdateMemoryDeviceInfo(virQEMUDriverPtr driver,
                                      int asyncJob);
 
 bool qemuDomainDefCheckABIStability(virQEMUDriverPtr driver,
+                                    virQEMUCapsPtr qemuCaps,
                                     virDomainDefPtr src,
                                     virDomainDefPtr dst);
 
@@ -921,8 +989,12 @@ bool qemuDomainSupportsPCI(virDomainDefPtr def,
 
 void qemuDomainUpdateCurrentMemorySize(virDomainObjPtr vm);
 
-unsigned long long qemuDomainGetMemLockLimitBytes(virDomainDefPtr def);
-int qemuDomainAdjustMaxMemLock(virDomainObjPtr vm);
+unsigned long long qemuDomainGetMemLockLimitBytes(virDomainDefPtr def,
+                                                  bool forceVFIO);
+int qemuDomainAdjustMaxMemLock(virDomainObjPtr vm,
+                               bool forceVFIO);
+int qemuDomainAdjustMaxMemLockHostdev(virDomainObjPtr vm,
+                                      virDomainHostdevDefPtr hostdev);
 
 int qemuDomainDefValidateMemoryHotplug(const virDomainDef *def,
                                        virQEMUCapsPtr qemuCaps,
@@ -1025,7 +1097,7 @@ void qemuDomainPrepareChardevSource(virDomainDefPtr def,
                                     virQEMUDriverConfigPtr cfg)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);
 
-int qemuDomainPrepareShmemChardev(virDomainShmemDefPtr shmem)
+void  qemuDomainPrepareShmemChardev(virDomainShmemDefPtr shmem)
     ATTRIBUTE_NONNULL(1);
 
 bool qemuDomainVcpuHotplugIsInOrder(virDomainDefPtr def)
@@ -1041,12 +1113,11 @@ int qemuDomainCheckMonitor(virQEMUDriverPtr driver,
 bool qemuDomainSupportsVideoVga(virDomainVideoDefPtr video,
                                 virQEMUCapsPtr qemuCaps);
 
-int qemuDomainGetHostdevPath(virDomainDefPtr def,
-                             virDomainHostdevDefPtr dev,
-                             bool teardown,
-                             size_t *npaths,
-                             char ***path,
-                             int **perms);
+bool qemuDomainNeedsVFIO(const virDomainDef *def);
+
+int qemuDomainGetHostdevPath(virDomainHostdevDefPtr dev,
+                             char **path,
+                             int *perms);
 
 int qemuDomainBuildNamespace(virQEMUDriverConfigPtr cfg,
                              virSecurityManagerPtr mgr,
@@ -1117,10 +1188,6 @@ int
 qemuDomainFixupCPUs(virDomainObjPtr vm,
                     virCPUDefPtr *origCPU);
 
-int
-qemuDomainUpdateQEMUCaps(virDomainObjPtr vm,
-                         virFileCachePtr qemuCapsCache);
-
 char *
 qemuDomainGetMachineName(virDomainObjPtr vm);
 
@@ -1138,12 +1205,9 @@ qemuDomainCheckCCWS390AddressSupport(const virDomainDef *def,
                                      virQEMUCapsPtr qemuCaps,
                                      const char *devicename);
 
-int
+void
 qemuDomainPrepareDiskSourceData(virDomainDiskDefPtr disk,
-                                virStorageSourcePtr src,
-                                virQEMUDriverConfigPtr cfg,
-                                virQEMUCapsPtr qemuCaps)
-    ATTRIBUTE_RETURN_CHECK;
+                                virStorageSourcePtr src);
 
 
 int
@@ -1178,9 +1242,28 @@ qemuDomainIsUsingNoShutdown(qemuDomainObjPrivatePtr priv);
 bool
 qemuDomainDiskIsMissingLocalOptional(virDomainDiskDefPtr disk);
 
-int
+void
+qemuDomainNVRAMPathFormat(virQEMUDriverConfigPtr cfg,
+                            virDomainDefPtr def,
+                            char **path);
+
+void
 qemuDomainNVRAMPathGenerate(virQEMUDriverConfigPtr cfg,
                             virDomainDefPtr def);
 
 virDomainEventSuspendedDetailType
 qemuDomainPausedReasonToSuspendedEvent(virDomainPausedReason reason);
+
+int
+qemuDomainValidateActualNetDef(const virDomainNetDef *net,
+                               virQEMUCapsPtr qemuCaps);
+
+int
+qemuDomainSupportsCheckpointsBlockjobs(virDomainObjPtr vm)
+    G_GNUC_WARN_UNUSED_RESULT;
+
+int
+qemuDomainMakeCPUMigratable(virCPUDefPtr cpu);
+
+int
+qemuDomainInitializePflashStorageSource(virDomainObjPtr vm);

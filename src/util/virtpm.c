@@ -59,33 +59,31 @@ virTPMCreateCancelPath(const char *devpath)
     const char *dev;
     const char *prefix[] = {"misc/", "tpm/"};
     size_t i;
-
-    if (devpath) {
-        dev = strrchr(devpath, '/');
-        if (dev) {
-            dev++;
-            for (i = 0; i < ARRAY_CARDINALITY(prefix); i++) {
-                if (virAsprintf(&path, "/sys/class/%s%s/device/cancel",
-                                prefix[i], dev) < 0)
-                     goto cleanup;
-
-                if (virFileExists(path))
-                    break;
-
-                VIR_FREE(path);
-            }
-            if (!path)
-                ignore_value(VIR_STRDUP(path, "/dev/null"));
-        } else {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("TPM device path %s is invalid"), devpath);
-        }
-    } else {
+    if (!devpath) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                        _("Missing TPM device path"));
+        return NULL;
     }
 
- cleanup:
+    if (!(dev = strrchr(devpath, '/'))) {
+        virReportError(VIR_ERR_INTERNAL_ERROR,
+                       _("TPM device path %s is invalid"), devpath);
+        return NULL;
+    }
+
+    dev++;
+    for (i = 0; i < G_N_ELEMENTS(prefix); i++) {
+        path = g_strdup_printf("/sys/class/%s%s/device/cancel", prefix[i],
+                               dev);
+
+        if (virFileExists(path))
+            break;
+
+        VIR_FREE(path);
+    }
+    if (!path)
+        path = g_strdup("/dev/null");
+
     return path;
 }
 
@@ -116,7 +114,7 @@ virTPMGetSwtpm(void)
         return NULL;
 
     virMutexLock(&swtpm_tools_lock);
-    ignore_value(VIR_STRDUP(s, swtpm_path));
+    s = g_strdup(swtpm_path);
     virMutexUnlock(&swtpm_tools_lock);
 
     return s;
@@ -131,7 +129,7 @@ virTPMGetSwtpmSetup(void)
         return NULL;
 
     virMutexLock(&swtpm_tools_lock);
-    ignore_value(VIR_STRDUP(s, swtpm_setup));
+    s = g_strdup(swtpm_setup);
     virMutexUnlock(&swtpm_tools_lock);
 
     return s;
@@ -146,7 +144,7 @@ virTPMGetSwtpmIoctl(void)
         return NULL;
 
     virMutexLock(&swtpm_tools_lock);
-    ignore_value(VIR_STRDUP(s, swtpm_ioctl));
+    s = g_strdup(swtpm_ioctl);
     virMutexUnlock(&swtpm_tools_lock);
 
     return s;
@@ -173,8 +171,8 @@ virTPMExecGetCaps(virCommandPtr cmd,
 {
     int exitstatus;
     virBitmapPtr bitmap;
-    VIR_AUTOFREE(char *) outbuf = NULL;
-    VIR_AUTOPTR(virJSONValue) json = NULL;
+    g_autofree char *outbuf = NULL;
+    g_autoptr(virJSONValue) json = NULL;
     virJSONValuePtr featureList;
     virJSONValuePtr item;
     size_t idx;
@@ -218,23 +216,22 @@ virTPMExecGetCaps(virCommandPtr cmd,
             continue;
 
         if (virBitmapSetBitExpand(bitmap, typ) < 0)
-            goto cleanup;
+            return bitmap;
     }
 
- cleanup:
     return bitmap;
 
  error_bad_json:
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    _("Unexpected JSON format: %s"), outbuf);
-    goto cleanup;
+    return bitmap;
 }
 
 static virBitmapPtr
 virTPMGetCaps(TypeFromStringFn typeFromStringFn,
                   const char *exec, const char *param1)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     if (!(cmd = virCommandNew(exec)))
         return NULL;
@@ -290,8 +287,8 @@ virTPMEmulatorInit(void)
 
     virMutexLock(&swtpm_tools_lock);
 
-    for (i = 0; i < ARRAY_CARDINALITY(prgs); i++) {
-        VIR_AUTOFREE(char *) path = NULL;
+    for (i = 0; i < G_N_ELEMENTS(prgs); i++) {
+        g_autofree char *path = NULL;
         bool findit = *prgs[i].path == NULL;
         struct stat statbuf;
         char *tmp;

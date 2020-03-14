@@ -24,6 +24,8 @@
 #include <math.h>               /* for isnan() */
 #include <sys/stat.h>
 
+#include <libxml/xpathInternals.h>
+
 #include "virerror.h"
 #include "virxml.h"
 #include "virbuffer.h"
@@ -42,6 +44,20 @@
 struct virParserData {
     int domcode;
 };
+
+
+xmlXPathContextPtr
+virXMLXPathContextNew(xmlDocPtr xml)
+{
+    xmlXPathContextPtr ctxt;
+
+    if (!(ctxt = xmlXPathNewContext(xml))) {
+        virReportOOMError();
+        return NULL;
+    }
+
+    return ctxt;
+}
 
 
 /**
@@ -75,7 +91,7 @@ virXPathString(const char *xpath,
         xmlXPathFreeObject(obj);
         return NULL;
     }
-    ignore_value(VIR_STRDUP(ret, (char *) obj->stringval));
+    ret = g_strdup((char *)obj->stringval);
     xmlXPathFreeObject(obj);
     return ret;
 }
@@ -687,7 +703,7 @@ virXPathNodeSet(const char *xpath,
  * This version is heavily based on xmlParserPrintFileContextInternal from libxml2.
  */
 static void
-catchXMLError(void *ctx, const char *msg ATTRIBUTE_UNUSED, ...)
+catchXMLError(void *ctx, const char *msg G_GNUC_UNUSED, ...)
 {
     xmlParserCtxtPtr ctxt = (xmlParserCtxtPtr) ctx;
 
@@ -822,11 +838,9 @@ virXMLParseHelper(int domcode,
     }
 
     if (ctxt) {
-        *ctxt = xmlXPathNewContext(xml);
-        if (!*ctxt) {
-            virReportOOMError();
+        if (!(*ctxt = virXMLXPathContextNew(xml)))
             goto error;
-        }
+
         (*ctxt)->node = xmlDocGetRootElement(xml);
     }
 
@@ -981,7 +995,7 @@ virXMLNodeToString(xmlDocPtr doc,
         goto cleanup;
     }
 
-    ignore_value(VIR_STRDUP(ret, (const char *)xmlBufferContent(xmlbuf)));
+    ret = g_strdup((const char *)xmlBufferContent(xmlbuf));
 
  cleanup:
     xmlBufferFree(xmlbuf);
@@ -1232,8 +1246,8 @@ static void catchRNGError(void *ctx,
 }
 
 
-static void ignoreRNGError(void *ctx ATTRIBUTE_UNUSED,
-                           const char *msg ATTRIBUTE_UNUSED,
+static void ignoreRNGError(void *ctx G_GNUC_UNUSED,
+                           const char *msg G_GNUC_UNUSED,
                            ...)
 {}
 
@@ -1246,8 +1260,7 @@ virXMLValidatorInit(const char *schemafile)
     if (VIR_ALLOC(validator) < 0)
         return NULL;
 
-    if (VIR_STRDUP(validator->schemafile, schemafile) < 0)
-        goto error;
+    validator->schemafile = g_strdup(schemafile);
 
     if (!(validator->rngParser =
           xmlRelaxNGNewParserCtxt(validator->schemafile))) {
@@ -1358,25 +1371,16 @@ virXMLValidatorFree(virXMLValidatorPtr validator)
  * formatted.
  *
  * Both passed buffers are always consumed and freed.
- *
- * Returns 0 on success, -1 on error.
  */
-int
+void
 virXMLFormatElement(virBufferPtr buf,
                     const char *name,
                     virBufferPtr attrBuf,
                     virBufferPtr childBuf)
 {
-    int ret = -1;
-
     if ((!attrBuf || virBufferUse(attrBuf) == 0) &&
-        (!childBuf || virBufferUse(childBuf) == 0)) {
-        return 0;
-    }
-
-    if ((attrBuf && virBufferCheckError(attrBuf) < 0) ||
-        (childBuf && virBufferCheckError(childBuf) < 0))
-        goto cleanup;
+        (!childBuf || virBufferUse(childBuf) == 0))
+        return;
 
     virBufferAsprintf(buf, "<%s", name);
 
@@ -1391,12 +1395,8 @@ virXMLFormatElement(virBufferPtr buf,
         virBufferAddLit(buf, "/>\n");
     }
 
-    ret = 0;
-
- cleanup:
     virBufferFreeAndReset(attrBuf);
     virBufferFreeAndReset(childBuf);
-    return ret;
 }
 
 
@@ -1407,4 +1407,29 @@ virXPathContextNodeRestore(virXPathContextNodeSavePtr save)
         return;
 
     save->ctxt->node = save->node;
+}
+
+
+void
+virXMLNamespaceFormatNS(virBufferPtr buf,
+                        virXMLNamespace const *ns)
+{
+    virBufferAsprintf(buf, " xmlns:%s='%s'", ns->prefix, ns->uri);
+}
+
+
+int
+virXMLNamespaceRegister(xmlXPathContextPtr ctxt,
+                        virXMLNamespace const *ns)
+{
+    if (xmlXPathRegisterNs(ctxt,
+                           BAD_CAST ns->prefix,
+                           BAD_CAST ns->uri) < 0) {
+        virReportError(VIR_ERR_INTERNAL_ERROR,
+                       _("Failed to register xml namespace '%s'"),
+                       ns->uri);
+        return -1;
+    }
+
+    return 0;
 }

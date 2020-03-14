@@ -53,7 +53,6 @@ VIR_LOG_INIT("qemu.qemu_interface");
 int
 qemuInterfaceStartDevice(virDomainNetDefPtr net)
 {
-    int ret = -1;
     virDomainNetType actualType = virDomainNetGetActualType(net);
 
     switch (actualType) {
@@ -71,7 +70,7 @@ qemuInterfaceStartDevice(virDomainNetDefPtr net)
             if (virNetDevBridgeFDBAdd(&net->mac, net->ifname,
                                       VIR_NETDEVBRIDGE_FDB_FLAG_MASTER |
                                       VIR_NETDEVBRIDGE_FDB_FLAG_TEMP) < 0)
-                goto cleanup;
+                return -1;
         }
         break;
 
@@ -84,9 +83,9 @@ qemuInterfaceStartDevice(virDomainNetDefPtr net)
          * some sort of "blip" in the physdev's status.
          */
         if (physdev && virNetDevGetOnline(physdev, &isOnline) < 0)
-            goto cleanup;
+            return -1;
         if (!isOnline && virNetDevSetOnline(physdev, true) < 0)
-            goto cleanup;
+            return -1;
 
         /* macvtap devices share their MAC address with the guest
          * domain, and if they are set online prior to the domain CPUs
@@ -101,13 +100,13 @@ qemuInterfaceStartDevice(virDomainNetDefPtr net)
          * we are starting the domain CPUs.
          */
         if (virNetDevSetOnline(net->ifname, true) < 0)
-            goto cleanup;
+            return -1;
         break;
     }
 
     case VIR_DOMAIN_NET_TYPE_ETHERNET:
         if (virNetDevIPInfoAddToDev(net->ifname, &net->hostIP) < 0)
-            goto cleanup;
+            return -1;
 
         break;
 
@@ -124,9 +123,7 @@ qemuInterfaceStartDevice(virDomainNetDefPtr net)
         break;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 /**
@@ -159,7 +156,6 @@ qemuInterfaceStartDevices(virDomainDefPtr def)
 int
 qemuInterfaceStopDevice(virDomainNetDefPtr net)
 {
-    int ret = -1;
     virDomainNetType actualType = virDomainNetGetActualType(net);
 
     switch (actualType) {
@@ -173,7 +169,7 @@ qemuInterfaceStopDevice(virDomainNetDefPtr net)
             if (virNetDevBridgeFDBDel(&net->mac, net->ifname,
                                       VIR_NETDEVBRIDGE_FDB_FLAG_MASTER |
                                       VIR_NETDEVBRIDGE_FDB_FLAG_TEMP) < 0)
-                goto cleanup;
+                return -1;
         }
         break;
 
@@ -186,7 +182,7 @@ qemuInterfaceStopDevice(virDomainNetDefPtr net)
          * on this network.
          */
         if (virNetDevSetOnline(net->ifname, false) < 0)
-            goto cleanup;
+            return -1;
 
         /* also mark the physdev down for passthrough macvtap, as the
          * physdev has the same MAC address as the macvtap device.
@@ -194,7 +190,7 @@ qemuInterfaceStopDevice(virDomainNetDefPtr net)
         if (virDomainNetGetActualDirectMode(net) ==
             VIR_NETDEV_MACVLAN_MODE_PASSTHRU &&
             physdev && virNetDevSetOnline(physdev, false) < 0)
-            goto cleanup;
+            return -1;
         break;
     }
 
@@ -212,9 +208,7 @@ qemuInterfaceStopDevice(virDomainNetDefPtr net)
         break;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 /**
@@ -364,9 +358,8 @@ qemuCreateInBridgePortWithHelper(virQEMUDriverConfigPtr cfg,
             goto cleanup;
         virCommandAbort(cmd);
 
-        if (errbuf && *errbuf &&
-            virAsprintf(&errstr, "\nstderr=%s", errbuf) < 0)
-            goto cleanup;
+        if (errbuf && *errbuf)
+            errstr = g_strdup_printf("\nstderr=%s", errbuf);
 
         virReportError(VIR_ERR_INTERNAL_ERROR,
             _("%s: failed to communicate with bridge helper: %s%s"),
@@ -414,6 +407,7 @@ qemuInterfaceEthernetConnect(virDomainDefPtr def,
     bool template_ifname = false;
     virQEMUDriverConfigPtr cfg = virQEMUDriverGetConfig(driver);
     const char *tunpath = "/dev/net/tun";
+    const char *auditdev = tunpath;
 
     if (net->backend.tap) {
         tunpath = net->backend.tap;
@@ -424,34 +418,64 @@ qemuInterfaceEthernetConnect(virDomainDefPtr def,
         }
     }
 
-    if (!net->ifname ||
-        STRPREFIX(net->ifname, VIR_NET_GENERATED_TAP_PREFIX) ||
-        strchr(net->ifname, '%')) {
-        VIR_FREE(net->ifname);
-        if (VIR_STRDUP(net->ifname, VIR_NET_GENERATED_TAP_PREFIX "%d") < 0)
-            goto cleanup;
-        /* avoid exposing vnet%d in getXMLDesc or error outputs */
-        template_ifname = true;
-    }
-
     if (virDomainNetIsVirtioModel(net))
         tap_create_flags |= VIR_NETDEV_TAP_CREATE_VNET_HDR;
 
-    if (virNetDevTapCreate(&net->ifname, tunpath, tapfd, tapfdSize,
-                           tap_create_flags) < 0) {
-        virDomainAuditNetDevice(def, net, tunpath, false);
-        goto cleanup;
+    if (net->managed_tap == VIR_TRISTATE_BOOL_NO) {
+        if (!net->ifname) {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                           _("target dev must be supplied when managed='no'"));
+            goto cleanup;
+        }
+        if (virNetDevExists(net->ifname) != 1) {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                           _("target managed='no' but specified dev doesn't exist"));
+            goto cleanup;
+        }
+        if (virNetDevMacVLanIsMacvtap(net->ifname)) {
+            auditdev = net->ifname;
+            if (virNetDevMacVLanTapOpen(net->ifname, tapfd, tapfdSize) < 0)
+                goto cleanup;
+            if (virNetDevMacVLanTapSetup(tapfd, tapfdSize,
+                                         virDomainNetIsVirtioModel(net)) < 0) {
+                goto cleanup;
+            }
+        } else {
+            if (virNetDevTapCreate(&net->ifname, tunpath, tapfd, tapfdSize,
+                                   tap_create_flags) < 0)
+                goto cleanup;
+        }
+    } else {
+        if (!net->ifname ||
+            STRPREFIX(net->ifname, VIR_NET_GENERATED_TAP_PREFIX) ||
+            strchr(net->ifname, '%')) {
+            VIR_FREE(net->ifname);
+            net->ifname = g_strdup(VIR_NET_GENERATED_TAP_PREFIX "%d");
+            /* avoid exposing vnet%d in getXMLDesc or error outputs */
+            template_ifname = true;
+        }
+        if (virNetDevTapCreate(&net->ifname, tunpath, tapfd, tapfdSize,
+                               tap_create_flags) < 0) {
+            goto cleanup;
+        }
+
+        /* The tap device's MAC address cannot match the MAC address
+         * used by the guest. This results in "received packet on
+         * vnetX with own address as source address" error logs from
+         * the kernel.
+         */
+        virMacAddrSet(&tapmac, &net->mac);
+        if (tapmac.addr[0] == 0xFE)
+            tapmac.addr[0] = 0xFA;
+        else
+            tapmac.addr[0] = 0xFE;
+
+        if (virNetDevSetMAC(net->ifname, &tapmac) < 0)
+            goto cleanup;
+
+        if (virNetDevSetOnline(net->ifname, true) < 0)
+            goto cleanup;
     }
-
-    virDomainAuditNetDevice(def, net, tunpath, true);
-    virMacAddrSet(&tapmac, &net->mac);
-    tapmac.addr[0] = 0xFE;
-
-    if (virNetDevSetMAC(net->ifname, &tapmac) < 0)
-        goto cleanup;
-
-    if (virNetDevSetOnline(net->ifname, true) < 0)
-        goto cleanup;
 
     if (net->script &&
         virNetDevRunEthernetScript(net->ifname, net->script) < 0)
@@ -468,11 +492,15 @@ qemuInterfaceEthernetConnect(virDomainDefPtr def,
         goto cleanup;
     }
 
+    virDomainAuditNetDevice(def, net, auditdev, true);
+
     ret = 0;
 
  cleanup:
     if (ret < 0) {
         size_t i;
+
+        virDomainAuditNetDevice(def, net, auditdev, false);
         for (i = 0; i < tapfdSize && tapfd[i] >= 0; i++)
             VIR_FORCE_CLOSE(tapfd[i]);
         if (template_ifname)
@@ -527,8 +555,7 @@ qemuInterfaceBridgeConnect(virDomainDefPtr def,
         STRPREFIX(net->ifname, VIR_NET_GENERATED_TAP_PREFIX) ||
         strchr(net->ifname, '%')) {
         VIR_FREE(net->ifname);
-        if (VIR_STRDUP(net->ifname, VIR_NET_GENERATED_TAP_PREFIX "%d") < 0)
-            goto cleanup;
+        net->ifname = g_strdup(VIR_NET_GENERATED_TAP_PREFIX "%d");
         /* avoid exposing vnet%d in getXMLDesc or error outputs */
         template_ifname = true;
     }
@@ -600,6 +627,33 @@ qemuInterfaceBridgeConnect(virDomainDefPtr def,
     virObjectUnref(cfg);
 
     return ret;
+}
+
+
+qemuSlirpPtr
+qemuInterfacePrepareSlirp(virQEMUDriverPtr driver,
+                          virDomainNetDefPtr net)
+{
+    virQEMUDriverConfigPtr cfg = virQEMUDriverGetConfig(driver);
+    g_autoptr(qemuSlirp) slirp = NULL;
+    size_t i;
+
+    if (!(slirp = qemuSlirpNewForHelper(cfg->slirpHelperName)))
+        return NULL;
+
+    for (i = 0; i < net->guestIP.nips; i++) {
+        const virNetDevIPAddr *ip = net->guestIP.ips[i];
+
+        if (VIR_SOCKET_ADDR_IS_FAMILY(&ip->address, AF_INET) &&
+            !qemuSlirpHasFeature(slirp, QEMU_SLIRP_FEATURE_IPV4))
+            return NULL;
+
+        if (VIR_SOCKET_ADDR_IS_FAMILY(&ip->address, AF_INET6) &&
+            !qemuSlirpHasFeature(slirp, QEMU_SLIRP_FEATURE_IPV6))
+            return NULL;
+    }
+
+    return g_steal_pointer(&slirp);
 }
 
 

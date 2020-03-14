@@ -130,7 +130,16 @@ int main(int argc, char **argv) {
     if (strlen(cwd) > strlen(".../commanddata") &&
         STREQ(cwd + strlen(cwd) - strlen("/commanddata"), "/commanddata"))
         strcpy(cwd, ".../commanddata");
+# ifdef __APPLE__
+    char *noprivateprefix = NULL;
+    if (strstr(cwd, "/private"))
+        noprivateprefix = cwd + strlen("/private");
+    else
+        noprivateprefix = cwd;
+    fprintf(log, "CWD:%s\n", noprivateprefix);
+# else
     fprintf(log, "CWD:%s\n", cwd);
+# endif
     free(cwd);
 
     fprintf(log, "UMASK:%04o\n", umask(0));
@@ -210,7 +219,7 @@ int main(int argc, char **argv) {
     ret = EXIT_SUCCESS;
 
  cleanup:
-    for (i = 0; i < ARRAY_CARDINALITY(buffers); i++)
+    for (i = 0; i < G_N_ELEMENTS(buffers); i++)
         free(buffers[i]);
     fclose(log);
     free(newenv);

@@ -260,19 +260,15 @@ virNetDevBandwidthRateFormat(virNetDevBandwidthRatePtr def,
  * Returns 0 on success, else -1.
  */
 int
-virNetDevBandwidthFormat(virNetDevBandwidthPtr def,
+virNetDevBandwidthFormat(const virNetDevBandwidth *def,
                          unsigned int class_id,
                          virBufferPtr buf)
 {
-    int ret = -1;
-
     if (!buf)
-        goto cleanup;
+        return -1;
 
-    if (!def) {
-        ret = 0;
-        goto cleanup;
-    }
+    if (!def)
+        return 0;
 
     virBufferAddLit(buf, "<bandwidth");
     if (class_id)
@@ -281,14 +277,11 @@ virNetDevBandwidthFormat(virNetDevBandwidthPtr def,
     virBufferAdjustIndent(buf, 2);
     if (virNetDevBandwidthRateFormat(def->in, buf, "inbound") < 0 ||
         virNetDevBandwidthRateFormat(def->out, buf, "outbound") < 0)
-        goto cleanup;
+        return -1;
     virBufferAdjustIndent(buf, -2);
     virBufferAddLit(buf, "</bandwidth>\n");
 
-    ret = 0;
-
- cleanup:
-    return ret;
+    return 0;
 }
 
 void

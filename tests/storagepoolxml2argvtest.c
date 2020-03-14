@@ -26,9 +26,9 @@ testCompareXMLToArgvFiles(bool shouldFail,
     virStoragePoolDefPtr def = NULL;
     virStoragePoolObjPtr pool = NULL;
     const char *defTypeStr;
-    VIR_AUTOFREE(char *) actualCmdline = NULL;
-    VIR_AUTOFREE(char *) src = NULL;
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autofree char *actualCmdline = NULL;
+    g_autofree char *src = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     if (!(def = virStoragePoolDefParseFile(poolxml)))
         goto cleanup;
@@ -38,13 +38,13 @@ testCompareXMLToArgvFiles(bool shouldFail,
     case VIR_STORAGE_POOL_FS:
     case VIR_STORAGE_POOL_NETFS:
         if (!(pool = virStoragePoolObjNew())) {
-            VIR_TEST_DEBUG("pool type '%s' alloc pool obj fails\n", defTypeStr);
+            VIR_TEST_DEBUG("pool type '%s' alloc pool obj fails", defTypeStr);
             goto cleanup;
         }
         virStoragePoolObjSetDef(pool, def);
 
         if (!(src = virStorageBackendFileSystemGetPoolSource(pool))) {
-            VIR_TEST_DEBUG("pool type '%s' has no pool source\n", defTypeStr);
+            VIR_TEST_DEBUG("pool type '%s' has no pool source", defTypeStr);
             def = NULL;
             goto cleanup;
         }
@@ -70,12 +70,12 @@ testCompareXMLToArgvFiles(bool shouldFail,
     case VIR_STORAGE_POOL_VSTORAGE:
     case VIR_STORAGE_POOL_LAST:
     default:
-        VIR_TEST_DEBUG("pool type '%s' has no xml2argv test\n", defTypeStr);
+        VIR_TEST_DEBUG("pool type '%s' has no xml2argv test", defTypeStr);
         goto cleanup;
     };
 
     if (!(actualCmdline = virCommandToString(cmd, false))) {
-        VIR_TEST_DEBUG("pool type '%s' failed to get commandline\n", defTypeStr);
+        VIR_TEST_DEBUG("pool type '%s' failed to get commandline", defTypeStr);
         goto cleanup;
     }
 
@@ -105,17 +105,14 @@ static int
 testCompareXMLToArgvHelper(const void *data)
 {
     const struct testInfo *info = data;
-    VIR_AUTOFREE(char *) poolxml = NULL;
-    VIR_AUTOFREE(char *) cmdline = NULL;
+    g_autofree char *poolxml = NULL;
+    g_autofree char *cmdline = NULL;
 
-    if (virAsprintf(&poolxml, "%s/storagepoolxml2xmlin/%s.xml",
-                    abs_srcdir, info->pool) < 0)
-        return -1;
+    poolxml = g_strdup_printf("%s/storagepoolxml2xmlin/%s.xml", abs_srcdir,
+                              info->pool);
 
-    if (virAsprintf(&cmdline, "%s/storagepoolxml2argvdata/%s%s.argv",
-                    abs_srcdir, info->pool, info->platformSuffix) < 0 &&
-        !info->shouldFail)
-        return -1;
+    cmdline = g_strdup_printf("%s/storagepoolxml2argvdata/%s%s.argv",
+                              abs_srcdir, info->pool, info->platformSuffix);
 
     return testCompareXMLToArgvFiles(info->shouldFail, poolxml, cmdline);
 }

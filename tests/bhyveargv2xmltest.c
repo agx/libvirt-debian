@@ -39,38 +39,36 @@ testCompareXMLToArgvFiles(const char *xmlfile,
 
     if (!(vmdef = bhyveParseCommandLineString(cmd, driver.bhyvecaps,
                                               driver.xmlopt))) {
-        if ((flags & FLAG_EXPECT_FAILURE) && !virTestOOMActive()) {
-                VIR_TEST_DEBUG("Got expected failure from "
-                               "bhyveParseCommandLineString.\n");
+        if ((flags & FLAG_EXPECT_FAILURE)) {
+            VIR_TEST_DEBUG("Got expected failure from "
+                           "bhyveParseCommandLineString.");
         } else {
             goto fail;
         }
-    } else if ((flags & FLAG_EXPECT_FAILURE) && !virTestOOMActive()) {
+    } else if ((flags & FLAG_EXPECT_FAILURE)) {
         VIR_TEST_DEBUG("Did not get expected failure from "
-                       "bhyveParseCommandLineString.\n");
+                       "bhyveParseCommandLineString.");
         goto fail;
     }
 
-    if (!virTestOOMActive()) {
-        if ((log = virTestLogContentAndReset()) == NULL)
+    if ((log = virTestLogContentAndReset()) == NULL)
+        goto fail;
+    if (flags & FLAG_EXPECT_WARNING) {
+        if (*log) {
+            VIR_TEST_DEBUG("Got expected warning from "
+                           "bhyveParseCommandLineString:\n%s",
+                           log);
+        } else {
+            VIR_TEST_DEBUG("bhyveParseCommandLineString "
+                           "should have logged a warning");
             goto fail;
-        if (flags & FLAG_EXPECT_WARNING) {
-            if (*log) {
-                VIR_TEST_DEBUG("Got expected warning from "
-                            "bhyveParseCommandLineString:\n%s",
-                            log);
-            } else {
-                VIR_TEST_DEBUG("bhyveParseCommandLineString "
-                        "should have logged a warning\n");
-                goto fail;
-            }
-        } else { /* didn't expect a warning */
-            if (*log) {
-                VIR_TEST_DEBUG("Got unexpected warning from "
-                            "bhyveParseCommandLineString:\n%s",
-                            log);
-                goto fail;
-            }
+        }
+    } else { /* didn't expect a warning */
+        if (*log) {
+            VIR_TEST_DEBUG("Got unexpected warning from "
+                           "bhyveParseCommandLineString:\n%s",
+                           log);
+            goto fail;
         }
     }
 
@@ -79,7 +77,7 @@ testCompareXMLToArgvFiles(const char *xmlfile,
         goto fail;
     }
 
-    if (vmdef && !(actualxml = virDomainDefFormat(vmdef, driver.caps, 0)))
+    if (vmdef && !(actualxml = virDomainDefFormat(vmdef, driver.xmlopt, 0)))
         goto fail;
 
     if (vmdef && virTestCompareToFile(actualxml, xmlfile) < 0)
@@ -108,15 +106,13 @@ testCompareXMLToArgvHelper(const void *data)
     char *xml = NULL;
     char *args = NULL;
 
-    if (virAsprintf(&xml, "%s/bhyveargv2xmldata/bhyveargv2xml-%s.xml",
-                    abs_srcdir, info->name) < 0 ||
-        virAsprintf(&args, "%s/bhyveargv2xmldata/bhyveargv2xml-%s.args",
-                    abs_srcdir, info->name) < 0)
-        goto cleanup;
+    xml = g_strdup_printf("%s/bhyveargv2xmldata/bhyveargv2xml-%s.xml",
+                          abs_srcdir, info->name);
+    args = g_strdup_printf("%s/bhyveargv2xmldata/bhyveargv2xml-%s.args",
+                           abs_srcdir, info->name);
 
     result = testCompareXMLToArgvFiles(xml, args, info->flags);
 
- cleanup:
     VIR_FREE(xml);
     VIR_FREE(args);
     return result;
@@ -205,7 +201,7 @@ mymain(void)
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/bhyveargv2xmlmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("bhyveargv2xml"))
 
 #else
 

@@ -23,6 +23,7 @@
   <channelTargetDir path='/tmp/channel'/>
   <allowReboot value='yes'/>
   <blockjobs active='yes'/>
+  <agentTimeout>-2</agentTimeout>
   <domain type='qemu' id='1'>
     <name>QEMUGuest1</name>
     <uuid>c7a5fdbd-edaf-9455-926a-d65c16db1809</uuid>
@@ -38,7 +39,7 @@
     <on_reboot>restart</on_reboot>
     <on_crash>destroy</on_crash>
     <devices>
-      <emulator>/usr/bin/qemu-system-i686</emulator>
+      <emulator>/usr/bin/qemu-system-i386</emulator>
       <disk type='block' device='disk'>
         <driver name='qemu' type='raw'/>
         <source dev='/dev/HostVG/QEMUGuest1'/>

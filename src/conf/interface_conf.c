@@ -819,8 +819,7 @@ virInterfaceDefPtr
 virInterfaceDefParseNode(xmlDocPtr xml,
                          xmlNodePtr root)
 {
-    xmlXPathContextPtr ctxt = NULL;
-    virInterfaceDefPtr def = NULL;
+    g_autoptr(xmlXPathContext) ctxt = NULL;
 
     if (!virXMLNodeNameEqual(root, "interface")) {
         virReportError(VIR_ERR_XML_ERROR,
@@ -830,18 +829,11 @@ virInterfaceDefParseNode(xmlDocPtr xml,
         return NULL;
     }
 
-    ctxt = xmlXPathNewContext(xml);
-    if (ctxt == NULL) {
-        virReportOOMError();
-        goto cleanup;
-    }
+    if (!(ctxt = virXMLXPathContextNew(xml)))
+        return NULL;
 
     ctxt->node = root;
-    def = virInterfaceDefParseXML(ctxt, VIR_INTERFACE_TYPE_LAST);
-
- cleanup:
-    xmlXPathFreeContext(ctxt);
-    return def;
+    return virInterfaceDefParseXML(ctxt, VIR_INTERFACE_TYPE_LAST);
 }
 
 
@@ -1078,19 +1070,19 @@ virInterfaceDefDevFormat(virBufferPtr buf,
     if (def == NULL) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        "%s", _("virInterfaceDefFormat NULL def"));
-        goto cleanup;
+        return -1;
     }
 
     if ((def->name == NULL) && (def->type != VIR_INTERFACE_TYPE_VLAN)) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        "%s", _("virInterfaceDefFormat missing interface name"));
-        goto cleanup;
+        return -1;
     }
 
     if (!(type = virInterfaceTypeToString(def->type))) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("unexpected interface type %d"), def->type);
-        goto cleanup;
+        return -1;
     }
 
     virBufferAsprintf(buf, "<interface type='%s' ", type);
@@ -1132,13 +1124,7 @@ virInterfaceDefDevFormat(virBufferPtr buf,
     virBufferAdjustIndent(buf, -2);
     virBufferAddLit(buf, "</interface>\n");
 
-    if (virBufferCheckError(buf) < 0)
-        goto cleanup;
-
     return 0;
-
- cleanup:
-    return -1;
 }
 
 

@@ -141,8 +141,7 @@ qemuDomainExtractTLSSubject(const char *certdir)
     int ret;
     size_t subjectlen;
 
-    if (virAsprintf(&certfile, "%s/server-cert.pem", certdir) < 0)
-        goto error;
+    certfile = g_strdup_printf("%s/server-cert.pem", certdir);
 
     if (virFileReadAll(certfile, 8192, &pemdata) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
@@ -214,8 +213,7 @@ qemuMigrationCookieGraphicsSpiceAlloc(virQEMUDriverPtr driver,
         !(mig->tlsSubject = qemuDomainExtractTLSSubject(cfg->spiceTLSx509certdir)))
         goto error;
 
-    if (VIR_STRDUP(mig->listen, listenAddr) < 0)
-        goto error;
+    mig->listen = g_strdup(listenAddr);
 
     virObjectUnref(cfg);
     return mig;
@@ -228,7 +226,7 @@ qemuMigrationCookieGraphicsSpiceAlloc(virQEMUDriverPtr driver,
 
 
 static qemuMigrationCookieNetworkPtr
-qemuMigrationCookieNetworkAlloc(virQEMUDriverPtr driver ATTRIBUTE_UNUSED,
+qemuMigrationCookieNetworkAlloc(virQEMUDriverPtr driver G_GNUC_UNUSED,
                                 virDomainDefPtr def)
 {
     qemuMigrationCookieNetworkPtr mig;
@@ -244,7 +242,7 @@ qemuMigrationCookieNetworkAlloc(virQEMUDriverPtr driver ATTRIBUTE_UNUSED,
 
     for (i = 0; i < def->nnets; i++) {
         virDomainNetDefPtr netptr;
-        virNetDevVPortProfilePtr vport;
+        const virNetDevVPortProfile *vport;
 
         netptr = def->nets[i];
         vport = virDomainNetGetActualVirtPortProfile(netptr);
@@ -293,8 +291,7 @@ qemuMigrationCookieNew(const virDomainDef *def,
         name = origname;
     else
         name = def->name;
-    if (VIR_STRDUP(mig->name, name) < 0)
-        goto error;
+    mig->name = g_strdup(name);
     memcpy(mig->uuid, def->uuid, VIR_UUID_BUFLEN);
 
     if (!(mig->localHostname = virGetHostname()))
@@ -380,17 +377,13 @@ qemuMigrationCookieAddLockstate(qemuMigrationCookiePtr mig,
     }
 
     if (virDomainObjGetState(dom, NULL) == VIR_DOMAIN_PAUSED) {
-        if (VIR_STRDUP(mig->lockState, priv->lockState) < 0)
-            return -1;
+        mig->lockState = g_strdup(priv->lockState);
     } else {
         if (virDomainLockProcessInquire(driver->lockManager, dom, &mig->lockState) < 0)
             return -1;
     }
 
-    if (VIR_STRDUP(mig->lockDriver, virLockManagerPluginGetName(driver->lockManager)) < 0) {
-        VIR_FREE(mig->lockState);
-        return -1;
-    }
+    mig->lockDriver = g_strdup(virLockManagerPluginGetName(driver->lockManager));
 
     mig->flags |= QEMU_MIGRATION_COOKIE_LOCKSTATE;
     mig->flagsMandatory |= QEMU_MIGRATION_COOKIE_LOCKSTATE;
@@ -498,9 +491,7 @@ qemuMigrationCookieAddNBD(qemuMigrationCookiePtr mig,
             !(entry = virHashLookup(stats, disk->info.alias)))
             continue;
 
-        if (VIR_STRDUP(mig->nbd->disks[mig->nbd->ndisks].target,
-                       disk->dst) < 0)
-            goto cleanup;
+        mig->nbd->disks[mig->nbd->ndisks].target = g_strdup(disk->dst);
         mig->nbd->disks[mig->nbd->ndisks].capacity = entry->capacity;
         mig->nbd->ndisks++;
     }
@@ -542,6 +533,9 @@ qemuMigrationCookieAddCPU(qemuMigrationCookiePtr mig,
         return 0;
 
     if (!(mig->cpu = virCPUDefCopy(vm->def->cpu)))
+        return -1;
+
+    if (qemuDomainMakeCPUMigratable(mig->cpu) < 0)
         return -1;
 
     mig->flags |= QEMU_MIGRATION_COOKIE_CPU;
@@ -781,6 +775,7 @@ qemuMigrationCookieCapsXMLFormat(virBufferPtr buf,
 
 static int
 qemuMigrationCookieXMLFormat(virQEMUDriverPtr driver,
+                             virQEMUCapsPtr qemuCaps,
                              virBufferPtr buf,
                              qemuMigrationCookiePtr mig)
 {
@@ -822,6 +817,7 @@ qemuMigrationCookieXMLFormat(virQEMUDriverPtr driver,
     if ((mig->flags & QEMU_MIGRATION_COOKIE_PERSISTENT) &&
         mig->persistent) {
         if (qemuDomainDefFormatBuf(driver,
+                                   qemuCaps,
                                    mig->persistent,
                                    VIR_DOMAIN_XML_INACTIVE |
                                    VIR_DOMAIN_XML_SECURE |
@@ -873,17 +869,15 @@ qemuMigrationCookieXMLFormat(virQEMUDriverPtr driver,
 
 static char *
 qemuMigrationCookieXMLFormatStr(virQEMUDriverPtr driver,
+                                virQEMUCapsPtr qemuCaps,
                                 qemuMigrationCookiePtr mig)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (qemuMigrationCookieXMLFormat(driver, &buf, mig) < 0) {
+    if (qemuMigrationCookieXMLFormat(driver, qemuCaps, &buf, mig) < 0) {
         virBufferFreeAndReset(&buf);
         return NULL;
     }
-
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
 
     return virBufferContentAndReset(&buf);
 }
@@ -977,14 +971,12 @@ qemuMigrationCookieNetworkXMLParse(xmlXPathContextPtr ctxt)
 
     VIR_FREE(interfaces);
 
- cleanup:
     return optr;
 
  error:
     VIR_FREE(interfaces);
     qemuMigrationCookieNetworkFree(optr);
-    optr = NULL;
-    goto cleanup;
+    return NULL;
 }
 
 
@@ -1059,10 +1051,10 @@ qemuMigrationCookieStatisticsXMLParse(xmlXPathContextPtr ctxt)
     VIR_XPATH_NODE_AUTORESTORE(ctxt);
 
     if (!(ctxt->node = virXPathNode("./statistics", ctxt)))
-        goto cleanup;
+        return NULL;
 
     if (VIR_ALLOC(jobInfo) < 0)
-        goto cleanup;
+        return NULL;
 
     stats = &jobInfo->stats.mig;
     jobInfo->status = QEMU_DOMAIN_JOB_STATUS_COMPLETED;
@@ -1133,7 +1125,7 @@ qemuMigrationCookieStatisticsXMLParse(xmlXPathContextPtr ctxt)
 
     virXPathInt("string(./" VIR_DOMAIN_JOB_AUTO_CONVERGE_THROTTLE "[1])",
                 ctxt, &stats->cpu_throttle_percentage);
- cleanup:
+
     return jobInfo;
 }
 
@@ -1180,7 +1172,7 @@ qemuMigrationCookieCapsXMLParse(xmlXPathContextPtr ctxt)
         VIR_FREE(automatic);
     }
 
-    VIR_STEAL_PTR(ret, caps);
+    ret = g_steal_pointer(&caps);
 
  cleanup:
     qemuMigrationCookieCapsFree(caps);
@@ -1194,6 +1186,7 @@ qemuMigrationCookieCapsXMLParse(xmlXPathContextPtr ctxt)
 static int
 qemuMigrationCookieXMLParse(qemuMigrationCookiePtr mig,
                             virQEMUDriverPtr driver,
+                            virQEMUCapsPtr qemuCaps,
                             xmlDocPtr doc,
                             xmlXPathContextPtr ctxt,
                             unsigned int flags)
@@ -1203,10 +1196,6 @@ qemuMigrationCookieXMLParse(qemuMigrationCookiePtr mig,
     xmlNodePtr *nodes = NULL;
     size_t i;
     int n;
-    virCapsPtr caps = NULL;
-
-    if (!(caps = virQEMUDriverGetCapabilities(driver, false)))
-        goto error;
 
     /* We don't store the uuid, name, hostname, or hostuuid
      * values. We just compare them to local data to do some
@@ -1335,7 +1324,7 @@ qemuMigrationCookieXMLParse(qemuMigrationCookiePtr mig,
             goto error;
         }
         mig->persistent = virDomainDefParseNode(doc, nodes[0],
-                                                caps, driver->xmlopt, NULL,
+                                                driver->xmlopt, qemuCaps,
                                                 VIR_DOMAIN_DEF_PARSE_INACTIVE |
                                                 VIR_DOMAIN_DEF_PARSE_ABI_UPDATE_MIGRATION |
                                                 VIR_DOMAIN_DEF_PARSE_SKIP_VALIDATE);
@@ -1374,13 +1363,11 @@ qemuMigrationCookieXMLParse(qemuMigrationCookiePtr mig,
         !(mig->caps = qemuMigrationCookieCapsXMLParse(ctxt)))
         goto error;
 
-    virObjectUnref(caps);
     return 0;
 
  error:
     VIR_FREE(tmp);
     VIR_FREE(nodes);
-    virObjectUnref(caps);
     return -1;
 }
 
@@ -1388,6 +1375,7 @@ qemuMigrationCookieXMLParse(qemuMigrationCookiePtr mig,
 static int
 qemuMigrationCookieXMLParseStr(qemuMigrationCookiePtr mig,
                                virQEMUDriverPtr driver,
+                               virQEMUCapsPtr qemuCaps,
                                const char *xml,
                                unsigned int flags)
 {
@@ -1400,7 +1388,7 @@ qemuMigrationCookieXMLParseStr(qemuMigrationCookiePtr mig,
     if (!(doc = virXMLParseStringCtxt(xml, _("(qemu_migration_cookie)"), &ctxt)))
         goto cleanup;
 
-    ret = qemuMigrationCookieXMLParse(mig, driver, doc, ctxt, flags);
+    ret = qemuMigrationCookieXMLParse(mig, driver, qemuCaps, doc, ctxt, flags);
 
  cleanup:
     xmlXPathFreeContext(ctxt);
@@ -1419,6 +1407,8 @@ qemuMigrationBakeCookie(qemuMigrationCookiePtr mig,
                         int *cookieoutlen,
                         unsigned int flags)
 {
+    qemuDomainObjPrivatePtr priv = dom->privateData;
+
     if (!cookieout || !cookieoutlen)
         return 0;
 
@@ -1462,7 +1452,7 @@ qemuMigrationBakeCookie(qemuMigrationCookiePtr mig,
         qemuMigrationCookieAddCaps(mig, dom, party) < 0)
         return -1;
 
-    if (!(*cookieout = qemuMigrationCookieXMLFormatStr(driver, mig)))
+    if (!(*cookieout = qemuMigrationCookieXMLFormatStr(driver, priv->qemuCaps, mig)))
         return -1;
 
     *cookieoutlen = strlen(*cookieout) + 1;
@@ -1500,6 +1490,7 @@ qemuMigrationEatCookie(virQEMUDriverPtr driver,
     if (cookiein && cookieinlen &&
         qemuMigrationCookieXMLParseStr(mig,
                                        driver,
+                                       priv ? priv->qemuCaps : NULL,
                                        cookiein,
                                        flags) < 0)
         goto error;
@@ -1508,8 +1499,7 @@ qemuMigrationEatCookie(virQEMUDriverPtr driver,
         mig->persistent &&
         STRNEQ(def->name, mig->persistent->name)) {
         VIR_FREE(mig->persistent->name);
-        if (VIR_STRDUP(mig->persistent->name, def->name) < 0)
-            goto error;
+        mig->persistent->name = g_strdup(def->name);
     }
 
     if (mig->flags & QEMU_MIGRATION_COOKIE_LOCKSTATE) {

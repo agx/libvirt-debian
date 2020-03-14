@@ -23,8 +23,8 @@
 
 
 int virNetDevMidonetBindPort(const char *ifname,
-                             virNetDevVPortProfilePtr virtualport)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+                             const virNetDevVPortProfile *virtualport)
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 
-int virNetDevMidonetUnbindPort(virNetDevVPortProfilePtr virtualport)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
+int virNetDevMidonetUnbindPort(const virNetDevVPortProfile *virtualport)
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;

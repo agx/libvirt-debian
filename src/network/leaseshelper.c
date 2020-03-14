@@ -47,7 +47,7 @@ helperVersion(const char *argv0)
     printf("%s (%s) %s\n", argv0, PACKAGE_NAME, PACKAGE_VERSION);
 }
 
-ATTRIBUTE_NORETURN static void
+G_GNUC_NORETURN static void
 usage(int status)
 {
     if (status) {
@@ -86,10 +86,10 @@ main(int argc, char **argv)
     const char *ip = NULL;
     const char *mac = NULL;
     const char *leases_str = NULL;
-    const char *iaid = virGetEnvAllowSUID("DNSMASQ_IAID");
-    const char *clientid = virGetEnvAllowSUID("DNSMASQ_CLIENT_ID");
-    const char *interface = virGetEnvAllowSUID("DNSMASQ_INTERFACE");
-    const char *hostname = virGetEnvAllowSUID("DNSMASQ_SUPPLIED_HOSTNAME");
+    const char *iaid = getenv("DNSMASQ_IAID");
+    const char *clientid = getenv("DNSMASQ_CLIENT_ID");
+    const char *interface = getenv("DNSMASQ_INTERFACE");
+    const char *hostname = getenv("DNSMASQ_SUPPLIED_HOSTNAME");
     char *server_duid = NULL;
     int action = -1;
     int pid_file_fd = -1;
@@ -104,7 +104,6 @@ main(int argc, char **argv)
     program_name = argv[0];
 
     if (virGettextInitialize() < 0 ||
-        virThreadInitialize() < 0 ||
         virErrorInitialize() < 0) {
         fprintf(stderr, _("%s: initialization failed\n"), program_name);
         exit(EXIT_FAILURE);
@@ -131,7 +130,7 @@ main(int argc, char **argv)
      * events for expired leases. So, libvirtd sets another env var for this
      * purpose */
     if (!interface &&
-        !(interface = virGetEnvAllowSUID("VIR_BRIDGE_NAME")))
+        !(interface = getenv("VIR_BRIDGE_NAME")))
         goto cleanup;
 
     ip = argv[3];
@@ -148,20 +147,16 @@ main(int argc, char **argv)
 
     /* Check if it is an IPv6 lease */
     if (iaid) {
-        mac = virGetEnvAllowSUID("DNSMASQ_MAC");
+        mac = getenv("DNSMASQ_MAC");
         clientid = argv[2];
     }
 
-    if (VIR_STRDUP(server_duid, virGetEnvAllowSUID("DNSMASQ_SERVER_DUID")) < 0)
-        goto cleanup;
+    server_duid = g_strdup(getenv("DNSMASQ_SERVER_DUID"));
 
-    if (virAsprintf(&custom_lease_file,
-                    LOCALSTATEDIR "/lib/libvirt/dnsmasq/%s.status",
-                    interface) < 0)
-        goto cleanup;
+    custom_lease_file = g_strdup_printf(LOCALSTATEDIR "/lib/libvirt/dnsmasq/%s.status",
+                                        interface);
 
-    if (VIR_STRDUP(pid_file, LOCALSTATEDIR "/run/leaseshelper.pid") < 0)
-        goto cleanup;
+    pid_file = g_strdup(RUNSTATEDIR "/leaseshelper.pid");
 
     /* Try to claim the pidfile, exiting if we can't */
     if ((pid_file_fd = virPidFileAcquirePath(pid_file, false, getpid())) < 0)
@@ -194,7 +189,7 @@ main(int argc, char **argv)
         if (!lease_new)
             break;
 
-        ATTRIBUTE_FALLTHROUGH;
+        G_GNUC_FALLTHROUGH;
     case VIR_LEASE_ACTION_DEL:
         /* Delete the corresponding lease, if it already exists */
         delete = true;
@@ -231,7 +226,7 @@ main(int argc, char **argv)
         }
         lease_new = NULL;
 
-        ATTRIBUTE_FALLTHROUGH;
+        G_GNUC_FALLTHROUGH;
     case VIR_LEASE_ACTION_DEL:
         if (!(leases_str = virJSONValueToString(leases_array_new, true))) {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",

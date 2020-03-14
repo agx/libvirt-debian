@@ -48,8 +48,8 @@ virLeaseReadCustomLeaseFile(virJSONValuePtr leases_array_new,
                             const char *ip_to_delete,
                             char **server_duid)
 {
-    VIR_AUTOFREE(char *) lease_entries = NULL;
-    VIR_AUTOPTR(virJSONValue) leases_array = NULL;
+    g_autofree char *lease_entries = NULL;
+    g_autoptr(virJSONValue) leases_array = NULL;
     long long expirytime;
     int custom_lease_file_len = 0;
     virJSONValuePtr lease_tmp = NULL;
@@ -106,12 +106,8 @@ virLeaseReadCustomLeaseFile(virJSONValuePtr leases_array_new,
             /* This is an ipv6 lease */
             if ((server_duid_tmp
                  = virJSONValueObjectGetString(lease_tmp, "server-duid"))) {
-                if (!*server_duid && VIR_STRDUP(*server_duid, server_duid_tmp) < 0) {
-                    /* Control reaches here when the 'action' is not for an
-                     * ipv6 lease or, for some weird reason the env var
-                     * DNSMASQ_SERVER_DUID wasn't set*/
-                    return -1;
-                }
+                if (!*server_duid)
+                    *server_duid = g_strdup(server_duid_tmp);
             } else {
                 /* Inject server-duid into those ipv6 leases which
                  * didn't have it previously, for example, those
@@ -212,21 +208,20 @@ virLeaseNew(virJSONValuePtr *lease_ret,
             const char *iaid,
             const char *server_duid)
 {
-    VIR_AUTOPTR(virJSONValue) lease_new = NULL;
-    const char *exptime_tmp = virGetEnvAllowSUID("DNSMASQ_LEASE_EXPIRES");
+    g_autoptr(virJSONValue) lease_new = NULL;
+    const char *exptime_tmp = getenv("DNSMASQ_LEASE_EXPIRES");
     long long expirytime = 0;
-    VIR_AUTOFREE(char *) exptime = NULL;
+    g_autofree char *exptime = NULL;
 
     /* In case hostname is still unknown, use the last known one */
     if (!hostname)
-        hostname = virGetEnvAllowSUID("DNSMASQ_OLD_HOSTNAME");
+        hostname = getenv("DNSMASQ_OLD_HOSTNAME");
 
     if (!mac)
         return 0;
 
     if (exptime_tmp) {
-        if (VIR_STRDUP(exptime, exptime_tmp) < 0)
-            return -1;
+        exptime = g_strdup(exptime_tmp);
 
         /* Removed extraneous trailing space in DNSMASQ_LEASE_EXPIRES
          * (dnsmasq < 2.52) */

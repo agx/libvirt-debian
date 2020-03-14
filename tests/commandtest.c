@@ -67,11 +67,8 @@ static int checkoutput(const char *testname,
     char *actualname = NULL;
     char *actuallog = NULL;
 
-    if (virAsprintf(&expectname, "%s/commanddata/%s.log", abs_srcdir,
-                    testname) < 0)
-        goto cleanup;
-    if (virAsprintf(&actualname, "%s/commandhelper.log", abs_builddir) < 0)
-        goto cleanup;
+    expectname = g_strdup_printf("%s/commanddata/%s.log", abs_srcdir, testname);
+    actualname = g_strdup_printf("%s/commandhelper.log", abs_builddir);
 
     if (virFileReadAll(expectname, 1024*64, &expectlog) < 0) {
         fprintf(stderr, "cannot read %s\n", expectname);
@@ -86,8 +83,7 @@ static int checkoutput(const char *testname,
     if (prefix) {
         char *tmp = NULL;
 
-        if (virAsprintf(&tmp, "%s%s", prefix, expectlog) < 0)
-            goto cleanup;
+        tmp = g_strdup_printf("%s%s", prefix, expectlog);
 
         VIR_FREE(expectlog);
         expectlog = tmp;
@@ -115,7 +111,7 @@ static int checkoutput(const char *testname,
  * Only stdin/out/err open
  * No slot for return status must log error.
  */
-static int test0(const void *unused ATTRIBUTE_UNUSED)
+static int test0(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd;
     int ret = -1;
@@ -140,7 +136,7 @@ static int test0(const void *unused ATTRIBUTE_UNUSED)
  * Only stdin/out/err open
  * Capturing return status must not log error.
  */
-static int test1(const void *unused ATTRIBUTE_UNUSED)
+static int test1(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd;
     int ret = -1;
@@ -168,7 +164,7 @@ static int test1(const void *unused ATTRIBUTE_UNUSED)
  * Run program (twice), no args, inherit all ENV, keep CWD.
  * Only stdin/out/err open
  */
-static int test2(const void *unused ATTRIBUTE_UNUSED)
+static int test2(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     int ret;
@@ -199,7 +195,7 @@ static int test2(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit all ENV, keep CWD.
  * stdin/out/err + two extra FD open
  */
-static int test3(const void *unused ATTRIBUTE_UNUSED)
+static int test3(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     int newfd1 = dup(STDERR_FILENO);
@@ -239,7 +235,7 @@ static int test3(const void *unused ATTRIBUTE_UNUSED)
  * Only stdin/out/err open.
  * Daemonized
  */
-static int test4(const void *unused ATTRIBUTE_UNUSED)
+static int test4(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     char *pidfile = virPidFileBuildPath(abs_builddir, "commandhelper");
@@ -262,7 +258,7 @@ static int test4(const void *unused ATTRIBUTE_UNUSED)
         goto cleanup;
     }
     while (kill(pid, 0) != -1)
-        usleep(100*1000);
+        g_usleep(100*1000);
 
     ret = checkoutput("test4", NULL);
 
@@ -279,7 +275,7 @@ static int test4(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit filtered ENV, keep CWD.
  * Only stdin/out/err open
  */
-static int test5(const void *unused ATTRIBUTE_UNUSED)
+static int test5(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
 
@@ -301,12 +297,12 @@ static int test5(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit filtered ENV, keep CWD.
  * Only stdin/out/err open
  */
-static int test6(const void *unused ATTRIBUTE_UNUSED)
+static int test6(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
 
-    virCommandAddEnvPassBlockSUID(cmd, "DISPLAY", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "DOESNOTEXIST", NULL);
+    virCommandAddEnvPass(cmd, "DISPLAY");
+    virCommandAddEnvPass(cmd, "DOESNOTEXIST");
 
     if (virCommandRun(cmd, NULL) < 0) {
         printf("Cannot run child %s\n", virGetLastErrorMessage());
@@ -324,13 +320,13 @@ static int test6(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit filtered ENV, keep CWD.
  * Only stdin/out/err open
  */
-static int test7(const void *unused ATTRIBUTE_UNUSED)
+static int test7(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
 
     virCommandAddEnvPassCommon(cmd);
-    virCommandAddEnvPassBlockSUID(cmd, "DISPLAY", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "DOESNOTEXIST", NULL);
+    virCommandAddEnvPass(cmd, "DISPLAY");
+    virCommandAddEnvPass(cmd, "DOESNOTEXIST");
 
     if (virCommandRun(cmd, NULL) < 0) {
         printf("Cannot run child %s\n", virGetLastErrorMessage());
@@ -347,7 +343,7 @@ static int test7(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit filtered ENV, keep CWD.
  * Only stdin/out/err open
  */
-static int test8(const void *unused ATTRIBUTE_UNUSED)
+static int test8(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
 
@@ -372,7 +368,7 @@ static int test8(const void *unused ATTRIBUTE_UNUSED)
  * Run program, some args, inherit all ENV, keep CWD.
  * Only stdin/out/err open
  */
-static int test9(const void *unused ATTRIBUTE_UNUSED)
+static int test9(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     const char* const args[] = { "arg1", "arg2", NULL };
@@ -409,7 +405,7 @@ static int test9(const void *unused ATTRIBUTE_UNUSED)
  * Run program, some args, inherit all ENV, keep CWD.
  * Only stdin/out/err open
  */
-static int test10(const void *unused ATTRIBUTE_UNUSED)
+static int test10(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     const char *const args[] = {
@@ -433,7 +429,7 @@ static int test10(const void *unused ATTRIBUTE_UNUSED)
  * Run program, some args, inherit all ENV, keep CWD.
  * Only stdin/out/err open
  */
-static int test11(const void *unused ATTRIBUTE_UNUSED)
+static int test11(const void *unused G_GNUC_UNUSED)
 {
     const char *args[] = {
         abs_builddir "/commandhelper",
@@ -456,7 +452,7 @@ static int test11(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit all ENV, keep CWD.
  * Only stdin/out/err open. Set stdin data
  */
-static int test12(const void *unused ATTRIBUTE_UNUSED)
+static int test12(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
 
@@ -477,7 +473,7 @@ static int test12(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit all ENV, keep CWD.
  * Only stdin/out/err open. Set stdin data
  */
-static int test13(const void *unused ATTRIBUTE_UNUSED)
+static int test13(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     char *outactual = NULL;
@@ -516,7 +512,7 @@ static int test13(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit all ENV, keep CWD.
  * Only stdin/out/err open. Set stdin data
  */
-static int test14(const void *unused ATTRIBUTE_UNUSED)
+static int test14(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     char *outactual = NULL;
@@ -589,14 +585,13 @@ static int test14(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit all ENV, change CWD.
  * Only stdin/out/err open
  */
-static int test15(const void *unused ATTRIBUTE_UNUSED)
+static int test15(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     char *cwd = NULL;
     int ret = -1;
 
-    if (virAsprintf(&cwd, "%s/commanddata", abs_srcdir) < 0)
-        goto cleanup;
+    cwd = g_strdup_printf("%s/commanddata", abs_srcdir);
     virCommandSetWorkingDirectory(cmd, cwd);
     virCommandSetUmask(cmd, 002);
 
@@ -617,7 +612,7 @@ static int test15(const void *unused ATTRIBUTE_UNUSED)
 /*
  * Don't run program; rather, log what would be run.
  */
-static int test16(const void *unused ATTRIBUTE_UNUSED)
+static int test16(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew("true");
     char *outactual = NULL;
@@ -636,12 +631,12 @@ static int test16(const void *unused ATTRIBUTE_UNUSED)
     }
     if ((fd = open(abs_builddir "/commandhelper.log",
                    O_CREAT | O_TRUNC | O_WRONLY, 0600)) < 0) {
-        printf("Cannot open log file: %s\n", strerror(errno));
+        printf("Cannot open log file: %s\n", g_strerror(errno));
         goto cleanup;
     }
     virCommandWriteArgLog(cmd, fd);
     if (VIR_CLOSE(fd) < 0) {
-        printf("Cannot close log file: %s\n", strerror(errno));
+        printf("Cannot close log file: %s\n", g_strerror(errno));
         goto cleanup;
     }
 
@@ -662,7 +657,7 @@ static int test16(const void *unused ATTRIBUTE_UNUSED)
 /*
  * Test string handling when no output is present.
  */
-static int test17(const void *unused ATTRIBUTE_UNUSED)
+static int test17(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew("true");
     int ret = -1;
@@ -686,10 +681,7 @@ static int test17(const void *unused ATTRIBUTE_UNUSED)
         goto cleanup;
     }
     VIR_FREE(outbuf);
-    if (VIR_STRDUP(outbuf, "should not be leaked") < 0) {
-        puts("test framework failure");
-        goto cleanup;
-    }
+    outbuf = g_strdup("should not be leaked");
 
     virCommandSetErrorBuffer(cmd, &errbuf);
     if (errbuf != NULL) {
@@ -718,7 +710,7 @@ static int test17(const void *unused ATTRIBUTE_UNUSED)
 /*
  * Run long-running daemon, to ensure no hang.
  */
-static int test18(const void *unused ATTRIBUTE_UNUSED)
+static int test18(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNewArgList("sleep", "100", NULL);
     char *pidfile = virPidFileBuildPath(abs_builddir, "commandhelper");
@@ -751,7 +743,7 @@ static int test18(const void *unused ATTRIBUTE_UNUSED)
     }
 
     while (kill(pid, SIGINT) != -1)
-        usleep(100*1000);
+        g_usleep(100*1000);
 
     ret = 0;
 
@@ -766,7 +758,7 @@ static int test18(const void *unused ATTRIBUTE_UNUSED)
 /*
  * Asynchronously run long-running daemon, to ensure no hang.
  */
-static int test19(const void *unused ATTRIBUTE_UNUSED)
+static int test19(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNewArgList("sleep", "100", NULL);
     pid_t pid;
@@ -803,7 +795,7 @@ static int test19(const void *unused ATTRIBUTE_UNUSED)
  * Run program, no args, inherit all ENV, keep CWD.
  * Ignore huge stdin data, to provoke SIGPIPE or EPIPE in parent.
  */
-static int test20(const void *unused ATTRIBUTE_UNUSED)
+static int test20(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNewArgList(abs_builddir "/commandhelper",
                                              "--close-stdin", NULL);
@@ -818,8 +810,7 @@ static int test20(const void *unused ATTRIBUTE_UNUSED)
 
     sigaction(SIGPIPE, &sig_action, NULL);
 
-    if (virAsprintf(&buf, "1\n%100000d\n", 2) < 0)
-        goto cleanup;
+    buf = g_strdup_printf("1\n%100000d\n", 2);
     virCommandSetInputBuffer(cmd, buf);
 
     if (virCommandRun(cmd, NULL) < 0) {
@@ -846,7 +837,7 @@ static const char *const newenv[] = {
     NULL
 };
 
-static int test21(const void *unused ATTRIBUTE_UNUSED)
+static int test21(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     int ret = -1;
@@ -894,7 +885,7 @@ static int test21(const void *unused ATTRIBUTE_UNUSED)
 }
 
 static int
-test22(const void *unused ATTRIBUTE_UNUSED)
+test22(const void *unused G_GNUC_UNUSED)
 {
     int ret = -1;
     virCommandPtr cmd;
@@ -947,17 +938,16 @@ test22(const void *unused ATTRIBUTE_UNUSED)
 
 
 static int
-test23(const void *unused ATTRIBUTE_UNUSED)
+test23(const void *unused G_GNUC_UNUSED)
 {
     /* Not strictly a virCommand test, but this is the easiest place
      * to test this lower-level interface.  It takes a double fork to
      * test virProcessExitWithStatus.  */
-    int ret = -1;
     int status = -1;
     pid_t pid;
 
     if ((pid = virFork()) < 0)
-        goto cleanup;
+        return -1;
     if (pid == 0) {
         if ((pid = virFork()) < 0)
             _exit(EXIT_FAILURE);
@@ -970,14 +960,14 @@ test23(const void *unused ATTRIBUTE_UNUSED)
     }
 
     if (virProcessWait(pid, &status, true) < 0)
-        goto cleanup;
+        return -1;
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 42) {
         printf("Unexpected status %d\n", status);
-        goto cleanup;
+        return -1;
     }
 
     if ((pid = virFork()) < 0)
-        goto cleanup;
+        return -1;
     if (pid == 0) {
         if ((pid = virFork()) < 0)
             _exit(EXIT_FAILURE);
@@ -992,18 +982,16 @@ test23(const void *unused ATTRIBUTE_UNUSED)
     }
 
     if (virProcessWait(pid, &status, true) < 0)
-        goto cleanup;
+        return -1;
     if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL) {
         printf("Unexpected status %d\n", status);
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
-static int test25(const void *unused ATTRIBUTE_UNUSED)
+static int test25(const void *unused G_GNUC_UNUSED)
 {
     int ret = -1;
     int pipeFD[2] = { -1, -1};
@@ -1052,7 +1040,7 @@ static int test25(const void *unused ATTRIBUTE_UNUSED)
                 goto cleanup;
             }
 
-            usleep(10 * 1000);
+            g_usleep(10 * 1000);
         } else {
             break;
         }
@@ -1081,7 +1069,7 @@ static int test25(const void *unused ATTRIBUTE_UNUSED)
 /*
  * Don't run program; rather, log what would be run.
  */
-static int test26(const void *unused ATTRIBUTE_UNUSED)
+static int test26(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew("true");
     char *outactual = NULL;
@@ -1116,12 +1104,12 @@ static int test26(const void *unused ATTRIBUTE_UNUSED)
     }
     if ((fd = open(abs_builddir "/commandhelper.log",
                    O_CREAT | O_TRUNC | O_WRONLY, 0600)) < 0) {
-        printf("Cannot open log file: %s\n", strerror(errno));
+        printf("Cannot open log file: %s\n", g_strerror(errno));
         goto cleanup;
     }
     virCommandWriteArgLog(cmd, fd);
     if (VIR_CLOSE(fd) < 0) {
-        printf("Cannot close log file: %s\n", strerror(errno));
+        printf("Cannot close log file: %s\n", g_strerror(errno));
         goto cleanup;
     }
 
@@ -1139,7 +1127,7 @@ static int test26(const void *unused ATTRIBUTE_UNUSED)
     return ret;
 }
 
-static int test27(const void *unused ATTRIBUTE_UNUSED)
+static int test27(const void *unused G_GNUC_UNUSED)
 {
     virCommandPtr cmd = virCommandNew(abs_builddir "/commandhelper");
     int pipe1[2];
@@ -1177,16 +1165,13 @@ static int test27(const void *unused ATTRIBUTE_UNUSED)
     buffer2[buflen - 2] = '\n';
     buffer2[buflen - 1] = 0;
 
-    if (virAsprintf(&outexpect, TEST27_OUTEXPECT_TEMP,
-                    buffer0, buffer1, buffer2) < 0 ||
-        virAsprintf(&errexpect, TEST27_ERREXPECT_TEMP,
-                    buffer0, buffer1, buffer2) < 0) {
-        printf("Could not virAsprintf expected output\n");
-        goto cleanup;
-    }
+    outexpect = g_strdup_printf(TEST27_OUTEXPECT_TEMP,
+                                buffer0, buffer1, buffer2);
+    errexpect = g_strdup_printf(TEST27_ERREXPECT_TEMP,
+                                buffer0, buffer1, buffer2);
 
     if (pipe(pipe1) < 0 || pipe(pipe2) < 0) {
-        printf("Could not create pipe: %s\n", strerror(errno));
+        printf("Could not create pipe: %s\n", g_strerror(errno));
         goto cleanup;
     }
 
@@ -1277,8 +1262,8 @@ static void virCommandThreadWorker(void *opaque)
 }
 
 static void
-virCommandTestFreeTimer(int timer ATTRIBUTE_UNUSED,
-                        void *opaque ATTRIBUTE_UNUSED)
+virCommandTestFreeTimer(int timer G_GNUC_UNUSED,
+                        void *opaque G_GNUC_UNUSED)
 {
     /* nothing to be done here */
 }
@@ -1291,9 +1276,6 @@ mymain(void)
     virCommandTestDataPtr test = NULL;
     int timer = -1;
     int virinitret;
-
-    if (virThreadInitialize() < 0)
-        return EXIT_FAILURE;
 
     if (chdir("/tmp") < 0)
         return EXIT_FAILURE;

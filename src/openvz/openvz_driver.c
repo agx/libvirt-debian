@@ -110,57 +110,6 @@ openvzDomObjFromDomain(struct openvz_driver *driver,
 }
 
 
-static int
-openvzDomainDefPostParse(virDomainDefPtr def,
-                         virCapsPtr caps ATTRIBUTE_UNUSED,
-                         unsigned int parseFlags ATTRIBUTE_UNUSED,
-                         void *opaque ATTRIBUTE_UNUSED,
-                         void *parseOpaque ATTRIBUTE_UNUSED)
-{
-    /* fill the init path */
-    if (def->os.type == VIR_DOMAIN_OSTYPE_EXE && !def->os.init) {
-        if (VIR_STRDUP(def->os.init, "/sbin/init") < 0)
-            return -1;
-    }
-
-    return 0;
-}
-
-
-static int
-openvzDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
-                               const virDomainDef *def ATTRIBUTE_UNUSED,
-                               virCapsPtr caps ATTRIBUTE_UNUSED,
-                               unsigned int parseFlags ATTRIBUTE_UNUSED,
-                               void *opaque ATTRIBUTE_UNUSED,
-                               void *parseOpaque ATTRIBUTE_UNUSED)
-{
-    if (dev->type == VIR_DOMAIN_DEVICE_CHR &&
-        dev->data.chr->deviceType == VIR_DOMAIN_CHR_DEVICE_TYPE_CONSOLE &&
-        dev->data.chr->targetType == VIR_DOMAIN_CHR_CONSOLE_TARGET_TYPE_NONE)
-        dev->data.chr->targetType = VIR_DOMAIN_CHR_CONSOLE_TARGET_TYPE_OPENVZ;
-
-    /* forbid capabilities mode hostdev in this kind of hypervisor */
-    if (dev->type == VIR_DOMAIN_DEVICE_HOSTDEV &&
-        dev->data.hostdev->mode == VIR_DOMAIN_HOSTDEV_MODE_CAPABILITIES) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                       _("hostdev mode 'capabilities' is not "
-                         "supported in %s"),
-                       virDomainVirtTypeToString(def->virtType));
-        return -1;
-    }
-
-    return 0;
-}
-
-
-virDomainDefParserConfig openvzDomainDefParserConfig = {
-    .domainPostParseCallback = openvzDomainDefPostParse,
-    .devicesPostParseCallback = openvzDomainDeviceDefPostParse,
-    .features = VIR_DOMAIN_DEF_FEATURE_NAME_SLASH,
-};
-
-
 /* generate arguments to create OpenVZ container
    return -1 - error
            0 - OK
@@ -358,7 +307,7 @@ static int openvzConnectGetVersion(virConnectPtr conn, unsigned long *version)
 }
 
 
-static char *openvzConnectGetHostname(virConnectPtr conn ATTRIBUTE_UNUSED)
+static char *openvzConnectGetHostname(virConnectPtr conn G_GNUC_UNUSED)
 {
     return virGetHostname();
 }
@@ -373,7 +322,7 @@ static char *openvzDomainGetOSType(virDomainPtr dom)
     if (!(vm = openvzDomObjFromDomain(driver, dom->uuid)))
         return NULL;
 
-    ignore_value(VIR_STRDUP(ret, virDomainOSTypeToString(vm->def->os.type)));
+    ret = g_strdup(virDomainOSTypeToString(vm->def->os.type));
 
     virDomainObjEndAPI(&vm);
     return ret;
@@ -509,7 +458,7 @@ static int openvzDomainIsPersistent(virDomainPtr dom)
     return ret;
 }
 
-static int openvzDomainIsUpdated(virDomainPtr dom ATTRIBUTE_UNUSED)
+static int openvzDomainIsUpdated(virDomainPtr dom G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -524,7 +473,7 @@ static char *openvzDomainGetXMLDesc(virDomainPtr dom, unsigned int flags) {
     if (!(vm = openvzDomObjFromDomain(driver, dom->uuid)))
         return NULL;
 
-    ret = virDomainDefFormat(vm->def, driver->caps,
+    ret = virDomainDefFormat(vm->def, driver->xmlopt,
                              virDomainDefFormatConvertXMLFlags(flags));
 
     virDomainObjEndAPI(&vm);
@@ -704,7 +653,7 @@ openvzGenerateVethName(int veid, char *dev_name_ve)
 
     if (sscanf(dev_name_ve, "%*[^0-9]%d", &ifNo) != 1)
         return NULL;
-    ignore_value(virAsprintf(&ret, "veth%d.%d.", veid, ifNo));
+    ret = g_strdup_printf("veth%d.%d.", veid, ifNo);
     return ret;
 }
 
@@ -716,7 +665,7 @@ openvzGenerateContainerVethName(int veid)
 
     /* try to get line "^NETIF=..." from config */
     if (openvzReadVPSConfigParam(veid, "NETIF", &temp) <= 0) {
-        ignore_value(VIR_STRDUP(name, "eth0"));
+        name = g_strdup("eth0");
     } else {
         char *saveptr = NULL;
         char *s;
@@ -731,7 +680,7 @@ openvzGenerateContainerVethName(int veid)
         }
 
         /* set new name */
-        ignore_value(virAsprintf(&name, "eth%d", max + 1));
+        name = g_strdup_printf("eth%d", max + 1);
     }
 
     VIR_FREE(temp);
@@ -780,8 +729,7 @@ openvzDomainSetNetwork(virConnectPtr conn, const char *vpsid,
         /* if net is ethernet and the user has specified guest interface name,
          * let's use it; otherwise generate a new one */
         if (net->ifname_guest) {
-            if (VIR_STRDUP(guest_ifname, net->ifname_guest) < 0)
-                goto cleanup;
+            guest_ifname = g_strdup(net->ifname_guest);
         } else {
             guest_ifname = openvzGenerateContainerVethName(veid);
             if (guest_ifname == NULL) {
@@ -910,7 +858,7 @@ openvzDomainDefineXMLFlags(virConnectPtr conn, const char *xml, unsigned int fla
         parse_flags |= VIR_DOMAIN_DEF_PARSE_VALIDATE_SCHEMA;
 
     openvzDriverLock(driver);
-    if ((vmdef = virDomainDefParseString(xml, driver->caps, driver->xmlopt,
+    if ((vmdef = virDomainDefParseString(xml, driver->xmlopt,
                                          NULL, parse_flags)) == NULL)
         goto cleanup;
 
@@ -1000,7 +948,7 @@ openvzDomainCreateXML(virConnectPtr conn, const char *xml,
         parse_flags |= VIR_DOMAIN_DEF_PARSE_VALIDATE_SCHEMA;
 
     openvzDriverLock(driver);
-    if ((vmdef = virDomainDefParseString(xml, driver->caps, driver->xmlopt,
+    if ((vmdef = virDomainDefParseString(xml, driver->xmlopt,
                                          NULL, parse_flags)) == NULL)
         goto cleanup;
 
@@ -1209,7 +1157,7 @@ openvzDomainGetAutostart(virDomainPtr dom, int *autostart)
     return ret;
 }
 
-static int openvzConnectGetMaxVcpus(virConnectPtr conn ATTRIBUTE_UNUSED,
+static int openvzConnectGetMaxVcpus(virConnectPtr conn G_GNUC_UNUSED,
                                     const char *type)
 {
     if (type == NULL || STRCASEEQ(type, "openvz"))
@@ -1221,7 +1169,7 @@ static int openvzConnectGetMaxVcpus(virConnectPtr conn ATTRIBUTE_UNUSED,
 }
 
 static int
-openvzDomainGetVcpusFlags(virDomainPtr dom ATTRIBUTE_UNUSED,
+openvzDomainGetVcpusFlags(virDomainPtr dom G_GNUC_UNUSED,
                           unsigned int flags)
 {
     if (flags != (VIR_DOMAIN_AFFECT_LIVE | VIR_DOMAIN_VCPU_MAXIMUM)) {
@@ -1251,7 +1199,7 @@ static int openvzDomainSetVcpusInternal(virDomainObjPtr vm,
     if (pcpus > 0 && pcpus < nvcpus)
         nvcpus = pcpus;
 
-    snprintf(str_vcpus, sizeof(str_vcpus), "%d", nvcpus);
+    g_snprintf(str_vcpus, sizeof(str_vcpus), "%d", nvcpus);
 
     openvzSetProgramSentinal(prog, vm->def->name);
     if (virRun(prog, NULL) < 0)
@@ -1317,13 +1265,14 @@ openvzConnectURIProbe(char **uri)
     if (access("/proc/vz", W_OK) < 0)
         return 0;
 
-    return VIR_STRDUP(*uri, "openvz:///system");
+    *uri = g_strdup("openvz:///system");
+    return 1;
 }
 
 
 static virDrvOpenStatus openvzConnectOpen(virConnectPtr conn,
-                                          virConnectAuthPtr auth ATTRIBUTE_UNUSED,
-                                          virConfPtr conf ATTRIBUTE_UNUSED,
+                                          virConnectAuthPtr auth G_GNUC_UNUSED,
+                                          virConfPtr conf G_GNUC_UNUSED,
                                           unsigned int flags)
 {
     struct openvz_driver *driver;
@@ -1362,8 +1311,7 @@ static virDrvOpenStatus openvzConnectOpen(virConnectPtr conn,
     if (!(driver->caps = openvzCapsInit()))
         goto cleanup;
 
-    if (!(driver->xmlopt = virDomainXMLOptionNew(&openvzDomainDefParserConfig,
-                                                 NULL, NULL, NULL, NULL)))
+    if (!(driver->xmlopt = openvzXMLOption(driver)))
         goto cleanup;
 
     if (openvzLoadDomains(driver) < 0)
@@ -1391,24 +1339,24 @@ static int openvzConnectClose(virConnectPtr conn)
     return 0;
 }
 
-static const char *openvzConnectGetType(virConnectPtr conn ATTRIBUTE_UNUSED) {
+static const char *openvzConnectGetType(virConnectPtr conn G_GNUC_UNUSED) {
     return "OpenVZ";
 }
 
-static int openvzConnectIsEncrypted(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int openvzConnectIsEncrypted(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* Encryption is not relevant / applicable to way we talk to openvz */
     return 0;
 }
 
-static int openvzConnectIsSecure(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int openvzConnectIsSecure(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* We run CLI tools directly so this is secure */
     return 1;
 }
 
 static int
-openvzConnectIsAlive(virConnectPtr conn ATTRIBUTE_UNUSED)
+openvzConnectIsAlive(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 1;
 }
@@ -1424,7 +1372,7 @@ static char *openvzConnectGetCapabilities(virConnectPtr conn) {
     return ret;
 }
 
-static int openvzConnectListDomains(virConnectPtr conn ATTRIBUTE_UNUSED,
+static int openvzConnectListDomains(virConnectPtr conn G_GNUC_UNUSED,
                                     int *ids, int nids)
 {
     int got = 0;
@@ -1480,7 +1428,7 @@ static int openvzConnectNumOfDomains(virConnectPtr conn)
     return n;
 }
 
-static int openvzConnectListDefinedDomains(virConnectPtr conn ATTRIBUTE_UNUSED,
+static int openvzConnectListDefinedDomains(virConnectPtr conn G_GNUC_UNUSED,
                                            char **const names, int nnames) {
     int got = 0;
     int veid, outfd = -1, ret;
@@ -1505,9 +1453,8 @@ static int openvzConnectListDefinedDomains(virConnectPtr conn ATTRIBUTE_UNUSED,
                            _("Could not parse VPS ID %s"), buf);
             continue;
         }
-        snprintf(vpsname, sizeof(vpsname), "%d", veid);
-        if (VIR_STRDUP(names[got], vpsname) < 0)
-            goto out;
+        g_snprintf(vpsname, sizeof(vpsname), "%d", veid);
+        names[got] = g_strdup(vpsname);
         got ++;
     }
 
@@ -1603,16 +1550,13 @@ openvzDomainSetMemoryInternal(virDomainObjPtr vm,
     };
 
     /* memory has to be changed its format from kbyte to byte */
-    snprintf(str_mem, sizeof(str_mem), "%llu", mem * 1024);
+    g_snprintf(str_mem, sizeof(str_mem), "%llu", mem * 1024);
 
     openvzSetProgramSentinal(prog, vm->def->name);
     if (virRun(prog, NULL) < 0)
-        goto cleanup;
+        return -1;
 
     return 0;
-
- cleanup:
-    return -1;
 }
 
 
@@ -1694,7 +1638,6 @@ openvzDomainGetMemoryParameters(virDomainPtr domain,
                                 unsigned int flags)
 {
     size_t i;
-    int result = -1;
     const char *name;
     long kb_per_pages;
     unsigned long long barrier, limit, val;
@@ -1703,7 +1646,7 @@ openvzDomainGetMemoryParameters(virDomainPtr domain,
 
     kb_per_pages = openvzKBPerPages();
     if (kb_per_pages < 0)
-        goto cleanup;
+        return -1;
 
     if (*nparams == 0) {
         *nparams = OPENVZ_NB_MEM_PARAM;
@@ -1717,44 +1660,42 @@ openvzDomainGetMemoryParameters(virDomainPtr domain,
         case 0:
             name = "privvmpages";
             if (openvzDomainGetBarrierLimit(domain, name, &barrier, &limit) < 0)
-                goto cleanup;
+                return -1;
 
             val = (limit == LONG_MAX) ? VIR_DOMAIN_MEMORY_PARAM_UNLIMITED : limit * kb_per_pages;
             if (virTypedParameterAssign(param, VIR_DOMAIN_MEMORY_HARD_LIMIT,
                                         VIR_TYPED_PARAM_ULLONG, val) < 0)
-                goto cleanup;
+                return -1;
             break;
 
         case 1:
             name = "privvmpages";
             if (openvzDomainGetBarrierLimit(domain, name, &barrier, &limit) < 0)
-                goto cleanup;
+                return -1;
 
             val = (barrier == LONG_MAX) ? VIR_DOMAIN_MEMORY_PARAM_UNLIMITED : barrier * kb_per_pages;
             if (virTypedParameterAssign(param, VIR_DOMAIN_MEMORY_SOFT_LIMIT,
                                         VIR_TYPED_PARAM_ULLONG, val) < 0)
-                goto cleanup;
+                return -1;
             break;
 
         case 2:
             name = "vmguarpages";
             if (openvzDomainGetBarrierLimit(domain, name, &barrier, &limit) < 0)
-                goto cleanup;
+                return -1;
 
             val = (barrier == LONG_MAX) ? 0ull : barrier * kb_per_pages;
             if (virTypedParameterAssign(param, VIR_DOMAIN_MEMORY_MIN_GUARANTEE,
                                         VIR_TYPED_PARAM_ULLONG, val) < 0)
-                goto cleanup;
+                return -1;
             break;
         }
     }
 
     if (*nparams > OPENVZ_NB_MEM_PARAM)
         *nparams = OPENVZ_NB_MEM_PARAM;
-    result = 0;
 
- cleanup:
-    return result;
+    return 0;
 }
 
 
@@ -1765,12 +1706,11 @@ openvzDomainSetMemoryParameters(virDomainPtr domain,
                                 unsigned int flags)
 {
     size_t i;
-    int result = -1;
     long kb_per_pages;
 
     kb_per_pages = openvzKBPerPages();
     if (kb_per_pages < 0)
-        goto cleanup;
+        return -1;
 
     virCheckFlags(0, -1);
     if (virTypedParamsValidate(params, nparams,
@@ -1790,29 +1730,28 @@ openvzDomainSetMemoryParameters(virDomainPtr domain,
         if (STREQ(param->field, VIR_DOMAIN_MEMORY_HARD_LIMIT)) {
             if (openvzDomainGetBarrierLimit(domain, "privvmpages",
                                             &barrier, &limit) < 0)
-                goto cleanup;
+                return -1;
             limit = params[i].value.ul / kb_per_pages;
             if (openvzDomainSetBarrierLimit(domain, "privvmpages",
                                             barrier, limit) < 0)
-                goto cleanup;
+                return -1;
         } else if (STREQ(param->field, VIR_DOMAIN_MEMORY_SOFT_LIMIT)) {
             if (openvzDomainGetBarrierLimit(domain, "privvmpages",
                                             &barrier, &limit) < 0)
-                goto cleanup;
+                return -1;
             barrier = params[i].value.ul / kb_per_pages;
             if (openvzDomainSetBarrierLimit(domain, "privvmpages",
                                             barrier, limit) < 0)
-                goto cleanup;
+                return -1;
         } else if (STREQ(param->field, VIR_DOMAIN_MEMORY_MIN_GUARANTEE)) {
             barrier = params[i].value.ul / kb_per_pages;
             if (openvzDomainSetBarrierLimit(domain, "vmguarpages",
                                             barrier, LONG_MAX) < 0)
-                goto cleanup;
+                return -1;
         }
     }
-    result = 0;
- cleanup:
-    return result;
+
+    return 0;
 }
 
 
@@ -1962,7 +1901,7 @@ openvzDomainUpdateDeviceFlags(virDomainPtr dom, const char *xml,
     if (!(def = virDomainObjGetOneDef(vm, flags)))
         goto cleanup;
 
-    dev = virDomainDeviceDefParse(xml, def, driver->caps, driver->xmlopt,
+    dev = virDomainDeviceDefParse(xml, def, driver->xmlopt, NULL,
                                   VIR_DOMAIN_DEF_PARSE_INACTIVE);
     if (!dev)
         goto cleanup;
@@ -2003,7 +1942,7 @@ openvzConnectListAllDomains(virConnectPtr conn,
 
 
 static int
-openvzNodeGetInfo(virConnectPtr conn ATTRIBUTE_UNUSED,
+openvzNodeGetInfo(virConnectPtr conn G_GNUC_UNUSED,
                   virNodeInfoPtr nodeinfo)
 {
     return virCapabilitiesGetNodeInfo(nodeinfo);
@@ -2011,7 +1950,7 @@ openvzNodeGetInfo(virConnectPtr conn ATTRIBUTE_UNUSED,
 
 
 static int
-openvzNodeGetCPUStats(virConnectPtr conn ATTRIBUTE_UNUSED,
+openvzNodeGetCPUStats(virConnectPtr conn G_GNUC_UNUSED,
                       int cpuNum,
                       virNodeCPUStatsPtr params,
                       int *nparams,
@@ -2022,7 +1961,7 @@ openvzNodeGetCPUStats(virConnectPtr conn ATTRIBUTE_UNUSED,
 
 
 static int
-openvzNodeGetMemoryStats(virConnectPtr conn ATTRIBUTE_UNUSED,
+openvzNodeGetMemoryStats(virConnectPtr conn G_GNUC_UNUSED,
                          int cellNum,
                          virNodeMemoryStatsPtr params,
                          int *nparams,
@@ -2033,7 +1972,7 @@ openvzNodeGetMemoryStats(virConnectPtr conn ATTRIBUTE_UNUSED,
 
 
 static int
-openvzNodeGetCellsFreeMemory(virConnectPtr conn ATTRIBUTE_UNUSED,
+openvzNodeGetCellsFreeMemory(virConnectPtr conn G_GNUC_UNUSED,
                              unsigned long long *freeMems,
                              int startCell,
                              int maxCells)
@@ -2043,7 +1982,7 @@ openvzNodeGetCellsFreeMemory(virConnectPtr conn ATTRIBUTE_UNUSED,
 
 
 static unsigned long long
-openvzNodeGetFreeMemory(virConnectPtr conn ATTRIBUTE_UNUSED)
+openvzNodeGetFreeMemory(virConnectPtr conn G_GNUC_UNUSED)
 {
     unsigned long long freeMem;
     if (virHostMemGetInfo(NULL, &freeMem) < 0)
@@ -2053,7 +1992,7 @@ openvzNodeGetFreeMemory(virConnectPtr conn ATTRIBUTE_UNUSED)
 
 
 static int
-openvzNodeGetCPUMap(virConnectPtr conn ATTRIBUTE_UNUSED,
+openvzNodeGetCPUMap(virConnectPtr conn G_GNUC_UNUSED,
                     unsigned char **cpumap,
                     unsigned int *online,
                     unsigned int flags)
@@ -2063,7 +2002,7 @@ openvzNodeGetCPUMap(virConnectPtr conn ATTRIBUTE_UNUSED,
 
 
 static int
-openvzConnectSupportsFeature(virConnectPtr conn ATTRIBUTE_UNUSED, int feature)
+openvzConnectSupportsFeature(virConnectPtr conn G_GNUC_UNUSED, int feature)
 {
     switch ((virDrvFeature) feature) {
     case VIR_DRV_FEATURE_MIGRATION_PARAMS:
@@ -2092,8 +2031,8 @@ static char *
 openvzDomainMigrateBegin3Params(virDomainPtr domain,
                                 virTypedParameterPtr params,
                                 int nparams,
-                                char **cookieout ATTRIBUTE_UNUSED,
-                                int *cookieoutlen ATTRIBUTE_UNUSED,
+                                char **cookieout G_GNUC_UNUSED,
+                                int *cookieoutlen G_GNUC_UNUSED,
                                 unsigned int flags)
 {
     virDomainObjPtr vm = NULL;
@@ -2120,7 +2059,7 @@ openvzDomainMigrateBegin3Params(virDomainPtr domain,
         goto cleanup;
     }
 
-    xml = virDomainDefFormat(vm->def, driver->caps,
+    xml = virDomainDefFormat(vm->def, driver->xmlopt,
                              VIR_DOMAIN_DEF_FORMAT_SECURE);
 
  cleanup:
@@ -2132,12 +2071,12 @@ static int
 openvzDomainMigratePrepare3Params(virConnectPtr dconn,
                                   virTypedParameterPtr params,
                                   int nparams,
-                                  const char *cookiein ATTRIBUTE_UNUSED,
-                                  int cookieinlen ATTRIBUTE_UNUSED,
-                                  char **cookieout ATTRIBUTE_UNUSED,
-                                  int *cookieoutlen ATTRIBUTE_UNUSED,
+                                  const char *cookiein G_GNUC_UNUSED,
+                                  int cookieinlen G_GNUC_UNUSED,
+                                  char **cookieout G_GNUC_UNUSED,
+                                  int *cookieoutlen G_GNUC_UNUSED,
                                   char **uri_out,
-                                  unsigned int fflags ATTRIBUTE_UNUSED)
+                                  unsigned int fflags G_GNUC_UNUSED)
 {
     struct openvz_driver *driver = dconn->privateData;
     const char *dom_xml = NULL;
@@ -2166,7 +2105,7 @@ openvzDomainMigratePrepare3Params(virConnectPtr dconn,
         goto error;
     }
 
-    if (!(def = virDomainDefParseString(dom_xml, driver->caps, driver->xmlopt,
+    if (!(def = virDomainDefParseString(dom_xml, driver->xmlopt,
                                         NULL,
                                         VIR_DOMAIN_DEF_PARSE_INACTIVE |
                                         VIR_DOMAIN_DEF_PARSE_SKIP_VALIDATE)))
@@ -2210,8 +2149,7 @@ openvzDomainMigratePrepare3Params(virConnectPtr dconn,
         }
     }
 
-    if (virAsprintf(uri_out, "ssh://%s", hostname) < 0)
-        goto error;
+    *uri_out = g_strdup_printf("ssh://%s", hostname);
 
     ret = 0;
     goto done;
@@ -2230,13 +2168,13 @@ openvzDomainMigratePrepare3Params(virConnectPtr dconn,
 
 static int
 openvzDomainMigratePerform3Params(virDomainPtr domain,
-                                  const char *dconnuri ATTRIBUTE_UNUSED,
+                                  const char *dconnuri G_GNUC_UNUSED,
                                   virTypedParameterPtr params,
                                   int nparams,
-                                  const char *cookiein ATTRIBUTE_UNUSED,
-                                  int cookieinlen ATTRIBUTE_UNUSED,
-                                  char **cookieout ATTRIBUTE_UNUSED,
-                                  int *cookieoutlen ATTRIBUTE_UNUSED,
+                                  const char *cookiein G_GNUC_UNUSED,
+                                  int cookieinlen G_GNUC_UNUSED,
+                                  char **cookieout G_GNUC_UNUSED,
+                                  int *cookieoutlen G_GNUC_UNUSED,
                                   unsigned int flags)
 {
     struct openvz_driver *driver = domain->conn->privateData;
@@ -2285,10 +2223,10 @@ static virDomainPtr
 openvzDomainMigrateFinish3Params(virConnectPtr dconn,
                                  virTypedParameterPtr params,
                                  int nparams,
-                                 const char *cookiein ATTRIBUTE_UNUSED,
-                                 int cookieinlen ATTRIBUTE_UNUSED,
-                                 char **cookieout ATTRIBUTE_UNUSED,
-                                 int *cookieoutlen ATTRIBUTE_UNUSED,
+                                 const char *cookiein G_GNUC_UNUSED,
+                                 int cookieinlen G_GNUC_UNUSED,
+                                 char **cookieout G_GNUC_UNUSED,
+                                 int *cookieoutlen G_GNUC_UNUSED,
                                  unsigned int flags,
                                  int cancelled)
 {
@@ -2343,8 +2281,8 @@ static int
 openvzDomainMigrateConfirm3Params(virDomainPtr domain,
                                   virTypedParameterPtr params,
                                   int nparams,
-                                  const char *cookiein ATTRIBUTE_UNUSED,
-                                  int cookieinlen ATTRIBUTE_UNUSED,
+                                  const char *cookiein G_GNUC_UNUSED,
+                                  int cookieinlen G_GNUC_UNUSED,
                                   unsigned int flags,
                                   int cancelled)
 {

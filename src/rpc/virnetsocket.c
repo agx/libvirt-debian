@@ -40,7 +40,6 @@
 # include <sys/ucred.h>
 #endif
 
-#include "c-ctype.h"
 #ifdef WITH_SELINUX
 # include <selinux/selinux.h>
 #endif
@@ -56,7 +55,6 @@
 #include "virprobe.h"
 #include "virprocess.h"
 #include "virstring.h"
-#include "dirname.h"
 #include "passfd.h"
 
 #if WITH_SSH2
@@ -141,9 +139,9 @@ static int virNetSocketForkDaemon(const char *binary)
                                              NULL);
 
     virCommandAddEnvPassCommon(cmd);
-    virCommandAddEnvPassBlockSUID(cmd, "XDG_CACHE_HOME", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "XDG_CONFIG_HOME", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "XDG_RUNTIME_DIR", NULL);
+    virCommandAddEnvPass(cmd, "XDG_CACHE_HOME");
+    virCommandAddEnvPass(cmd, "XDG_CONFIG_HOME");
+    virCommandAddEnvPass(cmd, "XDG_RUNTIME_DIR");
     virCommandClearCaps(cmd);
     virCommandDaemonize(cmd);
     ret = virCommandRun(cmd, NULL);
@@ -159,7 +157,6 @@ int virNetSocketCheckProtocols(bool *hasIPv4,
     struct ifaddrs *ifaddr = NULL, *ifa;
     struct addrinfo hints;
     struct addrinfo *ai = NULL;
-    int ret = -1;
     int gaierr;
 
     memset(&hints, 0, sizeof(hints));
@@ -169,7 +166,7 @@ int virNetSocketCheckProtocols(bool *hasIPv4,
     if (getifaddrs(&ifaddr) < 0) {
         virReportSystemError(errno, "%s",
                              _("Cannot get host interface addresses"));
-        goto cleanup;
+        return -1;
     }
 
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
@@ -197,7 +194,7 @@ int virNetSocketCheckProtocols(bool *hasIPv4,
             virReportError(VIR_ERR_INTERNAL_ERROR,
                            _("Cannot resolve ::1 address: %s"),
                            gai_strerror(gaierr));
-            goto cleanup;
+            return -1;
         }
     }
 
@@ -205,9 +202,7 @@ int virNetSocketCheckProtocols(bool *hasIPv4,
 
     VIR_DEBUG("Protocols: v4 %d v6 %d", *hasIPv4, *hasIPv6);
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 #else
     *hasIPv4 = *hasIPv6 = false;
     virReportError(VIR_ERR_NO_SUPPORT, "%s",
@@ -530,11 +525,11 @@ int virNetSocketNewListenUNIX(const char *path,
     return -1;
 }
 #else
-int virNetSocketNewListenUNIX(const char *path ATTRIBUTE_UNUSED,
-                              mode_t mask ATTRIBUTE_UNUSED,
-                              uid_t user ATTRIBUTE_UNUSED,
-                              gid_t grp ATTRIBUTE_UNUSED,
-                              virNetSocketPtr *retsock ATTRIBUTE_UNUSED)
+int virNetSocketNewListenUNIX(const char *path G_GNUC_UNUSED,
+                              mode_t mask G_GNUC_UNUSED,
+                              uid_t user G_GNUC_UNUSED,
+                              gid_t grp G_GNUC_UNUSED,
+                              virNetSocketPtr *retsock G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s",
                          _("UNIX sockets are not supported on this platform"));
@@ -672,7 +667,7 @@ int virNetSocketNewConnectUNIX(const char *path,
     remoteAddr.len = sizeof(remoteAddr.data.un);
 
     if (spawnDaemon) {
-        const char *binname;
+        g_autofree char *binname = NULL;
 
         if (spawnDaemon && !binary) {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
@@ -681,15 +676,8 @@ int virNetSocketNewConnectUNIX(const char *path,
             goto cleanup;
         }
 
-        if (!(binname = last_component(binary)) || binname[0] == '\0') {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("Cannot determine basename for binary '%s'"),
-                           binary);
-            goto cleanup;
-        }
-
-        if (!(rundir = virGetUserRuntimeDirectory()))
-            goto cleanup;
+        binname = g_path_get_basename(binary);
+        rundir = virGetUserRuntimeDirectory();
 
         if (virFileMakePathWithMode(rundir, 0700) < 0) {
             virReportSystemError(errno,
@@ -698,8 +686,7 @@ int virNetSocketNewConnectUNIX(const char *path,
             goto cleanup;
         }
 
-        if (virAsprintf(&lockpath, "%s/%s.lock", rundir, binname) < 0)
-            goto cleanup;
+        lockpath = g_strdup_printf("%s/%s.lock", rundir, binname);
 
         if ((lockfd = open(lockpath, O_RDWR | O_CREAT, 0600)) < 0 ||
             virSetCloseExec(lockfd) < 0) {
@@ -749,7 +736,7 @@ int virNetSocketNewConnectUNIX(const char *path,
             daemonLaunched = true;
         }
 
-        usleep(10000);
+        g_usleep(10000);
     }
 
     localAddr.len = sizeof(localAddr.data);
@@ -777,10 +764,10 @@ int virNetSocketNewConnectUNIX(const char *path,
     return ret;
 }
 #else
-int virNetSocketNewConnectUNIX(const char *path ATTRIBUTE_UNUSED,
-                               bool spawnDaemon ATTRIBUTE_UNUSED,
-                               const char *binary ATTRIBUTE_UNUSED,
-                               virNetSocketPtr *retsock ATTRIBUTE_UNUSED)
+int virNetSocketNewConnectUNIX(const char *path G_GNUC_UNUSED,
+                               bool spawnDaemon G_GNUC_UNUSED,
+                               const char *binary G_GNUC_UNUSED,
+                               virNetSocketPtr *retsock G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s",
                          _("UNIX sockets are not supported on this platform"));
@@ -845,8 +832,8 @@ int virNetSocketNewConnectCommand(virCommandPtr cmd,
     return -1;
 }
 #else
-int virNetSocketNewConnectCommand(virCommandPtr cmd ATTRIBUTE_UNUSED,
-                                  virNetSocketPtr *retsock ATTRIBUTE_UNUSED)
+int virNetSocketNewConnectCommand(virCommandPtr cmd G_GNUC_UNUSED,
+                                  virNetSocketPtr *retsock G_GNUC_UNUSED)
 {
     virReportSystemError(errno, "%s",
                          _("Tunnelling sockets not supported on this platform"));
@@ -873,11 +860,11 @@ int virNetSocketNewConnectSSH(const char *nodename,
 
     cmd = virCommandNew(binary ? binary : "ssh");
     virCommandAddEnvPassCommon(cmd);
-    virCommandAddEnvPassBlockSUID(cmd, "KRB5CCNAME", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "SSH_AUTH_SOCK", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "SSH_ASKPASS", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "DISPLAY", NULL);
-    virCommandAddEnvPassBlockSUID(cmd, "XAUTHORITY", NULL);
+    virCommandAddEnvPass(cmd, "KRB5CCNAME");
+    virCommandAddEnvPass(cmd, "SSH_AUTH_SOCK");
+    virCommandAddEnvPass(cmd, "SSH_ASKPASS");
+    virCommandAddEnvPass(cmd, "DISPLAY");
+    virCommandAddEnvPass(cmd, "XAUTHORITY");
     virCommandClearCaps(cmd);
 
     if (service)
@@ -898,11 +885,12 @@ int virNetSocketNewConnectSSH(const char *nodename,
     virCommandAddArgList(cmd, "--", nodename, "sh", "-c", NULL);
 
     virBufferEscapeShell(&buf, netcat);
-    if (virBufferCheckError(&buf) < 0) {
-        virCommandFree(cmd);
-        return -1;
-    }
     quoted = virBufferContentAndReset(&buf);
+
+    virBufferEscapeShell(&buf, quoted);
+    VIR_FREE(quoted);
+    quoted = virBufferContentAndReset(&buf);
+
     /*
      * This ugly thing is a shell script to detect availability of
      * the -q option for 'nc': debian and suse based distros need this
@@ -947,9 +935,8 @@ virNetSocketNewConnectLibSSH2(const char *host,
     int ret = -1;
     int portN;
 
-    char *authMethodNext = NULL;
-    char *authMethodsCopy = NULL;
-    char *authMethod;
+    VIR_AUTOSTRINGLIST authMethodList = NULL;
+    char **authMethodNext;
 
     /* port number will be verified while opening the socket */
     if (virStrToLong_i(port, NULL, 10, &portN) < 0) {
@@ -990,12 +977,12 @@ virNetSocketNewConnectLibSSH2(const char *host,
     if (virNetSSHSessionSetChannelCommand(sess, command) != 0)
         goto error;
 
-    if (VIR_STRDUP(authMethodsCopy, authMethods) < 0)
+    if (!(authMethodList = virStringSplit(authMethods, ",", 0)))
         goto error;
 
-    authMethodNext = authMethodsCopy;
+    for (authMethodNext = authMethodList; *authMethodNext; authMethodNext++) {
+        const char *authMethod = *authMethodNext;
 
-    while ((authMethod = strsep(&authMethodNext, ","))) {
         if (STRCASEEQ(authMethod, "keyboard-interactive")) {
             ret = virNetSSHSessionAuthAddKeyboardAuth(sess, username, -1);
         } else if (STRCASEEQ(authMethod, "password")) {
@@ -1032,29 +1019,27 @@ virNetSocketNewConnectLibSSH2(const char *host,
     sock->sshSession = sess;
     *retsock = sock;
 
-    VIR_FREE(authMethodsCopy);
     return 0;
 
  error:
     virObjectUnref(sock);
     virObjectUnref(sess);
-    VIR_FREE(authMethodsCopy);
     return ret;
 }
 #else
 int
-virNetSocketNewConnectLibSSH2(const char *host ATTRIBUTE_UNUSED,
-                              const char *port ATTRIBUTE_UNUSED,
-                              int family ATTRIBUTE_UNUSED,
-                              const char *username ATTRIBUTE_UNUSED,
-                              const char *privkey ATTRIBUTE_UNUSED,
-                              const char *knownHosts ATTRIBUTE_UNUSED,
-                              const char *knownHostsVerify ATTRIBUTE_UNUSED,
-                              const char *authMethods ATTRIBUTE_UNUSED,
-                              const char *command ATTRIBUTE_UNUSED,
-                              virConnectAuthPtr auth ATTRIBUTE_UNUSED,
-                              virURIPtr uri ATTRIBUTE_UNUSED,
-                              virNetSocketPtr *retsock ATTRIBUTE_UNUSED)
+virNetSocketNewConnectLibSSH2(const char *host G_GNUC_UNUSED,
+                              const char *port G_GNUC_UNUSED,
+                              int family G_GNUC_UNUSED,
+                              const char *username G_GNUC_UNUSED,
+                              const char *privkey G_GNUC_UNUSED,
+                              const char *knownHosts G_GNUC_UNUSED,
+                              const char *knownHostsVerify G_GNUC_UNUSED,
+                              const char *authMethods G_GNUC_UNUSED,
+                              const char *command G_GNUC_UNUSED,
+                              virConnectAuthPtr auth G_GNUC_UNUSED,
+                              virURIPtr uri G_GNUC_UNUSED,
+                              virNetSocketPtr *retsock G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s",
                          _("libssh2 transport support was not enabled"));
@@ -1083,9 +1068,8 @@ virNetSocketNewConnectLibssh(const char *host,
     int ret = -1;
     int portN;
 
-    char *authMethodNext = NULL;
-    char *authMethodsCopy = NULL;
-    char *authMethod;
+    VIR_AUTOSTRINGLIST authMethodList = NULL;
+    char **authMethodNext;
 
     /* port number will be verified while opening the socket */
     if (virStrToLong_i(port, NULL, 10, &portN) < 0) {
@@ -1125,12 +1109,12 @@ virNetSocketNewConnectLibssh(const char *host,
     if (virNetLibsshSessionSetChannelCommand(sess, command) != 0)
         goto error;
 
-    if (VIR_STRDUP(authMethodsCopy, authMethods) < 0)
+    if (!(authMethodList = virStringSplit(authMethods, ",", 0)))
         goto error;
 
-    authMethodNext = authMethodsCopy;
+    for (authMethodNext = authMethodList; *authMethodNext; authMethodNext++) {
+        const char *authMethod = *authMethodNext;
 
-    while ((authMethod = strsep(&authMethodNext, ","))) {
         if (STRCASEEQ(authMethod, "keyboard-interactive")) {
             ret = virNetLibsshSessionAuthAddKeyboardAuth(sess, -1);
         } else if (STRCASEEQ(authMethod, "password")) {
@@ -1169,29 +1153,27 @@ virNetSocketNewConnectLibssh(const char *host,
     sock->ownsFd = false;
     *retsock = sock;
 
-    VIR_FREE(authMethodsCopy);
     return 0;
 
  error:
     virObjectUnref(sock);
     virObjectUnref(sess);
-    VIR_FREE(authMethodsCopy);
     return ret;
 }
 #else
 int
-virNetSocketNewConnectLibssh(const char *host ATTRIBUTE_UNUSED,
-                             const char *port ATTRIBUTE_UNUSED,
-                             int family ATTRIBUTE_UNUSED,
-                             const char *username ATTRIBUTE_UNUSED,
-                             const char *privkey ATTRIBUTE_UNUSED,
-                             const char *knownHosts ATTRIBUTE_UNUSED,
-                             const char *knownHostsVerify ATTRIBUTE_UNUSED,
-                             const char *authMethods ATTRIBUTE_UNUSED,
-                             const char *command ATTRIBUTE_UNUSED,
-                             virConnectAuthPtr auth ATTRIBUTE_UNUSED,
-                             virURIPtr uri ATTRIBUTE_UNUSED,
-                             virNetSocketPtr *retsock ATTRIBUTE_UNUSED)
+virNetSocketNewConnectLibssh(const char *host G_GNUC_UNUSED,
+                             const char *port G_GNUC_UNUSED,
+                             int family G_GNUC_UNUSED,
+                             const char *username G_GNUC_UNUSED,
+                             const char *privkey G_GNUC_UNUSED,
+                             const char *knownHosts G_GNUC_UNUSED,
+                             const char *knownHostsVerify G_GNUC_UNUSED,
+                             const char *authMethods G_GNUC_UNUSED,
+                             const char *command G_GNUC_UNUSED,
+                             virConnectAuthPtr auth G_GNUC_UNUSED,
+                             virURIPtr uri G_GNUC_UNUSED,
+                             virNetSocketPtr *retsock G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s",
                          _("libssh transport support was not enabled"));
@@ -1593,11 +1575,11 @@ int virNetSocketGetUNIXIdentity(virNetSocketPtr sock,
     return ret;
 }
 #else
-int virNetSocketGetUNIXIdentity(virNetSocketPtr sock ATTRIBUTE_UNUSED,
-                                uid_t *uid ATTRIBUTE_UNUSED,
-                                gid_t *gid ATTRIBUTE_UNUSED,
-                                pid_t *pid ATTRIBUTE_UNUSED,
-                                unsigned long long *timestamp ATTRIBUTE_UNUSED)
+int virNetSocketGetUNIXIdentity(virNetSocketPtr sock G_GNUC_UNUSED,
+                                uid_t *uid G_GNUC_UNUSED,
+                                gid_t *gid G_GNUC_UNUSED,
+                                pid_t *pid G_GNUC_UNUSED,
+                                unsigned long long *timestamp G_GNUC_UNUSED)
 {
     /* XXX Many more OS support UNIX socket credentials we could port to. See dbus ....*/
     virReportSystemError(ENOSYS, "%s",
@@ -1626,8 +1608,7 @@ int virNetSocketGetSELinuxContext(virNetSocketPtr sock,
         goto cleanup;
     }
 
-    if (VIR_STRDUP(*context, seccon) < 0)
-        goto cleanup;
+    *context = g_strdup(seccon);
 
     ret = 0;
  cleanup:
@@ -1636,7 +1617,7 @@ int virNetSocketGetSELinuxContext(virNetSocketPtr sock,
     return ret;
 }
 #else
-int virNetSocketGetSELinuxContext(virNetSocketPtr sock ATTRIBUTE_UNUSED,
+int virNetSocketGetSELinuxContext(virNetSocketPtr sock G_GNUC_UNUSED,
                                   char **context)
 {
     *context = NULL;
@@ -1716,7 +1697,7 @@ void virNetSocketSetSASLSession(virNetSocketPtr sock,
 #endif
 
 
-bool virNetSocketHasCachedData(virNetSocketPtr sock ATTRIBUTE_UNUSED)
+bool virNetSocketHasCachedData(virNetSocketPtr sock G_GNUC_UNUSED)
 {
     bool hasCached = false;
     virObjectLock(sock);
@@ -1771,7 +1752,7 @@ static ssize_t virNetSocketLibsshWrite(virNetSocketPtr sock,
 }
 #endif
 
-bool virNetSocketHasPendingData(virNetSocketPtr sock ATTRIBUTE_UNUSED)
+bool virNetSocketHasPendingData(virNetSocketPtr sock G_GNUC_UNUSED)
 {
     bool hasPending = false;
     virObjectLock(sock);
@@ -1823,7 +1804,7 @@ static ssize_t virNetSocketReadWire(virNetSocketPtr sock, char *buf, size_t len)
         errout != NULL) {
         size_t elen = strlen(errout);
         /* remove trailing whitespace */
-        while (elen && c_isspace(errout[elen - 1]))
+        while (elen && g_ascii_isspace(errout[elen - 1]))
             errout[--elen] = '\0';
     }
 
@@ -2169,8 +2150,8 @@ int virNetSocketAccept(virNetSocketPtr sock, virNetSocketPtr *clientsock)
 }
 
 
-static void virNetSocketEventHandle(int watch ATTRIBUTE_UNUSED,
-                                    int fd ATTRIBUTE_UNUSED,
+static void virNetSocketEventHandle(int watch G_GNUC_UNUSED,
+                                    int fd G_GNUC_UNUSED,
                                     int events,
                                     void *opaque)
 {

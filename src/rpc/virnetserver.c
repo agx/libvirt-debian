@@ -109,7 +109,6 @@ static int virNetServerProcessMsg(virNetServerPtr srv,
                                   virNetServerProgramPtr prog,
                                   virNetMessagePtr msg)
 {
-    int ret = -1;
     if (!prog) {
         /* Only send back an error for type == CALL. Other
          * message types are not expecting replies, so we
@@ -120,7 +119,7 @@ static int virNetServerProcessMsg(virNetServerPtr srv,
             if (virNetServerProgramUnknownError(client,
                                                 msg,
                                                 &msg->header) < 0)
-                goto cleanup;
+                return -1;
         } else {
             VIR_INFO("Dropping client message, unknown program %d version %d type %d proc %d",
                      msg->header.prog, msg->header.vers,
@@ -129,22 +128,18 @@ static int virNetServerProcessMsg(virNetServerPtr srv,
             virNetMessageClear(msg);
             msg->header.type = VIR_NET_REPLY;
             if (virNetServerClientSendMessage(client, msg) < 0)
-                goto cleanup;
+                return -1;
         }
-        goto done;
+        return 0;
     }
 
     if (virNetServerProgramDispatch(prog,
                                     srv,
                                     client,
                                     msg) < 0)
-        goto cleanup;
+        return -1;
 
- done:
-    ret = 0;
-
- cleanup:
-    return ret;
+    return 0;
 }
 
 static void virNetServerHandleJob(void *jobOpaque, void *opaque)
@@ -171,6 +166,26 @@ static void virNetServerHandleJob(void *jobOpaque, void *opaque)
     VIR_FREE(job);
 }
 
+/**
+ * virNetServerGetProgramLocked:
+ * @srv: server (must be locked by the caller)
+ * @msg: message
+ *
+ * Searches @srv for the right program for a given message @msg.
+ *
+ * Returns a pointer to the server program or NULL if not found.
+ */
+static virNetServerProgramPtr
+virNetServerGetProgramLocked(virNetServerPtr srv,
+                             virNetMessagePtr msg)
+{
+    size_t i;
+    for (i = 0; i < srv->nprograms; i++) {
+        if (virNetServerProgramMatches(srv->programs[i], msg))
+            return srv->programs[i];
+    }
+    return NULL;
+}
 
 static void
 virNetServerDispatchNewMessage(virNetServerClientPtr client,
@@ -180,18 +195,12 @@ virNetServerDispatchNewMessage(virNetServerClientPtr client,
     virNetServerPtr srv = opaque;
     virNetServerProgramPtr prog = NULL;
     unsigned int priority = 0;
-    size_t i;
 
     VIR_DEBUG("server=%p client=%p message=%p",
               srv, client, msg);
 
     virObjectLock(srv);
-    for (i = 0; i < srv->nprograms; i++) {
-        if (virNetServerProgramMatches(srv->programs[i], msg)) {
-            prog = srv->programs[i];
-            break;
-        }
-    }
+    prog = virNetServerGetProgramLocked(srv, msg);
     /* we can unlock @srv since @prog can only become invalid in case
      * of disposing @srv, but let's grab a ref first to ensure nothing
      * disposes of it before we use it. */
@@ -204,7 +213,7 @@ virNetServerDispatchNewMessage(virNetServerClientPtr client,
         if (VIR_ALLOC(job) < 0)
             goto error;
 
-        job->client = client;
+        job->client = virObjectRef(client);
         job->msg = msg;
 
         if (prog) {
@@ -212,7 +221,6 @@ virNetServerDispatchNewMessage(virNetServerClientPtr client,
             priority = virNetServerProgramGetPriority(prog, msg->header.proc);
         }
 
-        virObjectRef(client);
         if (virThreadPoolSendJob(srv->workers, priority, job) < 0) {
             virObjectUnref(client);
             VIR_FREE(job);
@@ -365,8 +373,7 @@ virNetServerPtr virNetServerNew(const char *name,
                                           srv)))
         goto error;
 
-    if (VIR_STRDUP(srv->name, name) < 0)
-        goto error;
+    srv->name = g_strdup(name);
 
     srv->next_client_id = next_client_id;
     srv->nclients_max = max_clients;

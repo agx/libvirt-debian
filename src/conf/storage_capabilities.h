@@ -30,8 +30,11 @@ struct _virStoragePoolCaps {
     virCapsPtr driverCaps;
 };
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virStoragePoolCaps, virObjectUnref);
+
+
 virStoragePoolCapsPtr
 virStoragePoolCapsNew(virCapsPtr driverCaps);
 
 char *
-virStoragePoolCapsFormat(virStoragePoolCapsPtr const caps);
+virStoragePoolCapsFormat(const virStoragePoolCaps *caps);

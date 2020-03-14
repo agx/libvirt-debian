@@ -60,8 +60,11 @@ typedef enum {
     QEMU_BLOCKJOB_TYPE_COPY = VIR_DOMAIN_BLOCK_JOB_TYPE_COPY,
     QEMU_BLOCKJOB_TYPE_COMMIT = VIR_DOMAIN_BLOCK_JOB_TYPE_COMMIT,
     QEMU_BLOCKJOB_TYPE_ACTIVE_COMMIT = VIR_DOMAIN_BLOCK_JOB_TYPE_ACTIVE_COMMIT,
+    QEMU_BLOCKJOB_TYPE_BACKUP = VIR_DOMAIN_BLOCK_JOB_TYPE_BACKUP,
     /* Additional enum values local to qemu */
     QEMU_BLOCKJOB_TYPE_INTERNAL,
+    QEMU_BLOCKJOB_TYPE_CREATE,
+    QEMU_BLOCKJOB_TYPE_BROKEN,
     QEMU_BLOCKJOB_TYPE_LAST
 } qemuBlockJobType;
 verify((int)QEMU_BLOCKJOB_TYPE_INTERNAL == VIR_DOMAIN_BLOCK_JOB_TYPE_LAST);
@@ -84,6 +87,33 @@ struct _qemuBlockJobCommitData {
     virStorageSourcePtr topparent;
     virStorageSourcePtr top;
     virStorageSourcePtr base;
+    bool deleteCommittedImages;
+};
+
+
+typedef struct _qemuBlockJobCreateData qemuBlockJobCreateData;
+typedef qemuBlockJobCreateData *qemuBlockJobDataCreatePtr;
+
+struct _qemuBlockJobCreateData {
+    bool storage;
+    virStorageSourcePtr src;
+};
+
+
+typedef struct _qemuBlockJobCopyData qemuBlockJobCopyData;
+typedef qemuBlockJobCopyData *qemuBlockJobDataCopyPtr;
+
+struct _qemuBlockJobCopyData {
+    bool shallownew;
+};
+
+
+typedef struct _qemuBlockJobBackupData qemuBlockJobBackupData;
+typedef qemuBlockJobBackupData *qemuBlockJobDataBackupPtr;
+
+struct _qemuBlockJobBackupData {
+    virStorageSourcePtr store;
+    char *bitmap;
 };
 
 
@@ -102,6 +132,9 @@ struct _qemuBlockJobData {
     union {
         qemuBlockJobPullData pull;
         qemuBlockJobCommitData commit;
+        qemuBlockJobCreateData create;
+        qemuBlockJobCopyData copy;
+        qemuBlockJobBackupData backup;
     } data;
 
     int type; /* qemuBlockJobType */
@@ -111,9 +144,12 @@ struct _qemuBlockJobData {
 
     int newstate; /* qemuBlockjobState, subset of events emitted by qemu */
 
+    int brokentype; /* the previous type of a broken blockjob qemuBlockJobType */
+
     bool invalidData; /* the job data (except name) is not valid */
     bool reconnected; /* internal field for tracking whether job is live after reconnect to qemu */
 };
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(qemuBlockJobData, virObjectUnref);
 
 int
 qemuBlockJobRegister(qemuBlockJobDataPtr job,
@@ -134,10 +170,6 @@ qemuBlockJobDiskNew(virDomainObjPtr vm,
                     const char *jobname)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(4);
 
-void
-qemuBlockJobDiskRegisterMirror(qemuBlockJobDataPtr job)
-    ATTRIBUTE_NONNULL(1);
-
 qemuBlockJobDataPtr
 qemuBlockJobDiskNewPull(virDomainObjPtr vm,
                         virDomainDiskDefPtr disk,
@@ -148,7 +180,27 @@ qemuBlockJobDiskNewCommit(virDomainObjPtr vm,
                           virDomainDiskDefPtr disk,
                           virStorageSourcePtr topparent,
                           virStorageSourcePtr top,
-                          virStorageSourcePtr base);
+                          virStorageSourcePtr base,
+                          bool delete_imgs);
+
+qemuBlockJobDataPtr
+qemuBlockJobNewCreate(virDomainObjPtr vm,
+                      virStorageSourcePtr src,
+                      virStorageSourcePtr chain,
+                      bool storage);
+
+qemuBlockJobDataPtr
+qemuBlockJobDiskNewCopy(virDomainObjPtr vm,
+                        virDomainDiskDefPtr disk,
+                        virStorageSourcePtr mirror,
+                        bool shallow,
+                        bool reuse);
+
+qemuBlockJobDataPtr
+qemuBlockJobDiskNewBackup(virDomainObjPtr vm,
+                          virDomainDiskDefPtr disk,
+                          virStorageSourcePtr store,
+                          const char *bitmap);
 
 qemuBlockJobDataPtr
 qemuBlockJobDiskGetJob(virDomainDiskDefPtr disk)
@@ -182,7 +234,7 @@ void qemuBlockJobSyncEnd(virDomainObjPtr vm,
 
 qemuBlockJobDataPtr
 qemuBlockJobGetByDisk(virDomainDiskDefPtr disk)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;
 
 qemuBlockjobState
 qemuBlockjobConvertMonitorStatus(int monitorstatus);

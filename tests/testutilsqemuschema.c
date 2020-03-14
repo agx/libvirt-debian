@@ -157,7 +157,7 @@ testQEMUSchemaValidateObjectMember(const char *key,
 
 
 static int
-testQEMUSchemaValidateObjectMergeVariantMember(size_t pos ATTRIBUTE_UNUSED,
+testQEMUSchemaValidateObjectMergeVariantMember(size_t pos G_GNUC_UNUSED,
                                                virJSONValuePtr item,
                                                void *opaque)
 {
@@ -245,9 +245,9 @@ testQEMUSchemaValidateObjectMergeVariant(virJSONValuePtr root,
 
 
 static int
-testQEMUSchemaValidateObjectMandatoryMember(size_t pos ATTRIBUTE_UNUSED,
+testQEMUSchemaValidateObjectMandatoryMember(size_t pos G_GNUC_UNUSED,
                                             virJSONValuePtr item,
-                                            void *opaque ATTRIBUTE_UNUSED)
+                                            void *opaque G_GNUC_UNUSED)
 {
     struct testQEMUSchemaValidateObjectMemberData *data = opaque;
 
@@ -430,7 +430,7 @@ testQEMUSchemaValidateAlternate(virJSONValuePtr obj,
 
     virBufferAddLit(debug, "(\n");
     virBufferAdjustIndent(debug, 3);
-    indent = virBufferGetIndent(debug, false);
+    indent = virBufferGetIndent(debug);
 
     n = virJSONValueArraySize(members);
     for (i = 0; i < n; i++) {
@@ -534,11 +534,11 @@ testQEMUSchemaGetLatest(void)
     virJSONValuePtr schema = NULL;
 
     if (!(capsLatestFile = testQemuGetLatestCapsForArch("x86_64", "replies"))) {
-        VIR_TEST_VERBOSE("failed to find latest caps replies\n");
+        VIR_TEST_VERBOSE("failed to find latest caps replies");
         return NULL;
     }
 
-    VIR_TEST_DEBUG("replies file: '%s'\n", capsLatestFile);
+    VIR_TEST_DEBUG("replies file: '%s'", capsLatestFile);
 
     if (virTestLoadFile(capsLatestFile, &capsLatest) < 0)
         goto cleanup;
@@ -546,7 +546,7 @@ testQEMUSchemaGetLatest(void)
     if (!(schemaReply = strstr(capsLatest, "\"execute\": \"query-qmp-schema\"")) ||
         !(schemaReply = strstr(schemaReply, "\n\n")) ||
         !(end = strstr(schemaReply + 2, "\n\n"))) {
-        VIR_TEST_VERBOSE("failed to find reply to 'query-qmp-schema' in '%s'\n",
+        VIR_TEST_VERBOSE("failed to find reply to 'query-qmp-schema' in '%s'",
                          capsLatestFile);
         goto cleanup;
     }
@@ -555,13 +555,13 @@ testQEMUSchemaGetLatest(void)
     *end = '\0';
 
     if (!(reply = virJSONValueFromString(schemaReply))) {
-        VIR_TEST_VERBOSE("failed to parse 'query-qmp-schema' reply from '%s'\n",
+        VIR_TEST_VERBOSE("failed to parse 'query-qmp-schema' reply from '%s'",
                          capsLatestFile);
         goto cleanup;
     }
 
     if (!(schema = virJSONValueObjectStealArray(reply, "return"))) {
-        VIR_TEST_VERBOSE("missing qapi schema data in reply in '%s'\n",
+        VIR_TEST_VERBOSE("missing qapi schema data in reply in '%s'",
                          capsLatestFile);
         goto cleanup;
     }

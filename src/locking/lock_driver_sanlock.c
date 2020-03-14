@@ -31,7 +31,6 @@
 #include <sanlock_resource.h>
 #include <sanlock_admin.h>
 
-#include "dirname.h"
 #include "lock_driver.h"
 #include "virlog.h"
 #include "virerror.h"
@@ -101,9 +100,9 @@ virLockManagerSanlockError(int err,
 {
     if (err <= -200) {
 #if HAVE_SANLOCK_STRERROR
-        ignore_value(VIR_STRDUP_QUIET(*message, sanlock_strerror(err)));
+        *message = g_strdup(sanlock_strerror(err));
 #else
-        ignore_value(virAsprintfQuiet(message, _("sanlock error %d"), err));
+        *message = g_strdup_printf(_("sanlock error %d"), err);
 #endif
         return true;
     } else {
@@ -119,7 +118,7 @@ static int
 virLockManagerSanlockLoadConfig(virLockManagerSanlockDriverPtr driver,
                                 const char *configFile)
 {
-    virConfPtr conf;
+    g_autoptr(virConf) conf = NULL;
     int ret = -1;
     char *user = NULL;
     char *group = NULL;
@@ -167,7 +166,6 @@ virLockManagerSanlockLoadConfig(virLockManagerSanlockDriverPtr driver,
 
     ret = 0;
  cleanup:
-    virConfFree(conf);
     VIR_FREE(user);
     VIR_FREE(group);
     return ret;
@@ -212,10 +210,8 @@ virLockManagerSanlockSetupLockspace(virLockManagerSanlockDriverPtr driver)
     char *dir = NULL;
     int retries = LOCKSPACE_RETRIES;
 
-    if (virAsprintf(&path, "%s/%s",
-                    driver->autoDiskLeasePath,
-                    VIR_LOCK_MANAGER_SANLOCK_AUTO_DISK_LOCKSPACE) < 0)
-        goto error;
+    path = g_strdup_printf("%s/%s", driver->autoDiskLeasePath,
+                           VIR_LOCK_MANAGER_SANLOCK_AUTO_DISK_LOCKSPACE);
 
     if (virStrcpyStatic(ls.name,
                         VIR_LOCK_MANAGER_SANLOCK_AUTO_DISK_LOCKSPACE) < 0) {
@@ -242,10 +238,7 @@ virLockManagerSanlockSetupLockspace(virLockManagerSanlockDriverPtr driver)
         int perms = 0600;
         VIR_DEBUG("Lockspace %s does not yet exist", path);
 
-        if (!(dir = mdir_name(path))) {
-            virReportOOMError();
-            goto error;
-        }
+        dir = g_path_get_dirname(path);
         if (stat(dir, &st) < 0 || !S_ISDIR(st.st_mode)) {
             virReportError(VIR_ERR_INTERNAL_ERROR,
                            _("Unable to create lockspace %s: parent directory"
@@ -377,7 +370,7 @@ virLockManagerSanlockSetupLockspace(virLockManagerSanlockDriverPtr driver)
 #else
             /* fall back to polling */
             VIR_DEBUG("Sleeping for %dms", LOCKSPACE_SLEEP);
-            usleep(LOCKSPACE_SLEEP * 1000);
+            g_usleep(LOCKSPACE_SLEEP * 1000);
 #endif
             VIR_DEBUG("Retrying to add lockspace (left %d)", retries);
             goto retry;
@@ -441,10 +434,7 @@ static int virLockManagerSanlockInit(unsigned int version,
     driver->io_timeout = 0;
     driver->user = (uid_t) -1;
     driver->group = (gid_t) -1;
-    if (VIR_STRDUP(driver->autoDiskLeasePath, LOCALSTATEDIR "/lib/libvirt/sanlock") < 0) {
-        VIR_FREE(driver);
-        goto error;
-    }
+    driver->autoDiskLeasePath = g_strdup(LOCALSTATEDIR "/lib/libvirt/sanlock");
 
     if (virLockManagerSanlockLoadConfig(driver, configFile) < 0)
         goto error;
@@ -515,8 +505,7 @@ static int virLockManagerSanlockNew(virLockManagerPtr lock,
         if (STREQ(param->key, "uuid")) {
             memcpy(priv->vm_uuid, param->value.uuid, 16);
         } else if (STREQ(param->key, "name")) {
-            if (VIR_STRDUP(priv->vm_name, param->value.str) < 0)
-                goto error;
+            priv->vm_name = g_strdup(param->value.str);
         } else if (STREQ(param->key, "pid")) {
             priv->vm_pid = param->value.iv;
         } else if (STREQ(param->key, "id")) {
@@ -541,10 +530,6 @@ static int virLockManagerSanlockNew(virLockManagerPtr lock,
 
     lock->privateData = priv;
     return 0;
-
- error:
-    VIR_FREE(priv);
-    return -1;
 }
 
 static void virLockManagerSanlockFree(virLockManagerPtr lock)
@@ -625,7 +610,7 @@ virLockManagerSanlockAddDisk(virLockManagerSanlockDriverPtr driver,
                              virLockManagerPtr lock,
                              const char *name,
                              size_t nparams,
-                             virLockManagerParamPtr params ATTRIBUTE_UNUSED,
+                             virLockManagerParamPtr params G_GNUC_UNUSED,
                              bool shared)
 {
     virLockManagerSanlockPrivatePtr priv = lock->privateData;
@@ -654,9 +639,7 @@ virLockManagerSanlockAddDisk(virLockManagerSanlockDriverPtr driver,
         goto cleanup;
     }
 
-    if (virAsprintf(&path, "%s/%s",
-                    driver->autoDiskLeasePath, res->name) < 0)
-        goto cleanup;
+    path = g_strdup_printf("%s/%s", driver->autoDiskLeasePath, res->name);
     if (virStrcpy(res->disks[0].path, path, SANLK_PATH_LEN) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("Lease path '%s' exceeds %d characters"),
@@ -871,9 +854,6 @@ virLockManagerSanlockRegisterKillscript(int sock,
     virBufferEscape(&buf, '\\', "\\ ", "%s",
                     virDomainLockFailureTypeToString(action));
 
-    if (virBufferCheckError(&buf) < 0)
-        goto cleanup;
-
     /* Unfortunately, sanlock_killpath() does not use const for either
      * path or args even though it will just copy them into its own
      * buffers.
@@ -921,10 +901,10 @@ virLockManagerSanlockRegisterKillscript(int sock,
 }
 #else
 static int
-virLockManagerSanlockRegisterKillscript(int sock ATTRIBUTE_UNUSED,
-                                        const char *vmuri ATTRIBUTE_UNUSED,
-                                        const char *uuidstr ATTRIBUTE_UNUSED,
-                                        virDomainLockFailureAction action ATTRIBUTE_UNUSED)
+virLockManagerSanlockRegisterKillscript(int sock G_GNUC_UNUSED,
+                                        const char *vmuri G_GNUC_UNUSED,
+                                        const char *uuidstr G_GNUC_UNUSED,
+                                        virDomainLockFailureAction action G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
                    _("sanlock is too old to support lock failure action"));

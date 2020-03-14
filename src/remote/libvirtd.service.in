@@ -2,9 +2,12 @@
 Description=Virtualization daemon
 Requires=virtlogd.socket
 Requires=virtlockd.socket
-Requires=libvirtd.socket
-Requires=libvirtd-ro.socket
-Requires=libvirtd-admin.socket
+# Use Wants instead of Requires so that users
+# can disable these three .socket units to revert
+# to a traditional non-activation deployment setup
+Wants=libvirtd.socket
+Wants=libvirtd-ro.socket
+Wants=libvirtd-admin.socket
 Wants=systemd-machined.service
 Before=libvirt-guests.service
 After=network.target
@@ -15,17 +18,15 @@ After=local-fs.target
 After=remote-fs.target
 After=systemd-logind.service
 After=systemd-machined.service
+After=xencommons.service
+Conflicts=xendomains.service
 Documentation=man:libvirtd(8)
 Documentation=https://libvirt.org
 
 [Service]
 Type=notify
-EnvironmentFile=-/etc/sysconfig/libvirtd
-# libvirtd.service is set to run on boot so that autostart of
-# VMs can be performed. We don't want it to stick around if
-# unused though, so we set a timeout. The socket activation
-# then ensures it gets started again if anything needs it
-ExecStart=@sbindir@/libvirtd --timeout 120 $LIBVIRTD_ARGS
+EnvironmentFile=-@sysconfdir@/sysconfig/libvirtd
+ExecStart=@sbindir@/libvirtd $LIBVIRTD_ARGS
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=process
 Restart=on-failure

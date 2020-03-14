@@ -31,8 +31,8 @@ struct testClientPriv {
 
 
 static void *
-testClientNew(virNetServerClientPtr client ATTRIBUTE_UNUSED,
-              void *opaque ATTRIBUTE_UNUSED)
+testClientNew(virNetServerClientPtr client G_GNUC_UNUSED,
+              void *opaque G_GNUC_UNUSED)
 {
     struct testClientPriv *priv;
 
@@ -46,7 +46,7 @@ testClientNew(virNetServerClientPtr client ATTRIBUTE_UNUSED,
 
 
 static virJSONValuePtr
-testClientPreExec(virNetServerClientPtr client ATTRIBUTE_UNUSED,
+testClientPreExec(virNetServerClientPtr client G_GNUC_UNUSED,
                   void *data)
 {
     struct testClientPriv *priv = data;
@@ -237,7 +237,7 @@ struct testExecRestartData {
 };
 
 static virNetServerPtr
-testNewServerPostExecRestart(virNetDaemonPtr dmn ATTRIBUTE_UNUSED,
+testNewServerPostExecRestart(virNetDaemonPtr dmn G_GNUC_UNUSED,
                              const char *name,
                              virJSONValuePtr object,
                              void *opaque)
@@ -295,13 +295,11 @@ static int testExecRestart(const void *opaque)
         goto cleanup;
     }
 
-    if (virAsprintf(&infile, "%s/virnetdaemondata/input-data-%s.json",
-                    abs_srcdir, data->jsonfile) < 0)
-        goto cleanup;
+    infile = g_strdup_printf("%s/virnetdaemondata/input-data-%s.json", abs_srcdir,
+                             data->jsonfile);
 
-    if (virAsprintf(&outfile, "%s/virnetdaemondata/output-data-%s.json",
-                    abs_srcdir, data->jsonfile) < 0)
-        goto cleanup;
+    outfile = g_strdup_printf("%s/virnetdaemondata/output-data-%s.json",
+                              abs_srcdir, data->jsonfile);
 
     if (virFileReadAll(infile, 8192, &injsonstr) < 0)
         goto cleanup;
@@ -338,13 +336,13 @@ static int testExecRestart(const void *opaque)
  cleanup:
     if (ret < 0) {
         if (!data->pass) {
-            VIR_TEST_DEBUG("Got expected error: %s\n",
+            VIR_TEST_DEBUG("Got expected error: %s",
                            virGetLastErrorMessage());
             virResetLastError();
             ret = 0;
         }
     } else if (!data->pass) {
-            VIR_TEST_DEBUG("Test should have failed\n");
+            VIR_TEST_DEBUG("Test should have failed");
             ret = -1;
     }
     VIR_FREE(infile);
@@ -416,7 +414,7 @@ mymain(void)
 
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virnetdaemonmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virnetdaemon"))
 #else
 static int
 mymain(void)

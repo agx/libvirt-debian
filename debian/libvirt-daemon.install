@@ -1,4 +1,7 @@
-usr/sbin/*
+usr/sbin/libvirtd
+usr/sbin/virt-sanlock-cleanup
+usr/sbin/virtlockd
+usr/sbin/virtlogd
 usr/lib/libvirt/libvirt_*
 usr/lib/libvirt/libvirt-guests.sh
 usr/lib/*/libvirt/lock-driver/lockd.so
@@ -8,7 +11,16 @@ usr/lib/*/libvirt/connection-driver/libvirt_driver_nodedev.so
 usr/lib/*/libvirt/connection-driver/libvirt_driver_nwfilter.so
 usr/lib/*/libvirt/connection-driver/libvirt_driver_secret.so
 usr/lib/*/libvirt/connection-driver/libvirt_driver_storage.so
-usr/share/augeas/*
+usr/share/augeas/lenses/libvirt_lockd.aug
+usr/share/augeas/lenses/libvirt_sanlock.aug
+usr/share/augeas/lenses/libvirtd.aug
+usr/share/augeas/lenses/virtlockd.aug
+usr/share/augeas/lenses/virtlogd.aug
+usr/share/augeas/lenses/tests/test_libvirt_lockd.aug
+usr/share/augeas/lenses/tests/test_libvirt_sanlock.aug
+usr/share/augeas/lenses/tests/test_libvirtd.aug
+usr/share/augeas/lenses/tests/test_virtlockd.aug
+usr/share/augeas/lenses/tests/test_virtlogd.aug
 usr/share/bash-completion/*
 usr/share/man/man8/*
 usr/lib/*/libvirt/storage-backend/libvirt_storage_backend_disk.so

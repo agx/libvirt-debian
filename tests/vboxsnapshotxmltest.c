@@ -4,7 +4,6 @@
 
 #ifdef WITH_VBOX
 
-# include <regex.h>
 # include "vbox/vbox_snapshot_conf.h"
 
 # define VIR_FROM_THIS VIR_FROM_NONE
@@ -12,7 +11,7 @@
 static const char *testSnapshotXMLVariableLineRegexStr =
         "lastStateChange=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z";
 
-regex_t *testSnapshotXMLVariableLineRegex = NULL;
+GRegex *testSnapshotXMLVariableLineRegex = NULL;
 
 static char *
 testFilterXML(char *xml)
@@ -29,16 +28,10 @@ testFilterXML(char *xml)
     VIR_FREE(xml);
 
     for (xmlLine = xmlLines; *xmlLine; xmlLine++) {
-        if (regexec(testSnapshotXMLVariableLineRegex,
-                    *xmlLine, 0, NULL, 0) == 0)
+        if (g_regex_match(testSnapshotXMLVariableLineRegex, *xmlLine, 0, NULL))
             continue;
 
         virBufferStrcat(&buf, *xmlLine, "\n", NULL);
-    }
-
-    if (virBufferError(&buf)) {
-        virReportOOMError();
-        goto cleanup;
     }
 
     ret = virBufferContentAndReset(&buf);
@@ -58,9 +51,7 @@ testCompareXMLtoXMLFiles(const char *xml)
     int ret = -1;
     virVBoxSnapshotConfMachinePtr machine = NULL;
 
-    if (VIR_STRDUP(pathResult,
-                   abs_builddir "/vboxsnapshotxmldata/testResult.vbox") < 0)
-        return -1;
+    pathResult = g_strdup(abs_builddir "/vboxsnapshotxmldata/testResult.vbox");
 
     if (virFileMakePath(abs_builddir "/vboxsnapshotxmldata") < 0)
         goto cleanup;
@@ -106,9 +97,8 @@ testCompareXMLToXMLHelper(const void *data)
     int result = -1;
     char *xml = NULL;
 
-    if (virAsprintf(&xml, "%s/vboxsnapshotxmldata/%s.vbox",
-                    abs_srcdir, (const char*)data) < 0)
-        return -1;
+    xml = g_strdup_printf("%s/vboxsnapshotxmldata/%s.vbox", abs_srcdir,
+                          (const char *)data);
 
     result = testCompareXMLtoXMLFiles(xml);
 
@@ -120,12 +110,12 @@ static int
 mymain(void)
 {
     int ret = 0;
-    if (VIR_ALLOC(testSnapshotXMLVariableLineRegex) < 0)
-        goto cleanup;
+    g_autoptr(GError) err = NULL;
 
-    if (regcomp(testSnapshotXMLVariableLineRegex,
-                testSnapshotXMLVariableLineRegexStr,
-                REG_EXTENDED | REG_NOSUB) != 0) {
+    testSnapshotXMLVariableLineRegex = g_regex_new(testSnapshotXMLVariableLineRegexStr,
+                                                   0, 0, &err);
+
+    if (!testSnapshotXMLVariableLineRegex) {
         ret = -1;
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                        "failed to compile test regex");
@@ -144,9 +134,7 @@ mymain(void)
     DO_TEST("2disks-3snap-brother");
 
  cleanup:
-    if (testSnapshotXMLVariableLineRegex)
-        regfree(testSnapshotXMLVariableLineRegex);
-    VIR_FREE(testSnapshotXMLVariableLineRegex);
+    g_regex_unref(testSnapshotXMLVariableLineRegex);
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

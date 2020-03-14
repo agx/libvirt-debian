@@ -46,8 +46,8 @@ virNodeDeviceDriverStatePtr driver;
 
 virDrvOpenStatus
 nodeConnectOpen(virConnectPtr conn,
-                virConnectAuthPtr auth ATTRIBUTE_UNUSED,
-                virConfPtr conf ATTRIBUTE_UNUSED,
+                virConnectAuthPtr auth G_GNUC_UNUSED,
+                virConfPtr conf G_GNUC_UNUSED,
                 unsigned int flags)
 {
     virCheckFlags(VIR_CONNECT_RO, VIR_DRV_OPEN_ERROR);
@@ -58,21 +58,10 @@ nodeConnectOpen(virConnectPtr conn,
         return VIR_DRV_OPEN_ERROR;
     }
 
-    if (driver->privileged) {
-        if (STRNEQ(conn->uri->path, "/system")) {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("unexpected nodedev URI path '%s', try nodedev:///system"),
-                           conn->uri->path);
-            return VIR_DRV_OPEN_ERROR;
-        }
-    } else {
-        if (STRNEQ(conn->uri->path, "/session")) {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("unexpected nodedev URI path '%s', try nodedev:///session"),
-                           conn->uri->path);
-            return VIR_DRV_OPEN_ERROR;
-        }
-    }
+    if (!virConnectValidateURIPath(conn->uri->path,
+                                   "nodedev",
+                                   driver->privileged))
+        return VIR_DRV_OPEN_ERROR;
 
     if (virConnectOpenEnsureACL(conn) < 0)
         return VIR_DRV_OPEN_ERROR;
@@ -80,27 +69,27 @@ nodeConnectOpen(virConnectPtr conn,
     return VIR_DRV_OPEN_SUCCESS;
 }
 
-int nodeConnectClose(virConnectPtr conn ATTRIBUTE_UNUSED)
+int nodeConnectClose(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 0;
 }
 
 
-int nodeConnectIsSecure(virConnectPtr conn ATTRIBUTE_UNUSED)
+int nodeConnectIsSecure(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* Trivially secure, since always inside the daemon */
     return 1;
 }
 
 
-int nodeConnectIsEncrypted(virConnectPtr conn ATTRIBUTE_UNUSED)
+int nodeConnectIsEncrypted(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* Not encrypted, but remote driver takes care of that */
     return 0;
 }
 
 
-int nodeConnectIsAlive(virConnectPtr conn ATTRIBUTE_UNUSED)
+int nodeConnectIsAlive(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 1;
 }
@@ -124,8 +113,7 @@ nodeDeviceUpdateDriverName(virNodeDeviceDefPtr def)
 
     VIR_FREE(def->driver);
 
-    if (virAsprintf(&driver_link, "%s/driver", def->sysfs_path) < 0)
-        goto cleanup;
+    driver_link = g_strdup_printf("%s/driver", def->sysfs_path);
 
     /* Some devices don't have an explicit driver, so just return
        without a name */
@@ -141,8 +129,8 @@ nodeDeviceUpdateDriverName(virNodeDeviceDefPtr def)
     }
 
     p = strrchr(devpath, '/');
-    if (p && VIR_STRDUP(def->driver, p + 1) < 0)
-        goto cleanup;
+    if (p)
+        def->driver = g_strdup(p + 1);
     ret = 0;
 
  cleanup:
@@ -153,7 +141,7 @@ nodeDeviceUpdateDriverName(virNodeDeviceDefPtr def)
 #else
 /* XXX: Implement me for non-linux */
 static int
-nodeDeviceUpdateDriverName(virNodeDeviceDefPtr def ATTRIBUTE_UNUSED)
+nodeDeviceUpdateDriverName(virNodeDeviceDefPtr def G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -253,12 +241,8 @@ nodeDeviceLookupByName(virConnectPtr conn,
     if (virNodeDeviceLookupByNameEnsureACL(conn, def) < 0)
         goto cleanup;
 
-    if ((device = virGetNodeDevice(conn, name))) {
-        if (VIR_STRDUP(device->parentName, def->parent) < 0) {
-            virObjectUnref(device);
-            device = NULL;
-        }
-    }
+    if ((device = virGetNodeDevice(conn, name)))
+        device->parentName = g_strdup(def->parent);
 
  cleanup:
     virNodeDeviceObjEndAPI(&obj);
@@ -287,12 +271,8 @@ nodeDeviceLookupSCSIHostByWWN(virConnectPtr conn,
     if (virNodeDeviceLookupSCSIHostByWWNEnsureACL(conn, def) < 0)
         goto cleanup;
 
-    if ((device = virGetNodeDevice(conn, def->name))) {
-        if (VIR_STRDUP(device->parentName, def->parent) < 0) {
-            virObjectUnref(device);
-            device = NULL;
-        }
-    }
+    if ((device = virGetNodeDevice(conn, def->name)))
+        device->parentName = g_strdup(def->parent);
 
  cleanup:
     virNodeDeviceObjEndAPI(&obj);
@@ -346,8 +326,7 @@ nodeDeviceGetParent(virNodeDevicePtr device)
         goto cleanup;
 
     if (def->parent) {
-        if (VIR_STRDUP(ret, def->parent) < 0)
-            goto cleanup;
+        ret = g_strdup(def->parent);
     } else {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        "%s", _("no parent for this device"));
@@ -407,10 +386,8 @@ nodeDeviceListCaps(virNodeDevicePtr device,
     if (ncaps > maxnames)
         ncaps = maxnames;
 
-    for (i = 0; i < ncaps; i++) {
-        if (VIR_STRDUP(names[i], virNodeDevCapTypeToString(list[i])) < 0)
-            goto cleanup;
-    }
+    for (i = 0; i < ncaps; i++)
+        names[i] = g_strdup(virNodeDevCapTypeToString(list[i]));
 
     ret = ncaps;
 
@@ -557,8 +534,7 @@ nodeDeviceDestroy(virNodeDevicePtr device)
      * event which would essentially free the existing @def (obj->def) and
      * replace it with something new, we need to grab the parent field
      * and then find the parent obj in order to manage the vport */
-    if (VIR_STRDUP(parent, def->parent) < 0)
-        goto cleanup;
+    parent = g_strdup(def->parent);
 
     virNodeDeviceObjEndAPI(&obj);
 
@@ -596,13 +572,13 @@ nodeConnectNodeDeviceEventRegisterAny(virConnectPtr conn,
     int callbackID = -1;
 
     if (virConnectNodeDeviceEventRegisterAnyEnsureACL(conn) < 0)
-        goto cleanup;
+        return -1;
 
     if (virNodeDeviceEventStateRegisterID(conn, driver->nodeDeviceEventState,
                                           device, eventID, callback,
                                           opaque, freecb, &callbackID) < 0)
         callbackID = -1;
- cleanup:
+
     return callbackID;
 }
 
@@ -611,20 +587,15 @@ int
 nodeConnectNodeDeviceEventDeregisterAny(virConnectPtr conn,
                                         int callbackID)
 {
-    int ret = -1;
-
     if (virConnectNodeDeviceEventDeregisterAnyEnsureACL(conn) < 0)
-        goto cleanup;
+        return -1;
 
     if (virObjectEventStateDeregisterID(conn,
                                         driver->nodeDeviceEventState,
                                         callbackID, true) < 0)
-        goto cleanup;
+        return -1;
 
-    ret = 0;
-
- cleanup:
-    return ret;
+    return 0;
 }
 
 int

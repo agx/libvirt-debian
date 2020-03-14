@@ -55,7 +55,7 @@ VIR_LOG_INIT("bhyve.bhyve_process");
 
 static void
 bhyveProcessAutoDestroy(virDomainObjPtr vm,
-                        virConnectPtr conn ATTRIBUTE_UNUSED,
+                        virConnectPtr conn G_GNUC_UNUSED,
                         void *opaque)
 {
     bhyveConnPtr driver = opaque;
@@ -86,11 +86,10 @@ bhyveNetCleanup(virDomainObjPtr vm)
     }
 }
 
-static int
+static void
 virBhyveFormatDevMapFile(const char *vm_name, char **fn_out)
 {
-    return virAsprintf(fn_out, "%s/grub_bhyve-%s-device.map", BHYVE_STATE_DIR,
-                       vm_name);
+    *fn_out = g_strdup_printf("%s/grub_bhyve-%s-device.map", BHYVE_STATE_DIR, vm_name);
 }
 
 int
@@ -111,15 +110,8 @@ virBhyveProcessStart(virConnectPtr conn,
     bhyveConnPtr privconn = conn->privateData;
     bhyveDomainObjPrivatePtr priv = vm->privateData;
     int ret = -1, rc;
-    virCapsPtr caps = NULL;
 
-    if (virAsprintf(&logfile, "%s/%s.log",
-                    BHYVE_LOG_DIR, vm->def->name) < 0)
-       return -1;
-
-    caps = bhyveDriverGetCapabilities(privconn);
-    if (!caps)
-        goto cleanup;
+    logfile = g_strdup_printf("%s/%s.log", BHYVE_LOG_DIR, vm->def->name);
 
     if ((logfd = open(logfile, O_WRONLY | O_APPEND | O_CREAT,
                       S_IRUSR | S_IWUSR)) < 0) {
@@ -165,9 +157,7 @@ virBhyveProcessStart(virConnectPtr conn,
          * domain is ready to be started, so we can build
          * and execute bhyveload command */
 
-        rc = virBhyveFormatDevMapFile(vm->def->name, &devmap_file);
-        if (rc < 0)
-            goto cleanup;
+        virBhyveFormatDevMapFile(vm->def->name, &devmap_file);
 
         if (!(load_cmd = virBhyveProcessBuildLoadCmd(conn, vm->def, devmap_file,
                                                      &devicemap)))
@@ -216,15 +206,13 @@ virBhyveProcessStart(virConnectPtr conn,
     virDomainObjSetState(vm, VIR_DOMAIN_RUNNING, reason);
     priv->mon = bhyveMonitorOpen(vm, driver);
 
-    if (virDomainSaveStatus(driver->xmlopt,
-                            BHYVE_STATE_DIR,
-                            vm, caps) < 0)
+    if (virDomainObjSave(vm, driver->xmlopt,
+                         BHYVE_STATE_DIR) < 0)
         goto cleanup;
 
     ret = 0;
 
  cleanup:
-    virObjectUnref(caps);
     if (devicemap != NULL) {
         rc = unlink(devmap_file);
         if (rc < 0 && errno != ENOENT)
@@ -390,7 +378,6 @@ virBhyveProcessReconnect(virDomainObjPtr vm,
     char *expected_proctitle = NULL;
     bhyveDomainObjPrivatePtr priv = vm->privateData;
     int ret = -1;
-    virCapsPtr caps = NULL;
 
     if (!virDomainObjIsActive(vm))
         return 0;
@@ -398,18 +385,13 @@ virBhyveProcessReconnect(virDomainObjPtr vm,
     if (!vm->pid)
         return 0;
 
-    caps = bhyveDriverGetCapabilities(data->driver);
-    if (!caps)
-        return -1;
-
     virObjectLock(vm);
 
     kp = kvm_getprocs(data->kd, KERN_PROC_PID, vm->pid, &nprocs);
     if (kp == NULL || nprocs != 1)
         goto cleanup;
 
-    if (virAsprintf(&expected_proctitle, "bhyve: %s", vm->def->name) < 0)
-        goto cleanup;
+    expected_proctitle = g_strdup_printf("bhyve: %s", vm->def->name);
 
     proc_argv = kvm_getargv(data->kd, kp, 0);
     if (proc_argv && proc_argv[0]) {
@@ -436,12 +418,10 @@ virBhyveProcessReconnect(virDomainObjPtr vm,
         vm->def->id = -1;
         virDomainObjSetState(vm, VIR_DOMAIN_SHUTOFF,
                              VIR_DOMAIN_SHUTOFF_UNKNOWN);
-        ignore_value(virDomainSaveStatus(data->driver->xmlopt,
-                                         BHYVE_STATE_DIR,
-                                         vm, caps));
+        ignore_value(virDomainObjSave(vm, data->driver->xmlopt,
+                                      BHYVE_STATE_DIR));
     }
 
-    virObjectUnref(caps);
     virObjectUnlock(vm);
     VIR_FREE(expected_proctitle);
 
@@ -466,7 +446,7 @@ virBhyveProcessReconnectAll(bhyveConnPtr driver)
     data.driver = driver;
     data.kd = kd;
 
-    virDomainObjListForEach(driver->domains, virBhyveProcessReconnect, &data);
+    virDomainObjListForEach(driver->domains, false, virBhyveProcessReconnect, &data);
 
     kvm_close(kd);
 }

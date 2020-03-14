@@ -26,19 +26,12 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-#ifndef MIN
-# define MIN(a, b) ((a) < (b) ? (a) : (b))
-#endif
-#ifndef MAX
-# define MAX(a, b) ((a) > (b) ? (a) : (b))
-#endif
 
-
-int virSetBlocking(int fd, bool blocking) ATTRIBUTE_RETURN_CHECK;
-int virSetNonBlock(int fd) ATTRIBUTE_RETURN_CHECK;
-int virSetInherit(int fd, bool inherit) ATTRIBUTE_RETURN_CHECK;
-int virSetCloseExec(int fd) ATTRIBUTE_RETURN_CHECK;
-int virSetSockReuseAddr(int fd, bool fatal) ATTRIBUTE_RETURN_CHECK;
+int virSetBlocking(int fd, bool blocking) G_GNUC_WARN_UNUSED_RESULT;
+int virSetNonBlock(int fd) G_GNUC_WARN_UNUSED_RESULT;
+int virSetInherit(int fd, bool inherit) G_GNUC_WARN_UNUSED_RESULT;
+int virSetCloseExec(int fd) G_GNUC_WARN_UNUSED_RESULT;
+int virSetSockReuseAddr(int fd, bool fatal) G_GNUC_WARN_UNUSED_RESULT;
 
 int virSetUIDGID(uid_t uid, gid_t gid, gid_t *groups, int ngroups);
 int virSetUIDGIDWithCaps(uid_t uid, gid_t gid, gid_t *groups, int ngroups,
@@ -49,7 +42,7 @@ void virWaitForDevices(void);
 
 int virScaleInteger(unsigned long long *value, const char *suffix,
                     unsigned long long scale, unsigned long long limit)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;
 
 int virHexToBin(unsigned char c);
 
@@ -57,7 +50,7 @@ int virParseVersionString(const char *str, unsigned long *version,
                           bool allowMissing);
 
 char *virFormatIntDecimal(char *buf, size_t buflen, int val)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) G_GNUC_WARN_UNUSED_RESULT;
 
 unsigned long long
 virFormatIntPretty(unsigned long long val,
@@ -110,14 +103,14 @@ char *virGetUserConfigDirectory(void);
 char *virGetUserCacheDirectory(void);
 char *virGetUserRuntimeDirectory(void);
 char *virGetUserShell(uid_t uid);
-char *virGetUserName(uid_t uid) ATTRIBUTE_NOINLINE;
-char *virGetGroupName(gid_t gid) ATTRIBUTE_NOINLINE;
+char *virGetUserName(uid_t uid) G_GNUC_NO_INLINE;
+char *virGetGroupName(gid_t gid) G_GNUC_NO_INLINE;
 int virGetGroupList(uid_t uid, gid_t group, gid_t **groups)
     ATTRIBUTE_NONNULL(3);
 int virGetUserID(const char *name,
-                 uid_t *uid) ATTRIBUTE_RETURN_CHECK;
+                 uid_t *uid) G_GNUC_WARN_UNUSED_RESULT;
 int virGetGroupID(const char *name,
-                  gid_t *gid) ATTRIBUTE_RETURN_CHECK;
+                  gid_t *gid) G_GNUC_WARN_UNUSED_RESULT;
 
 bool virDoesUserExist(const char *name);
 bool virDoesGroupExist(const char *name);
@@ -141,24 +134,20 @@ char *virGetUnprivSGIOSysfsPath(const char *path,
 
 int virParseOwnershipIds(const char *label, uid_t *uidPtr, gid_t *gidPtr);
 
-const char *virGetEnvBlockSUID(const char *name);
-const char *virGetEnvAllowSUID(const char *name);
-bool virIsSUID(void);
-
 
 time_t virGetSelfLastChanged(void);
 void virUpdateSelfLastChanged(const char *path);
 
-long virGetSystemPageSize(void) ATTRIBUTE_NOINLINE;
-long virGetSystemPageSizeKB(void) ATTRIBUTE_NOINLINE;
+long virGetSystemPageSize(void) G_GNUC_NO_INLINE;
+long virGetSystemPageSizeKB(void) G_GNUC_NO_INLINE;
 
 unsigned long long virMemoryLimitTruncate(unsigned long long value);
 bool virMemoryLimitIsSet(unsigned long long value);
-unsigned long long virMemoryMaxValue(bool ulong) ATTRIBUTE_NOINLINE;
+unsigned long long virMemoryMaxValue(bool ulong) G_GNUC_NO_INLINE;
 
 bool virHostHasIOMMU(void);
 
-char *virHostGetDRMRenderNode(void) ATTRIBUTE_NOINLINE;
+char *virHostGetDRMRenderNode(void) G_GNUC_NO_INLINE;
 
 /**
  * VIR_ASSIGN_IS_OVERFLOW:

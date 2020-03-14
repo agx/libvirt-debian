@@ -22,8 +22,8 @@
 
 #include "domain_conf.h"
 #include "qemu_conf.h"
-#include "virautoclean.h"
 #include "virarch.h"
+#include "virfirmware.h"
 
 typedef struct _qemuFirmware qemuFirmware;
 typedef qemuFirmware *qemuFirmwarePtr;
@@ -31,7 +31,7 @@ typedef qemuFirmware *qemuFirmwarePtr;
 void
 qemuFirmwareFree(qemuFirmwarePtr fw);
 
-VIR_DEFINE_AUTOPTR_FUNC(qemuFirmware, qemuFirmwareFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(qemuFirmware, qemuFirmwareFree);
 
 qemuFirmwarePtr
 qemuFirmwareParse(const char *path);
@@ -45,7 +45,7 @@ qemuFirmwareFetchConfigs(char ***firmwares,
 
 int
 qemuFirmwareFillDomain(virQEMUDriverPtr driver,
-                       virDomainObjPtr vm,
+                       virDomainDefPtr def,
                        unsigned int flags);
 
 int
@@ -53,6 +53,8 @@ qemuFirmwareGetSupported(const char *machine,
                          virArch arch,
                          bool privileged,
                          uint64_t *supported,
-                         bool *secure);
+                         bool *secure,
+                         virFirmwarePtr **fws,
+                         size_t *nfws);
 
 verify(VIR_DOMAIN_OS_DEF_FIRMWARE_LAST <= 64);

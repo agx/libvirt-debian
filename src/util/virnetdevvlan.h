@@ -20,7 +20,6 @@
 
 #include <virutil.h>
 
-#include "virautoclean.h"
 #include "virenum.h"
 
 typedef enum {
@@ -48,4 +47,4 @@ void virNetDevVlanFree(virNetDevVlanPtr vlan);
 int virNetDevVlanEqual(const virNetDevVlan *a, const virNetDevVlan *b);
 int virNetDevVlanCopy(virNetDevVlanPtr dst, const virNetDevVlan *src);
 
-VIR_DEFINE_AUTOPTR_FUNC(virNetDevVlan, virNetDevVlanFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virNetDevVlan, virNetDevVlanFree);

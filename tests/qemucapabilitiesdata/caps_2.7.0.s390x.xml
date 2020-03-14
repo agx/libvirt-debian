@@ -1,4 +1,5 @@
 <qemuCaps>
+  <emulator>/usr/bin/qemu-system-s390x</emulator>
   <qemuctime>0</qemuctime>
   <selfctime>0</selfctime>
   <selfvers>0</selfvers>
@@ -91,13 +92,17 @@
   <flag name='zpci'/>
   <version>2007000</version>
   <kvmVersion>0</kvmVersion>
-  <microcodeVersion>39100763</microcodeVersion>
+  <microcodeVersion>39100245</microcodeVersion>
   <package></package>
   <arch>s390x</arch>
   <cpu type='kvm' name='host'/>
+  <machine type='kvm' name='s390-ccw-virtio-2.7' alias='s390-ccw-virtio' maxCpus='248' default='yes'/>
+  <machine type='kvm' name='s390-ccw-virtio-2.5' maxCpus='248'/>
+  <machine type='kvm' name='s390-ccw-virtio-2.4' maxCpus='248'/>
+  <machine type='kvm' name='s390-ccw-virtio-2.6' maxCpus='248'/>
   <cpu type='tcg' name='host'/>
-  <machine name='s390-ccw-virtio-2.7' alias='s390-ccw-virtio' maxCpus='248' default='yes'/>
-  <machine name='s390-ccw-virtio-2.5' maxCpus='248'/>
-  <machine name='s390-ccw-virtio-2.4' maxCpus='248'/>
-  <machine name='s390-ccw-virtio-2.6' maxCpus='248'/>
+  <machine type='tcg' name='s390-ccw-virtio-2.7' alias='s390-ccw-virtio' maxCpus='248' default='yes'/>
+  <machine type='tcg' name='s390-ccw-virtio-2.5' maxCpus='248'/>
+  <machine type='tcg' name='s390-ccw-virtio-2.4' maxCpus='248'/>
+  <machine type='tcg' name='s390-ccw-virtio-2.6' maxCpus='248'/>
 </qemuCaps>

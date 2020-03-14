@@ -84,7 +84,7 @@ testCompareFiles(const char *vmx, const char *xml)
         goto cleanup;
     }
 
-    if (!(formatted = virDomainDefFormat(def, caps,
+    if (!(formatted = virDomainDefFormat(def, xmlopt,
                                          VIR_DOMAIN_DEF_FORMAT_SECURE)))
         goto cleanup;
 
@@ -114,16 +114,13 @@ testCompareHelper(const void *data)
     char *vmx = NULL;
     char *xml = NULL;
 
-    if (virAsprintf(&vmx, "%s/vmx2xmldata/vmx2xml-%s.vmx", abs_srcdir,
-                    info->input) < 0 ||
-        virAsprintf(&xml, "%s/vmx2xmldata/vmx2xml-%s.xml", abs_srcdir,
-                    info->output) < 0) {
-        goto cleanup;
-    }
+    vmx = g_strdup_printf("%s/vmx2xmldata/vmx2xml-%s.vmx", abs_srcdir,
+                          info->input);
+    xml = g_strdup_printf("%s/vmx2xmldata/vmx2xml-%s.xml", abs_srcdir,
+                          info->output);
 
     ret = testCompareFiles(vmx, xml);
 
- cleanup:
     VIR_FREE(vmx);
     VIR_FREE(xml);
 
@@ -131,7 +128,7 @@ testCompareHelper(const void *data)
 }
 
 static char *
-testParseVMXFileName(const char *fileName, void *opaque ATTRIBUTE_UNUSED)
+testParseVMXFileName(const char *fileName, void *opaque G_GNUC_UNUSED)
 {
     char *copyOfFileName = NULL;
     char *tmp = NULL;
@@ -142,8 +139,7 @@ testParseVMXFileName(const char *fileName, void *opaque ATTRIBUTE_UNUSED)
 
     if (STRPREFIX(fileName, "/vmfs/volumes/")) {
         /* Found absolute path referencing a file inside a datastore */
-        if (VIR_STRDUP(copyOfFileName, fileName) < 0)
-            goto cleanup;
+        copyOfFileName = g_strdup(fileName);
 
         /* Expected format: '/vmfs/volumes/<datastore>/<path>' */
         if ((tmp = STRSKIP(copyOfFileName, "/vmfs/volumes/")) == NULL ||
@@ -152,19 +148,16 @@ testParseVMXFileName(const char *fileName, void *opaque ATTRIBUTE_UNUSED)
             goto cleanup;
         }
 
-        if (virAsprintf(&src, "[%s] %s", datastoreName,
-                        directoryAndFileName) < 0)
-            goto cleanup;
+        src = g_strdup_printf("[%s] %s", datastoreName, directoryAndFileName);
     } else if (STRPREFIX(fileName, "/")) {
         /* Found absolute path referencing a file outside a datastore */
-        ignore_value(VIR_STRDUP(src, fileName));
+        src = g_strdup(fileName);
     } else if (strchr(fileName, '/') != NULL) {
         /* Found relative path, this is not supported */
         src = NULL;
     } else {
         /* Found single file name referencing a file inside a datastore */
-        if (virAsprintf(&src, "[datastore] directory/%s", fileName) < 0)
-            goto cleanup;
+        src = g_strdup_printf("[datastore] directory/%s", fileName);
     }
 
  cleanup:
@@ -193,7 +186,7 @@ mymain(void)
     if (caps == NULL)
         return EXIT_FAILURE;
 
-    if (!(xmlopt = virVMXDomainXMLConfInit()))
+    if (!(xmlopt = virVMXDomainXMLConfInit(caps)))
         return EXIT_FAILURE;
 
     ctx.opaque = NULL;

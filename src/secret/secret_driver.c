@@ -25,7 +25,6 @@
 #include <unistd.h>
 
 #include "internal.h"
-#include "base64.h"
 #include "datatypes.h"
 #include "driver.h"
 #include "virlog.h"
@@ -229,7 +228,7 @@ secretDefineXML(virConnectPtr conn,
     if (!(obj = virSecretObjListAdd(driver->secrets, def,
                                     driver->configDir, &backup)))
         goto cleanup;
-    VIR_STEAL_PTR(objDef, def);
+    objDef = g_steal_pointer(&def);
 
     if (!objDef->isephemeral) {
         if (backup && backup->isephemeral) {
@@ -270,7 +269,7 @@ secretDefineXML(virConnectPtr conn,
      * the backup; otherwise, this is a new secret, thus remove it. */
     if (backup) {
         virSecretObjSetDef(obj, backup);
-        VIR_STEAL_PTR(def, objDef);
+        def = g_steal_pointer(&objDef);
     } else {
         virSecretObjListRemove(driver->secrets, obj);
         virObjectUnref(obj);
@@ -453,16 +452,16 @@ secretStateCleanup(void)
 
 static int
 secretStateInitialize(bool privileged,
-                      virStateInhibitCallback callback ATTRIBUTE_UNUSED,
-                      void *opaque ATTRIBUTE_UNUSED)
+                      virStateInhibitCallback callback G_GNUC_UNUSED,
+                      void *opaque G_GNUC_UNUSED)
 {
     if (VIR_ALLOC(driver) < 0)
-        return -1;
+        return VIR_DRV_STATE_INIT_ERROR;
 
     driver->lockFD = -1;
     if (virMutexInit(&driver->lock) < 0) {
         VIR_FREE(driver);
-        return -1;
+        return VIR_DRV_STATE_INIT_ERROR;
     }
     secretDriverLock();
 
@@ -470,25 +469,17 @@ secretStateInitialize(bool privileged,
     driver->privileged = privileged;
 
     if (privileged) {
-        if (virAsprintf(&driver->configDir,
-                        "%s/libvirt/secrets", SYSCONFDIR) < 0)
-            goto error;
-        if (virAsprintf(&driver->stateDir,
-                        "%s/run/libvirt/secrets", LOCALSTATEDIR) < 0)
-            goto error;
+        driver->configDir = g_strdup_printf("%s/libvirt/secrets", SYSCONFDIR);
+        driver->stateDir = g_strdup_printf("%s/libvirt/secrets", RUNSTATEDIR);
     } else {
-        VIR_AUTOFREE(char *) rundir = NULL;
-        VIR_AUTOFREE(char *) cfgdir = NULL;
+        g_autofree char *rundir = NULL;
+        g_autofree char *cfgdir = NULL;
 
-        if (!(cfgdir = virGetUserConfigDirectory()))
-            goto error;
-        if (virAsprintf(&driver->configDir, "%s/secrets/", cfgdir) < 0)
-            goto error;
+        cfgdir = virGetUserConfigDirectory();
+        driver->configDir = g_strdup_printf("%s/secrets/", cfgdir);
 
-        if (!(rundir = virGetUserRuntimeDirectory()))
-            goto error;
-        if (virAsprintf(&driver->stateDir, "%s/secrets/run", rundir) < 0)
-            goto error;
+        rundir = virGetUserRuntimeDirectory();
+        driver->stateDir = g_strdup_printf("%s/secrets/run", rundir);
     }
 
     if (virFileMakePathWithMode(driver->configDir, S_IRWXU) < 0) {
@@ -514,12 +505,12 @@ secretStateInitialize(bool privileged,
         goto error;
 
     secretDriverUnlock();
-    return 0;
+    return VIR_DRV_STATE_INIT_COMPLETE;
 
  error:
     secretDriverUnlock();
     secretStateCleanup();
-    return -1;
+    return VIR_DRV_STATE_INIT_ERROR;
 }
 
 
@@ -540,8 +531,8 @@ secretStateReload(void)
 
 static virDrvOpenStatus
 secretConnectOpen(virConnectPtr conn,
-                  virConnectAuthPtr auth ATTRIBUTE_UNUSED,
-                  virConfPtr conf ATTRIBUTE_UNUSED,
+                  virConnectAuthPtr auth G_GNUC_UNUSED,
+                  virConfPtr conf G_GNUC_UNUSED,
                   unsigned int flags)
 {
     virCheckFlags(VIR_CONNECT_RO, VIR_DRV_OPEN_ERROR);
@@ -552,21 +543,10 @@ secretConnectOpen(virConnectPtr conn,
         return VIR_DRV_OPEN_ERROR;
     }
 
-    if (driver->privileged) {
-        if (STRNEQ(conn->uri->path, "/system")) {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("unexpected secret URI path '%s', try secret:///system"),
-                           conn->uri->path);
-            return VIR_DRV_OPEN_ERROR;
-        }
-    } else {
-        if (STRNEQ(conn->uri->path, "/session")) {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("unexpected secret URI path '%s', try secret:///session"),
-                           conn->uri->path);
-            return VIR_DRV_OPEN_ERROR;
-        }
-    }
+    if (!virConnectValidateURIPath(conn->uri->path,
+                                   "secret",
+                                   driver->privileged))
+        return VIR_DRV_OPEN_ERROR;
 
     if (virConnectOpenEnsureACL(conn) < 0)
         return VIR_DRV_OPEN_ERROR;
@@ -574,27 +554,27 @@ secretConnectOpen(virConnectPtr conn,
     return VIR_DRV_OPEN_SUCCESS;
 }
 
-static int secretConnectClose(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int secretConnectClose(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 0;
 }
 
 
-static int secretConnectIsSecure(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int secretConnectIsSecure(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* Trivially secure, since always inside the daemon */
     return 1;
 }
 
 
-static int secretConnectIsEncrypted(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int secretConnectIsEncrypted(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* Not encrypted, but remote driver takes care of that */
     return 0;
 }
 
 
-static int secretConnectIsAlive(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int secretConnectIsAlive(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 1;
 }
@@ -611,13 +591,13 @@ secretConnectSecretEventRegisterAny(virConnectPtr conn,
     int callbackID = -1;
 
     if (virConnectSecretEventRegisterAnyEnsureACL(conn) < 0)
-        goto cleanup;
+        return -1;
 
     if (virSecretEventStateRegisterID(conn, driver->secretEventState,
                                       secret, eventID, callback,
                                       opaque, freecb, &callbackID) < 0)
         callbackID = -1;
- cleanup:
+
     return callbackID;
 }
 
@@ -626,20 +606,15 @@ static int
 secretConnectSecretEventDeregisterAny(virConnectPtr conn,
                                       int callbackID)
 {
-    int ret = -1;
-
     if (virConnectSecretEventDeregisterAnyEnsureACL(conn) < 0)
-        goto cleanup;
+        return -1;
 
     if (virObjectEventStateDeregisterID(conn,
                                         driver->secretEventState,
                                         callbackID, true) < 0)
-        goto cleanup;
+        return -1;
 
-    ret = 0;
-
- cleanup:
-    return ret;
+    return 0;
 }
 
 

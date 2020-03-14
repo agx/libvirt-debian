@@ -38,7 +38,7 @@
 #define LXC_DRIVER_NAME "LXC"
 
 #define LXC_CONFIG_DIR SYSCONFDIR "/libvirt/lxc"
-#define LXC_STATE_DIR LOCALSTATEDIR "/run/libvirt/lxc"
+#define LXC_STATE_DIR RUNSTATEDIR "/libvirt/lxc"
 #define LXC_LOG_DIR LOCALSTATEDIR "/log/libvirt/lxc"
 #define LXC_AUTOSTART_DIR LXC_CONFIG_DIR "/autostart"
 
@@ -112,7 +112,7 @@ int virLXCLoadDriverConfig(virLXCDriverConfigPtr cfg,
 virCapsPtr virLXCDriverCapsInit(virLXCDriverPtr driver);
 virCapsPtr virLXCDriverGetCapabilities(virLXCDriverPtr driver,
                                        bool refresh);
-virDomainXMLOptionPtr lxcDomainXMLConfInit(void);
+virDomainXMLOptionPtr lxcDomainXMLConfInit(virLXCDriverPtr driver);
 
 static inline void lxcDriverLock(virLXCDriverPtr driver)
 {

@@ -38,18 +38,18 @@ ACCESS_DRIVER_POLKIT_SOURCES = \
 	access/viraccessdriverpolkit.c \
 	$(NULL)
 
-ACCESS_DRIVER_POLKIT_POLICY = $(srcdir)/access/org.libvirt.api.policy
+ACCESS_DRIVER_POLKIT_POLICY = access/org.libvirt.api.policy
 
 GENERATED_SYM_FILES += $(ACCESS_DRIVER_SYM_FILES)
 
 EXTRA_DIST += \
-	$(ACCESS_DRIVER_POLKIT_POLICY) \
-	access/genpolkit.pl \
 	$(NULL)
 
 
 libvirt_driver_access_la_SOURCES = \
 	$(ACCESS_DRIVER_SOURCES) \
+	$(NULL)
+nodist_libvirt_driver_access_la_SOURCES = \
 	$(ACCESS_DRIVER_GENERATED) \
 	$(NULL)
 noinst_LTLIBRARIES += libvirt_driver_access.la
@@ -59,12 +59,15 @@ libvirt_driver_access_la_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(NULL)
 libvirt_driver_access_la_LDFLAGS = $(AM_LDFLAGS)
-libvirt_driver_access_la_LIBADD =
+libvirt_driver_access_la_LIBADD = \
+	$(GLIB_LIBS) \
+	$(NULL)
 
 
 $(ACCESS_DRIVER_POLKIT_POLICY): $(srcdir)/access/viraccessperm.h \
-    $(srcdir)/access/genpolkit.pl Makefile.am
-	$(AM_V_GEN)$(PERL) $(srcdir)/access/genpolkit.pl < $< > $@ || rm -f $@
+    $(top_srcdir)/scripts/genpolkit.py Makefile.am
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) \
+	$(top_srcdir)/scripts/genpolkit.py $< > $@ || rm -f $@
 
 if WITH_POLKIT
 libvirt_driver_access_la_SOURCES += $(ACCESS_DRIVER_POLKIT_SOURCES)
@@ -120,31 +123,31 @@ access/viraccessapicheck.h: $(srcdir)/rpc/gendispatch.pl \
 			$(REMOTE_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=aclheader \
 	  remote REMOTE $(REMOTE_PROTOCOL) \
-	  > $(srcdir)/access/viraccessapicheck.h
+	  > access/viraccessapicheck.h
 access/viraccessapicheck.c: $(srcdir)/rpc/gendispatch.pl \
 			$(REMOTE_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=aclbody \
 	  remote REMOTE $(REMOTE_PROTOCOL) access/viraccessapicheck.h \
-	  > $(srcdir)/access/viraccessapicheck.c
+	  > access/viraccessapicheck.c
 
 access/viraccessapicheckqemu.h: $(srcdir)/rpc/gendispatch.pl \
 			$(QEMU_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=aclheader \
 	  qemu QEMU $(QEMU_PROTOCOL) \
-	  > $(srcdir)/access/viraccessapicheckqemu.h
+	  > access/viraccessapicheckqemu.h
 access/viraccessapicheckqemu.c: $(srcdir)/rpc/gendispatch.pl \
 			$(QEMU_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=aclbody \
 	  qemu QEMU $(QEMU_PROTOCOL) access/viraccessapicheckqemu.h \
-	  > $(srcdir)/access/viraccessapicheckqemu.c
+	  > access/viraccessapicheckqemu.c
 
 access/viraccessapichecklxc.h: $(srcdir)/rpc/gendispatch.pl \
 			$(LXC_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=aclheader \
 	  lxc LXC $(LXC_PROTOCOL) \
-	  > $(srcdir)/access/viraccessapichecklxc.h
+	  > access/viraccessapichecklxc.h
 access/viraccessapichecklxc.c: $(srcdir)/rpc/gendispatch.pl \
 			$(LXC_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=aclbody \
 	  lxc LXC $(LXC_PROTOCOL) access/viraccessapichecklxc.h \
-	  > $(srcdir)/access/viraccessapichecklxc.c
+	  > access/viraccessapichecklxc.c

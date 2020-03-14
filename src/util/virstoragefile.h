@@ -29,8 +29,8 @@
 #include "virstorageencryption.h"
 #include "virutil.h"
 #include "virsecret.h"
-#include "virautoclean.h"
 #include "virenum.h"
+#include "virpci.h"
 
 /* Minimum header size required to probe all known formats with
  * virStorageFileProbeFormat, or obtain metadata from a known format.
@@ -52,6 +52,7 @@ typedef enum {
     VIR_STORAGE_TYPE_DIR,
     VIR_STORAGE_TYPE_NETWORK,
     VIR_STORAGE_TYPE_VOLUME,
+    VIR_STORAGE_TYPE_NVME,
 
     VIR_STORAGE_TYPE_LAST
 } virStorageType;
@@ -231,6 +232,16 @@ struct _virStorageSourceInitiatorDef {
     char *iqn; /* Initiator IQN */
 };
 
+typedef struct _virStorageSourceNVMeDef virStorageSourceNVMeDef;
+typedef virStorageSourceNVMeDef *virStorageSourceNVMeDefPtr;
+struct _virStorageSourceNVMeDef {
+    unsigned long long namespace;
+    int managed; /* enum virTristateBool */
+    virPCIDeviceAddress pciAddr;
+
+    /* Don't forget to update virStorageSourceNVMeDefCopy */
+};
+
 typedef struct _virStorageDriverData virStorageDriverData;
 typedef virStorageDriverData *virStorageDriverDataPtr;
 
@@ -262,6 +273,8 @@ struct _virStorageSource {
     bool encryptionInherited;
     virStoragePRDefPtr pr;
 
+    virStorageSourceNVMeDefPtr nvme; /* type == VIR_STORAGE_TYPE_NVME */
+
     virStorageSourceInitiatorDef initiator;
 
     virObjectPtr privateData;
@@ -292,6 +305,9 @@ struct _virStorageSource {
     /* backing chain of the storage source */
     virStorageSourcePtr backingStore;
 
+    /* external data store storage source */
+    virStorageSourcePtr externalDataStore;
+
     /* metadata for storage driver access to remote and local volumes */
     virStorageDriverDataPtr drv;
 
@@ -302,6 +318,8 @@ struct _virStorageSource {
     /* Name of the child backing store recorded in metadata of the
      * current file.  */
     char *backingStoreRaw;
+    /* Name of the child data file recorded in metadata of the current file. */
+    char *externalDataStoreRaw;
 
     /* metadata that allows identifying given storage source */
     char *nodeformat;  /* name of the format handler object */
@@ -339,18 +357,14 @@ struct _virStorageSource {
     bool hostcdrom; /* backing device is a cdrom */
 };
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virStorageSource, virObjectUnref);
+
 
 #ifndef DEV_BSIZE
 # define DEV_BSIZE 512
 #endif
 
 int virStorageFileProbeFormat(const char *path, uid_t uid, gid_t gid);
-
-int virStorageFileGetMetadataInternal(virStorageSourcePtr meta,
-                                      char *buf,
-                                      size_t len,
-                                      int *backingFormat)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);
 
 virStorageSourcePtr virStorageFileGetMetadataFromFD(const char *path,
                                                     int fd,
@@ -416,6 +430,11 @@ bool virStoragePRDefIsManaged(virStoragePRDefPtr prd);
 bool
 virStorageSourceChainHasManagedPR(virStorageSourcePtr src);
 
+void virStorageSourceNVMeDefFree(virStorageSourceNVMeDefPtr def);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virStorageSourceNVMeDef, virStorageSourceNVMeDefFree);
+
+bool virStorageSourceChainHasNVMe(const virStorageSource *src);
+
 virSecurityDeviceLabelDefPtr
 virStorageSourceGetSecurityLabelDef(virStorageSourcePtr src,
                                     const char *model);
@@ -444,7 +463,9 @@ int virStorageSourceUpdateCapacity(virStorageSourcePtr src,
                                    char *buf, ssize_t len,
                                    bool probe);
 
-virStorageSourcePtr virStorageSourceNewFromBacking(virStorageSourcePtr parent);
+int virStorageSourceNewFromBacking(virStorageSourcePtr parent,
+                                   virStorageSourcePtr *backing);
+
 virStorageSourcePtr virStorageSourceCopy(const virStorageSource *src,
                                          bool backingChain)
     ATTRIBUTE_NONNULL(1);
@@ -471,7 +492,8 @@ int virStorageFileGetRelativeBackingPath(virStorageSourcePtr from,
 
 int virStorageFileCheckCompat(const char *compat);
 
-virStorageSourcePtr virStorageSourceNewFromBackingAbsolute(const char *path);
+int virStorageSourceNewFromBackingAbsolute(const char *path,
+                                           virStorageSourcePtr *src);
 
 bool virStorageSourceIsRelative(virStorageSourcePtr src);
 
@@ -532,6 +554,8 @@ int virStorageFileChown(const virStorageSource *src, uid_t uid, gid_t gid);
 
 int virStorageFileSupportsSecurityDriver(const virStorageSource *src);
 int virStorageFileSupportsAccess(const virStorageSource *src);
+int virStorageFileSupportsCreate(const virStorageSource *src);
+int virStorageFileSupportsBackingChainTraversal(const virStorageSource *src);
 
 int virStorageFileGetMetadata(virStorageSourcePtr src,
                               uid_t uid, gid_t gid,
@@ -546,4 +570,4 @@ void virStorageFileReportBrokenChain(int errcode,
                                      virStorageSourcePtr src,
                                      virStorageSourcePtr parent);
 
-VIR_DEFINE_AUTOPTR_FUNC(virStorageAuthDef, virStorageAuthDefFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virStorageAuthDef, virStorageAuthDefFree);

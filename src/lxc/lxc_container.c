@@ -116,7 +116,7 @@ static int lxcContainerMountFSBlock(virDomainFSDefPtr fs,
  * in a child pid namespace if container reboot support exists.
  * Otherwise, it will either succeed or return -EPERM.
  */
-ATTRIBUTE_NORETURN static int
+G_GNUC_NORETURN static int
 lxcContainerRebootChild(void *argv)
 {
     int *cmd = argv;
@@ -216,9 +216,6 @@ static virCommandPtr lxcContainerBuildInitCmd(virDomainDefPtr vmDef,
         virBufferAddChar(&buf, ' ');
     }
     virBufferTrim(&buf, NULL, 1);
-
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
 
     virUUIDFormat(vmDef->uuid, uuidstr);
 
@@ -383,18 +380,15 @@ static int lxcContainerSetupFDs(int *ttyfd,
  */
 int lxcContainerSendContinue(int control)
 {
-    int rc = -1;
     lxc_message_t msg = LXC_CONTINUE_MSG;
     int writeCount = 0;
 
     VIR_DEBUG("Send continue on fd %d", control);
     writeCount = safewrite(control, &msg, sizeof(msg));
     if (writeCount != sizeof(msg))
-        goto error_out;
+        return -1;
 
-    rc = 0;
- error_out:
-    return rc;
+    return 0;
 }
 
 /**
@@ -488,7 +482,6 @@ lxcContainerRenameAndEnableInterfaces(virDomainDefPtr vmDef,
                                       size_t nveths,
                                       char **veths)
 {
-    int ret = -1;
     size_t i;
     const char *newname;
     virDomainNetDefPtr netDef;
@@ -497,18 +490,18 @@ lxcContainerRenameAndEnableInterfaces(virDomainDefPtr vmDef,
 
     for (i = 0; i < nveths; i++) {
         if (!(netDef = lxcContainerGetNetDef(vmDef, veths[i])))
-            goto cleanup;
+            return -1;
 
         newname = netDef->ifname_guest;
         if (!newname) {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                            _("Missing device name for container-side veth"));
-            goto cleanup;
+            return -1;
         }
 
         VIR_DEBUG("Renaming %s to %s", veths[i], newname);
         if (virNetDevSetName(veths[i], newname) < 0)
-            goto cleanup;
+            return -1;
 
         /* Only enable this device if there is a reason to do so (either
          * at least one IP was specified, or link state was set to up in
@@ -518,22 +511,20 @@ lxcContainerRenameAndEnableInterfaces(virDomainDefPtr vmDef,
             netDef->linkstate == VIR_DOMAIN_NET_INTERFACE_LINK_STATE_UP) {
             VIR_DEBUG("Enabling %s", newname);
             if (virNetDevSetOnline(newname, true) < 0)
-                goto cleanup;
+                return -1;
         }
 
         /* set IP addresses and routes */
         if (virNetDevIPInfoAddToDev(newname, &netDef->guestIP) < 0)
-            goto cleanup;
+            return -1;
     }
 
     /* enable lo device only if there were other net devices */
     if ((veths || privNet) &&
         virNetDevSetOnline("lo", true) < 0)
-        goto cleanup;
+        return -1;
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -682,9 +673,7 @@ static int lxcContainerPrepareRoot(virDomainDefPtr def,
     if (lxcContainerResolveSymlinks(root, false) < 0)
         return -1;
 
-    if (virAsprintf(&dst, "%s/%s.root",
-                    LXC_STATE_DIR, def->name) < 0)
-        return -1;
+    dst = g_strdup_printf("%s/%s.root", LXC_STATE_DIR, def->name);
 
     tmp = root->dst;
     root->dst = dst;
@@ -719,8 +708,7 @@ static int lxcContainerPivotRoot(virDomainFSDefPtr root)
         goto err;
     }
 
-    if (virAsprintf(&oldroot, "%s/.oldroot", root->src->path) < 0)
-        goto err;
+    oldroot = g_strdup_printf("%s/.oldroot", root->src->path);
 
     if (virFileMakePath(oldroot) < 0) {
         virReportSystemError(errno,
@@ -739,8 +727,7 @@ static int lxcContainerPivotRoot(virDomainFSDefPtr root)
     }
 
     /* Create a directory called 'new' in tmpfs */
-    if (virAsprintf(&newroot, "%s/new", oldroot) < 0)
-        goto err;
+    newroot = g_strdup_printf("%s/new", oldroot);
 
     if (virFileMakePath(newroot) < 0) {
         virReportSystemError(errno,
@@ -823,7 +810,7 @@ bool lxcIsBasicMountLocation(const char *path)
 {
     size_t i;
 
-    for (i = 0; i < ARRAY_CARDINALITY(lxcBasicMounts); i++) {
+    for (i = 0; i < G_N_ELEMENTS(lxcBasicMounts); i++) {
         if (STREQ(path, lxcBasicMounts[i].dst))
             return true;
     }
@@ -856,8 +843,9 @@ static int lxcContainerSetReadOnly(void)
             lxcIsBasicMountLocation(mntent.mnt_dir))
             continue;
 
-        if (VIR_STRDUP(tmp, mntent.mnt_dir) < 0 ||
-            VIR_APPEND_ELEMENT(mounts, nmounts, tmp) < 0) {
+        tmp = g_strdup(mntent.mnt_dir);
+
+        if (VIR_APPEND_ELEMENT(mounts, nmounts, tmp) < 0) {
             VIR_FREE(tmp);
             goto cleanup;
         }
@@ -900,7 +888,7 @@ static int lxcContainerMountBasicFS(bool userns_enabled,
 
     VIR_DEBUG("Mounting basic filesystems");
 
-    for (i = 0; i < ARRAY_CARDINALITY(lxcBasicMounts); i++) {
+    for (i = 0; i < G_N_ELEMENTS(lxcBasicMounts); i++) {
         bool bindOverReadonly;
         virLXCBasicMountInfo const *mnt = &lxcBasicMounts[i];
 
@@ -910,12 +898,10 @@ static int lxcContainerMountBasicFS(bool userns_enabled,
          */
         if (userns_enabled && netns_disabled &&
             STREQ(mnt->src, "sysfs")) {
-            if (VIR_STRDUP(mnt_src, "/sys") < 0)
-                goto cleanup;
+            mnt_src = g_strdup("/sys");
             mnt_mflags = MS_NOSUID|MS_NOEXEC|MS_NODEV|MS_RDONLY|MS_BIND;
         } else {
-            if (VIR_STRDUP(mnt_src, mnt->src) < 0)
-                goto cleanup;
+            mnt_src = g_strdup(mnt->src);
             mnt_mflags = mnt->mflags;
         }
 
@@ -926,8 +912,7 @@ static int lxcContainerMountBasicFS(bool userns_enabled,
             char *hostdir;
             int ret;
 
-            if (virAsprintf(&hostdir, "/.oldroot%s", mnt->dst) < 0)
-                goto cleanup;
+            hostdir = g_strdup_printf("/.oldroot%s", mnt->dst);
 
             ret = virFileIsMountPoint(hostdir);
             VIR_FREE(hostdir);
@@ -1018,11 +1003,9 @@ static int lxcContainerMountProcFuse(virDomainDefPtr def,
 
     VIR_DEBUG("Mount /proc/meminfo stateDir=%s", stateDir);
 
-    if ((ret = virAsprintf(&meminfo_path,
-                           "/.oldroot/%s/%s.fuse/meminfo",
-                           stateDir,
-                           def->name)) < 0)
-        return ret;
+    meminfo_path = g_strdup_printf("/.oldroot/%s/%s.fuse/meminfo",
+                                   stateDir,
+                                   def->name);
 
     if ((ret = mount(meminfo_path, "/proc/meminfo",
                      NULL, MS_BIND, NULL)) < 0) {
@@ -1035,8 +1018,8 @@ static int lxcContainerMountProcFuse(virDomainDefPtr def,
     return ret;
 }
 #else
-static int lxcContainerMountProcFuse(virDomainDefPtr def ATTRIBUTE_UNUSED,
-                                     const char *stateDir ATTRIBUTE_UNUSED)
+static int lxcContainerMountProcFuse(virDomainDefPtr def G_GNUC_UNUSED,
+                                     const char *stateDir G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -1051,9 +1034,7 @@ static int lxcContainerMountFSDev(virDomainDefPtr def,
 
     VIR_DEBUG("Mount /dev/ stateDir=%s", stateDir);
 
-    if ((ret = virAsprintf(&path, "/.oldroot/%s/%s.dev",
-                           stateDir, def->name)) < 0)
-        return ret;
+    path = g_strdup_printf("/.oldroot/%s/%s.dev", stateDir, def->name);
 
     if (virFileMakePath("/dev") < 0) {
         virReportSystemError(errno, "%s",
@@ -1087,9 +1068,7 @@ static int lxcContainerMountFSDevPTS(virDomainDefPtr def,
 
     VIR_DEBUG("Mount /dev/pts stateDir=%s", stateDir);
 
-    if (virAsprintf(&path, "/.oldroot/%s/%s.devpts",
-                    stateDir, def->name) < 0)
-        return ret;
+    path = g_strdup_printf("/.oldroot/%s/%s.devpts", stateDir, def->name);
 
     if (virFileMakePath("/dev/pts") < 0) {
         virReportSystemError(errno, "%s",
@@ -1126,7 +1105,7 @@ static int lxcContainerSetupDevices(char **ttyPaths, size_t nttyPaths)
         { "/proc/self/fd", "/dev/fd" },
     };
 
-    for (i = 0; i < ARRAY_CARDINALITY(links); i++) {
+    for (i = 0; i < G_N_ELEMENTS(links); i++) {
         if (symlink(links[i].src, links[i].dst) < 0) {
             virReportSystemError(errno,
                                  _("Failed to symlink device %s to %s"),
@@ -1141,8 +1120,7 @@ static int lxcContainerSetupDevices(char **ttyPaths, size_t nttyPaths)
 
     for (i = 0; i < nttyPaths; i++) {
         char *tty;
-        if (virAsprintf(&tty, "/dev/tty%zu", i+1) < 0)
-            return -1;
+        tty = g_strdup_printf("/dev/tty%zu", i + 1);
 
         if (virFileBindMountDevice(ttyPaths[i], tty) < 0) {
             VIR_FREE(tty);
@@ -1168,8 +1146,7 @@ static int lxcContainerMountFSBind(virDomainFSDefPtr fs,
 
     VIR_DEBUG("src=%s dst=%s", fs->src->path, fs->dst);
 
-    if (virAsprintf(&src, "%s%s", srcprefix, fs->src->path) < 0)
-        goto cleanup;
+    src = g_strdup_printf("%s%s", srcprefix, fs->src->path);
 
     if (stat(fs->dst, &st) < 0) {
         if (errno != ENOENT) {
@@ -1292,8 +1269,7 @@ lxcContainerMountDetectFilesystem(const char *src, char **type)
         goto cleanup;
     }
 
-    if (VIR_STRDUP(*type, data) < 0)
-        goto cleanup;
+    *type = g_strdup(data);
 
  done:
     ret = 0;
@@ -1305,7 +1281,7 @@ lxcContainerMountDetectFilesystem(const char *src, char **type)
 }
 #else /* ! WITH_BLKID */
 static int
-lxcContainerMountDetectFilesystem(const char *src ATTRIBUTE_UNUSED,
+lxcContainerMountDetectFilesystem(const char *src G_GNUC_UNUSED,
                                   char **type)
 {
     /* No libblkid, so just return success with no detected type */
@@ -1340,9 +1316,8 @@ static int lxcContainerMountFSBlockAuto(virDomainFSDefPtr fs,
 
     /* First time around we use /etc/filesystems */
  retry:
-    if (virAsprintf(&fslist, "%s%s", srcprefix,
-                    tryProc ? "/proc/filesystems" : "/etc/filesystems") < 0)
-        goto cleanup;
+    fslist = g_strdup_printf("%s%s", srcprefix,
+                             tryProc ? "/proc/filesystems" : "/etc/filesystems");
 
     VIR_DEBUG("Open fslist %s", fslist);
     if (!(fp = fopen(fslist, "r"))) {
@@ -1503,14 +1478,12 @@ static int lxcContainerMountFSBlock(virDomainFSDefPtr fs,
 
     VIR_DEBUG("src=%s dst=%s", fs->src->path, fs->dst);
 
-    if (virAsprintf(&src, "%s%s", srcprefix, fs->src->path) < 0)
-        goto cleanup;
+    src = g_strdup_printf("%s%s", srcprefix, fs->src->path);
 
     ret = lxcContainerMountFSBlockHelper(fs, src, srcprefix, sec_mount_options);
 
     VIR_DEBUG("Done mounting filesystem ret=%d", ret);
 
- cleanup:
     VIR_FREE(src);
     return ret;
 }
@@ -1524,9 +1497,7 @@ static int lxcContainerMountFSTmpfs(virDomainFSDefPtr fs,
 
     VIR_DEBUG("usage=%lld sec=%s", fs->usage, sec_mount_options);
 
-    if (virAsprintf(&data,
-                    "size=%lld%s", fs->usage, sec_mount_options) < 0)
-        goto cleanup;
+    data = g_strdup_printf("size=%lld%s", fs->usage, sec_mount_options);
 
     if (virFileMakePath(fs->dst) < 0) {
         virReportSystemError(errno,
@@ -1633,8 +1604,7 @@ int lxcContainerSetupHostdevCapsMakePath(const char *dev)
     int ret = -1;
     char *dir, *tmp;
 
-    if (VIR_STRDUP(dir, dev) < 0)
-        return -1;
+    dir = g_strdup(dev);
 
     if ((tmp = strrchr(dir, '/'))) {
         *tmp = '\0';
@@ -1664,30 +1634,28 @@ static int lxcContainerUnmountForSharedRoot(const char *stateDir,
     /* Some versions of Linux kernel don't let you overmount
      * the selinux filesystem, so make sure we kill it first
      */
-    /* Filed coverity bug for false positive 'USE_AFTER_FREE' due to swap
-     * of root->src with root->dst and the VIR_FREE(root->src) prior to the
-     * reset of root->src in lxcContainerPrepareRoot()
-     */
-    /* coverity[deref_arg] */
     if (lxcContainerUnmountSubtree(SELINUX_MOUNT, false) < 0)
         goto cleanup;
 #endif
 
     /* These filesystems are created by libvirt temporarily, they
      * shouldn't appear in container. */
-    if (virAsprintf(&tmp, "%s/%s.dev", stateDir, domain) < 0 ||
-        lxcContainerUnmountSubtree(tmp, false) < 0)
+    tmp = g_strdup_printf("%s/%s.dev", stateDir, domain);
+
+    if (lxcContainerUnmountSubtree(tmp, false) < 0)
         goto cleanup;
 
     VIR_FREE(tmp);
-    if (virAsprintf(&tmp, "%s/%s.devpts", stateDir, domain) < 0 ||
-        lxcContainerUnmountSubtree(tmp, false) < 0)
+    tmp = g_strdup_printf("%s/%s.devpts", stateDir, domain);
+
+    if (lxcContainerUnmountSubtree(tmp, false) < 0)
         goto cleanup;
 
 #if WITH_FUSE
     VIR_FREE(tmp);
-    if (virAsprintf(&tmp, "%s/%s.fuse", stateDir, domain) < 0 ||
-        lxcContainerUnmountSubtree(tmp, false) < 0)
+    tmp = g_strdup_printf("%s/%s.fuse", stateDir, domain);
+
+    if (lxcContainerUnmountSubtree(tmp, false) < 0)
         goto cleanup;
 #endif
 
@@ -1961,7 +1929,7 @@ static int lxcContainerDropCapabilities(virDomainDefPtr def,
     size_t i;
     int policy = def->features[VIR_DOMAIN_FEATURE_CAPABILITIES];
 
-    /* Maps virDomainCapsFeature to CAPS_* */
+    /* Maps virDomainProcessCapsFeature to CAPS_* */
     static int capsMapping[] = {CAP_AUDIT_CONTROL,
                                 CAP_AUDIT_WRITE,
                                 CAP_BLOCK_SUSPEND,
@@ -2007,7 +1975,7 @@ static int lxcContainerDropCapabilities(virDomainDefPtr def,
         capng_clear(CAPNG_SELECT_BOTH);
 
     /* Apply all single capabilities changes */
-    for (i = 0; i < VIR_DOMAIN_CAPS_FEATURE_LAST; i++) {
+    for (i = 0; i < VIR_DOMAIN_PROCES_CAPS_FEATURE_LAST; i++) {
         bool toDrop = false;
         int state = def->caps_features[i];
 
@@ -2024,27 +1992,27 @@ static int lxcContainerDropCapabilities(virDomainDefPtr def,
                                         capsMapping[i])) < 0) {
                 virReportError(VIR_ERR_INTERNAL_ERROR,
                                _("Failed to add capability %s: %d"),
-                               virDomainCapsFeatureTypeToString(i), ret);
+                               virDomainProcessCapsFeatureTypeToString(i), ret);
                 return -1;
             }
             break;
 
         case VIR_DOMAIN_CAPABILITIES_POLICY_DEFAULT:
             switch (i) {
-            case VIR_DOMAIN_CAPS_FEATURE_SYS_BOOT: /* No use of reboot */
+            case VIR_DOMAIN_PROCES_CAPS_FEATURE_SYS_BOOT: /* No use of reboot */
                 toDrop = !keepReboot && (state != VIR_TRISTATE_SWITCH_ON);
                 break;
-            case VIR_DOMAIN_CAPS_FEATURE_SYS_MODULE: /* No kernel module loading */
-            case VIR_DOMAIN_CAPS_FEATURE_SYS_TIME: /* No changing the clock */
-            case VIR_DOMAIN_CAPS_FEATURE_MKNOD: /* No creating device nodes */
-            case VIR_DOMAIN_CAPS_FEATURE_AUDIT_CONTROL: /* No messing with auditing status */
-            case VIR_DOMAIN_CAPS_FEATURE_MAC_ADMIN: /* No messing with LSM config */
+            case VIR_DOMAIN_PROCES_CAPS_FEATURE_SYS_MODULE: /* No kernel module loading */
+            case VIR_DOMAIN_PROCES_CAPS_FEATURE_SYS_TIME: /* No changing the clock */
+            case VIR_DOMAIN_PROCES_CAPS_FEATURE_MKNOD: /* No creating device nodes */
+            case VIR_DOMAIN_PROCES_CAPS_FEATURE_AUDIT_CONTROL: /* No messing with auditing status */
+            case VIR_DOMAIN_PROCES_CAPS_FEATURE_MAC_ADMIN: /* No messing with LSM config */
                 toDrop = (state != VIR_TRISTATE_SWITCH_ON);
                 break;
             default: /* User specified capabilities to drop */
                 toDrop = (state == VIR_TRISTATE_SWITCH_OFF);
             }
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
 
         case VIR_DOMAIN_CAPABILITIES_POLICY_ALLOW:
             if (policy == VIR_DOMAIN_CAPABILITIES_POLICY_ALLOW)
@@ -2056,7 +2024,7 @@ static int lxcContainerDropCapabilities(virDomainDefPtr def,
                                               capsMapping[i])) < 0) {
                 virReportError(VIR_ERR_INTERNAL_ERROR,
                                _("Failed to remove capability %s: %d"),
-                               virDomainCapsFeatureTypeToString(i), ret);
+                               virDomainProcessCapsFeatureTypeToString(i), ret);
                 return -1;
             }
             break;
@@ -2083,8 +2051,8 @@ static int lxcContainerDropCapabilities(virDomainDefPtr def,
     return 0;
 }
 #else
-static int lxcContainerDropCapabilities(virDomainDefPtr def ATTRIBUTE_UNUSED,
-                                        bool keepReboot ATTRIBUTE_UNUSED)
+static int lxcContainerDropCapabilities(virDomainDefPtr def G_GNUC_UNUSED,
+                                        bool keepReboot G_GNUC_UNUSED)
 {
     VIR_WARN("libcap-ng support not compiled in, unable to clear capabilities");
     return 0;
@@ -2166,8 +2134,7 @@ static int lxcContainerSetHostname(virDomainDefPtr def)
     char *hostname = NULL;
 
     /* Filter the VM name to get a valid hostname */
-    if (VIR_STRDUP(name, def->name) < 0)
-        goto cleanup;
+    name = g_strdup(def->name);
 
     /* RFC 1123 allows 0-9 digits as a first character in hostname */
     virStringFilterChars(name, hostname_validchars);
@@ -2250,9 +2217,8 @@ static int lxcContainerChild(void *data)
         const char *tty = argv->ttyPaths[0];
         if (STRPREFIX(tty, "/dev/pts/"))
             tty += strlen("/dev/pts/");
-        if (virAsprintf(&ttyPath, "%s/%s.devpts/%s",
-                        LXC_STATE_DIR, vmDef->name, tty) < 0)
-            goto cleanup;
+        ttyPath = g_strdup_printf("%s/%s.devpts/%s", LXC_STATE_DIR, vmDef->name,
+                                  tty);
     } else {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                        _("At least one tty is required"));

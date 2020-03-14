@@ -1,6 +1,13 @@
 # vim: filetype=automake
 
 LIBXL_DRIVER_SOURCES = \
+	libxl/xenxs_private.h \
+	libxl/xen_common.c \
+	libxl/xen_common.h \
+	libxl/xen_xl.c \
+	libxl/xen_xl.h \
+	libxl/xen_xm.c \
+	libxl/xen_xm.h \
 	libxl/libxl_conf.c \
 	libxl/libxl_conf.h \
 	libxl/libxl_capabilities.c \
@@ -15,34 +22,19 @@ LIBXL_DRIVER_SOURCES = \
 	libxl/libxl_migration.h \
 	$(NULL)
 
-XENCONFIG_LIBXL_SOURCES = \
-	$(XENCONFIG_SOURCES) \
-	xenconfig/xen_xl.c \
-	xenconfig/xen_xl.h \
-	$(NULL)
-
-DRIVER_SOURCE_FILES += $(LIBXL_DRIVER_SOURCES)
-STATEFUL_DRIVER_SOURCE_FILES += $(LIBXL_DRIVER_SOURCES)
+DRIVER_SOURCE_FILES += $(addprefix $(srcdir)/,$(LIBXL_DRIVER_SOURCES))
+STATEFUL_DRIVER_SOURCE_FILES += $(addprefix $(srcdir)/,$(LIBXL_DRIVER_SOURCES))
 EXTRA_DIST += \
 	$(LIBXL_DRIVER_SOURCES) \
-	$(XENCONFIG_LIBXL_SOURCES) \
 	$(NULL)
 
 if WITH_LIBXL
-noinst_LTLIBRARIES += libvirt_xenconfig_libxl.la
-libvirt_xenconfig_libxl_la_LIBADD = $(LIBXL_LIBS)
-libvirt_xenconfig_libxl_la_CFLAGS = \
-	-I$(srcdir)/conf \
-	-I$(srcdir)/libxl \
-	$(AM_CFLAGS) \
-	$(NULL)
-libvirt_xenconfig_libxl_la_SOURCES = $(XENCONFIG_LIBXL_SOURCES)
-
 noinst_LTLIBRARIES += libvirt_driver_libxl_impl.la
 libvirt_driver_libxl_la_SOURCES =
 libvirt_driver_libxl_la_LIBADD = \
 	libvirt_driver_libxl_impl.la \
 	libvirt.la \
+	$(GLIB_LIBS) \
 	../gnulib/lib/libgnu.la \
 	$(NULL)
 mod_LTLIBRARIES += libvirt_driver_libxl.la
@@ -52,52 +44,116 @@ libvirt_driver_libxl_impl_la_CFLAGS = \
 	$(LIBXL_CFLAGS) \
 	$(LIBXML_CFLAGS) \
 	-I$(srcdir)/access \
+	-I$(builddir)/access \
 	-I$(srcdir)/conf \
 	-I$(srcdir)/secret \
-	-I$(srcdir)/xenconfig \
 	$(AM_CFLAGS) \
 	$(NULL)
 libvirt_driver_libxl_impl_la_LDFLAGS = $(AM_LDFLAGS)
 libvirt_driver_libxl_impl_la_LIBADD = \
 	$(LIBXL_LIBS) \
 	$(LIBXML_LIBS) \
-	libvirt_xenconfig_libxl.la \
 	$(NULL)
 libvirt_driver_libxl_impl_la_SOURCES = $(LIBXL_DRIVER_SOURCES)
 
+sbin_PROGRAMS += virtxend
+
+nodist_conf_DATA += libxl/virtxend.conf
+augeas_DATA += libxl/virtxend.aug
+augeastest_DATA += libxl/test_virtxend.aug
+CLEANFILES += libxl/virtxend.aug
+
+virtxend_SOURCES = $(REMOTE_DAEMON_SOURCES)
+nodist_virtxend_SOURCES = $(REMOTE_DAEMON_GENERATED)
+virtxend_CFLAGS = \
+       $(REMOTE_DAEMON_CFLAGS) \
+       -DDAEMON_NAME="\"virtxend\"" \
+       -DMODULE_NAME="\"libxl\"" \
+       $(NULL)
+virtxend_LDFLAGS = $(REMOTE_DAEMON_LD_FLAGS)
+virtxend_LDADD = $(REMOTE_DAEMON_LD_ADD)
+
+SYSTEMD_UNIT_FILES += \
+	virtxend.service \
+	virtxend.socket \
+	virtxend-ro.socket \
+	virtxend-admin.socket \
+	$(NULL)
+SYSTEMD_UNIT_FILES_IN += \
+	libxl/virtxend.service.in \
+	$(NULL)
+
+OPENRC_INIT_FILES += \
+	virtxend.init \
+	$(NULL)
+OPENRC_INIT_FILES_IN += \
+	libxl/virtxend.init.in \
+	$(NULL)
+
+LIBXL_UNIT_COND = ConditionPathExists=/proc/xen/capabilities
+LIBXL_UNIT_CONFLICT = Conflicts=$(LIBVIRTD_SOCKET_UNIT_FILES)
+
+VIRTXEND_UNIT_VARS = \
+	$(COMMON_UNIT_VARS) \
+	-e 's|[@]deps[@]|$(LIBXL_UNIT_CONFLICT)\n$(LIBXL_UNIT_COND)|g' \
+	-e 's|[@]name[@]|Libvirt libxl|g' \
+	-e 's|[@]service[@]|virtxend|g' \
+	-e 's|[@]sockprefix[@]|virtxend|g' \
+	$(NULL)
+
+virtxend.init: libxl/virtxend.init.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(LIBVIRTD_INIT_VARS) $< > $@-t && mv $@-t $@
+
+virtxend.service: libxl/virtxend.service.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(VIRTXEND_UNIT_VARS) $< > $@-t && mv $@-t $@
+
+virtxen%.socket: remote/libvirt%.socket.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(VIRTXEND_UNIT_VARS) $< > $@-t && mv $@-t $@
+
+libxl/virtxend.conf: remote/libvirtd.conf.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtxend/' \
+		$< > $@
+
+libxl/virtxend.aug: remote/libvirtd.aug.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtxend/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtxend/' \
+		$< > $@
+
+libxl/test_virtxend.aug: remote/test_libvirtd.aug.in \
+		libxl/virtxend.conf $(AUG_GENTEST_SCRIPT)
+	$(AM_V_GEN)$(AUG_GENTEST) libxl/virtxend.conf \
+		$(srcdir)/remote/test_libvirtd.aug.in | \
+		$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtxend/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtxend/' \
+		> $@ || rm -f $@
+
 conf_DATA += libxl/libxl.conf
 augeas_DATA += libxl/libvirtd_libxl.aug
-augeastest_DATA += test_libvirtd_libxl.aug
-CLEANFILES += test_libvirtd_libxl.aug
+augeastest_DATA += libxl/test_libvirtd_libxl.aug
 
-AUGEAS_DIRS += libxl
-
-test_libvirtd_libxl.aug: libxl/test_libvirtd_libxl.aug.in \
-		$(srcdir)/libxl/libxl.conf $(AUG_GENTEST)
-	$(AM_V_GEN)$(AUG_GENTEST) $(srcdir)/libxl/libxl.conf $< $@
-
-check-augeas-libxl: test_libvirtd_libxl.aug
-	$(AM_V_GEN)if test -x '$(AUGPARSE)'; then \
-	    '$(AUGPARSE)' -I $(srcdir)/libxl test_libvirtd_libxl.aug; \
-	fi
+libxl/test_libvirtd_libxl.aug: libxl/test_libvirtd_libxl.aug.in \
+		$(srcdir)/libxl/libxl.conf $(AUG_GENTEST_SCRIPT)
+	$(AM_V_GEN)$(AUG_GENTEST) $(srcdir)/libxl/libxl.conf $< > $@
 
 INSTALL_DATA_DIRS += libxl
 
 install-data-libxl:
 	$(MKDIR_P) "$(DESTDIR)$(localstatedir)/lib/libvirt/libxl"
-	$(MKDIR_P) "$(DESTDIR)$(localstatedir)/run/libvirt/libxl"
+	$(MKDIR_P) "$(DESTDIR)$(runstatedir)/libvirt/libxl"
 	$(MKDIR_P) "$(DESTDIR)$(localstatedir)/log/libvirt/libxl"
 
 uninstall-data-libxl:
 	rmdir "$(DESTDIR)$(localstatedir)/lib/libvirt/libxl" ||:
-	rmdir "$(DESTDIR)$(localstatedir)/run/libvirt/libxl" ||:
+	rmdir "$(DESTDIR)$(runstatedir)/libvirt/libxl" ||:
 	rmdir "$(DESTDIR)$(localstatedir)/log/libvirt/libxl" ||:
 
 endif WITH_LIBXL
-
-.PHONY: \
-	check-augeas-libxl \
-	$(NULL)
 
 EXTRA_DIST += \
 	libxl/libxl.conf \

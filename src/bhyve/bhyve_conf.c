@@ -56,22 +56,16 @@ virBhyveDriverConfigNew(void)
     if (!(cfg = virObjectNew(virBhyveDriverConfigClass)))
         return NULL;
 
-    if (VIR_STRDUP(cfg->firmwareDir, DATADIR "/uefi-firmware") < 0)
-        goto error;
+    cfg->firmwareDir = g_strdup(DATADIR "/uefi-firmware");
 
     return cfg;
-
- error:
-    virObjectUnref(cfg);
-    return NULL;
 }
 
 int
 virBhyveLoadDriverConfig(virBhyveDriverConfigPtr cfg,
                          const char *filename)
 {
-    virConfPtr conf;
-    int ret = -1;
+    g_autoptr(virConf) conf = NULL;
 
     if (access(filename, R_OK) == -1) {
         VIR_INFO("Could not read bhyve config file %s", filename);
@@ -83,12 +77,9 @@ virBhyveLoadDriverConfig(virBhyveDriverConfigPtr cfg,
 
     if (virConfGetValueString(conf, "firmware_dir",
                               &cfg->firmwareDir) < 0)
-        goto cleanup;
+        return -1;
 
-    ret = 0;
- cleanup:
-    virConfFree(conf);
-    return ret;
+    return 0;
 }
 
 virBhyveDriverConfigPtr

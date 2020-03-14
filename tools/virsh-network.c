@@ -703,7 +703,7 @@ static const vshCmdOptDef opts_network_list[] = {
     if (vshCommandOptBool(cmd, NAME)) \
         flags |= (FLAG)
 static bool
-cmdNetworkList(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
+cmdNetworkList(vshControl *ctl, const vshCmd *cmd G_GNUC_UNUSED)
 {
     virshNetworkListPtr list = NULL;
     size_t i;
@@ -1208,10 +1208,10 @@ VIR_ENUM_IMPL(virshNetworkEventId,
               "lifecycle");
 
 static void
-vshEventLifecyclePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
+vshEventLifecyclePrint(virConnectPtr conn G_GNUC_UNUSED,
                        virNetworkPtr net,
                        int event,
-                       int detail ATTRIBUTE_UNUSED,
+                       int detail G_GNUC_UNUSED,
                        void *opaque)
 {
     virshNetEventData *data = opaque;
@@ -1242,7 +1242,7 @@ virshNetworkEventCallback virshNetworkEventCallbacks[] = {
     { "lifecycle",
       VIR_NETWORK_EVENT_CALLBACK(vshEventLifecyclePrint), },
 };
-verify(VIR_NETWORK_EVENT_ID_LAST == ARRAY_CARDINALITY(virshNetworkEventCallbacks));
+verify(VIR_NETWORK_EVENT_ID_LAST == G_N_ELEMENTS(virshNetworkEventCallbacks));
 
 static const vshCmdInfo info_network_event[] = {
     {.name = "help",
@@ -1384,8 +1384,6 @@ static const vshCmdOptDef opts_network_dhcp_leases[] = {
 static int
 virshNetworkDHCPLeaseSorter(const void *a, const void *b)
 {
-    int rv = -1;
-
     virNetworkDHCPLeasePtr *lease1 = (virNetworkDHCPLeasePtr *) a;
     virNetworkDHCPLeasePtr *lease2 = (virNetworkDHCPLeasePtr *) b;
 
@@ -1395,8 +1393,7 @@ virshNetworkDHCPLeaseSorter(const void *a, const void *b)
     if (!*lease1)
         return *lease2 != NULL;
 
-    rv = vshStrcasecmp((*lease1)->mac, (*lease2)->mac);
-    return rv;
+    return vshStrcasecmp((*lease1)->mac, (*lease2)->mac);
 }
 
 static bool
@@ -1434,7 +1431,7 @@ cmdNetworkDHCPLeases(vshControl *ctl, const vshCmd *cmd)
 
     for (i = 0; i < nleases; i++) {
         const char *typestr = NULL;
-        VIR_AUTOFREE(char *) cidr_format = NULL;
+        g_autofree char *cidr_format = NULL;
         virNetworkDHCPLeasePtr lease = leases[i];
         time_t expirytime_tmp = lease->expirytime;
         struct tm ts;
@@ -1447,8 +1444,7 @@ cmdNetworkDHCPLeases(vshControl *ctl, const vshCmd *cmd)
         else if (lease->type == VIR_IP_ADDR_TYPE_IPV6)
             typestr = "ipv6";
 
-        ignore_value(virAsprintf(&cidr_format, "%s/%d",
-                                 lease->ipaddr, lease->prefix));
+        cidr_format = g_strdup_printf("%s/%d", lease->ipaddr, lease->prefix);
 
         if (vshTableRowAppend(table,
                               expirytime,
@@ -1593,10 +1589,10 @@ cmdNetworkPortDumpXML(vshControl *ctl, const vshCmd *cmd)
  */
 static const vshCmdInfo info_network_port_delete[] = {
     {.name = "help",
-     .data = N_("network port information in XML")
+     .data = N_("delete the specified network port")
     },
     {.name = "desc",
-     .data = N_("Output the network port information as an XML dump to stdout.")
+     .data = N_("Delete the specified network port.")
     },
     {.name = NULL}
 };

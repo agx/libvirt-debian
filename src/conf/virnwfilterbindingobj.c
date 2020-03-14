@@ -91,10 +91,7 @@ virNWFilterBindingObjSetDef(virNWFilterBindingObjPtr obj,
 virNWFilterBindingDefPtr
 virNWFilterBindingObjStealDef(virNWFilterBindingObjPtr obj)
 {
-    virNWFilterBindingDefPtr def;
-
-    VIR_STEAL_PTR(def, obj->def);
-    return def;
+    return g_steal_pointer(&obj->def);
 }
 
 
@@ -142,7 +139,7 @@ virNWFilterBindingObjConfigFile(const char *dir,
 {
     char *ret;
 
-    ignore_value(virAsprintf(&ret, "%s/%s.xml", dir, name));
+    ret = g_strdup_printf("%s/%s.xml", dir, name);
     return ret;
 }
 
@@ -248,11 +245,8 @@ virNWFilterBindingObjParseNode(xmlDocPtr doc,
         goto cleanup;
     }
 
-    ctxt = xmlXPathNewContext(doc);
-    if (ctxt == NULL) {
-        virReportOOMError();
+    if (!(ctxt = virXMLXPathContextNew(doc)))
         goto cleanup;
-    }
 
     ctxt->node = root;
     obj = virNWFilterBindingObjParseXML(doc, ctxt);
@@ -302,9 +296,6 @@ virNWFilterBindingObjFormat(const virNWFilterBindingObj *obj)
 
     virBufferAdjustIndent(&buf, -2);
     virBufferAddLit(&buf, "</filterbindingstatus>\n");
-
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
 
     return virBufferContentAndReset(&buf);
 }

@@ -22,7 +22,6 @@
 
 #include "internal.h"
 #include "virobject.h"
-#include "virautoclean.h"
 
 typedef struct _virSCSIDevice virSCSIDevice;
 typedef virSCSIDevice *virSCSIDevicePtr;
@@ -30,11 +29,14 @@ typedef virSCSIDevice *virSCSIDevicePtr;
 typedef struct _virSCSIDeviceList virSCSIDeviceList;
 typedef virSCSIDeviceList *virSCSIDeviceListPtr;
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virSCSIDeviceList, virObjectUnref);
+
+
 char *virSCSIDeviceGetSgName(const char *sysfs_prefix,
                              const char *adapter,
                              unsigned int bus,
                              unsigned int target,
-                             unsigned long long unit) ATTRIBUTE_NOINLINE;
+                             unsigned long long unit) G_GNUC_NO_INLINE;
 char *virSCSIDeviceGetDevName(const char *sysfs_prefix,
                               const char *adapter,
                               unsigned int bus,
@@ -92,4 +94,4 @@ void virSCSIDeviceListDel(virSCSIDeviceListPtr list,
 virSCSIDevicePtr virSCSIDeviceListFind(virSCSIDeviceListPtr list,
                                        virSCSIDevicePtr dev);
 
-VIR_DEFINE_AUTOPTR_FUNC(virSCSIDevice, virSCSIDeviceFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virSCSIDevice, virSCSIDeviceFree);

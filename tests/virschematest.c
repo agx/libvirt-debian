@@ -72,42 +72,38 @@ testSchemaDir(const char *schema,
     struct dirent *ent;
     int ret = 0;
     int rc;
-    char *test_name = NULL;
-    char *xml_path = NULL;
     struct testSchemaData data = {
         .validator = validator,
     };
 
-    if (virDirOpen(&dir, dir_path) < 0)
+    if (virDirOpen(&dir, dir_path) < 0) {
+        virTestPropagateLibvirtError();
         return -1;
+    }
 
     while ((rc = virDirRead(dir, &ent, dir_path)) > 0) {
+        g_autofree char *test_name = NULL;
+        g_autofree char *xml_path = NULL;
+
         if (!virStringHasSuffix(ent->d_name, ".xml"))
             continue;
         if (ent->d_name[0] == '.')
             continue;
 
-        if (virAsprintf(&xml_path, "%s/%s", dir_path, ent->d_name) < 0)
-            goto cleanup;
+        xml_path = g_strdup_printf("%s/%s", dir_path, ent->d_name);
 
-        if (virAsprintf(&test_name, "Checking %s against %s",
-                        ent->d_name, schema) < 0)
-            goto cleanup;
+        test_name = g_strdup_printf("Checking %s against %s", ent->d_name, schema);
 
         data.xml_path = xml_path;
         if (virTestRun(test_name, testSchemaFile, &data) < 0)
             ret = -1;
-
-        VIR_FREE(test_name);
-        VIR_FREE(xml_path);
     }
 
-    if (rc < 0)
+    if (rc < 0) {
+        virTestPropagateLibvirtError();
         ret = -1;
+    }
 
- cleanup:
-    VIR_FREE(test_name);
-    VIR_FREE(xml_path);
     VIR_DIR_CLOSE(dir);
     return ret;
 }
@@ -118,23 +114,16 @@ testSchemaDirs(const char *schema, virXMLValidatorPtr validator, ...)
 {
     va_list args;
     int ret = 0;
-    char *dir_path = NULL;
     const char *dir;
 
     va_start(args, validator);
 
     while ((dir = va_arg(args, char *))) {
-        if (virAsprintf(&dir_path, "%s/%s", abs_srcdir, dir) < 0) {
-            ret = -1;
-            goto cleanup;
-        }
+        g_autofree char *dir_path = g_strdup_printf("%s/%s", abs_srcdir, dir);
         if (testSchemaDir(schema, validator, dir_path) < 0)
             ret = -1;
-        VIR_FREE(dir_path);
     }
 
- cleanup:
-    VIR_FREE(dir_path);
     va_end(args);
     return ret;
 }
@@ -144,21 +133,15 @@ static int
 testSchemaGrammar(const void *opaque)
 {
     struct testSchemaData *data = (struct testSchemaData *) opaque;
-    char *schema_path;
-    int ret = -1;
+    g_autofree char *schema_path = NULL;
 
-    if (virAsprintf(&schema_path, "%s/docs/schemas/%s",
-                    abs_top_srcdir, data->schema) < 0)
-        return -1;
+    schema_path = g_strdup_printf("%s/docs/schemas/%s", abs_top_srcdir,
+                                  data->schema);
 
     if (!(data->validator = virXMLValidatorInit(schema_path)))
-        goto cleanup;
+        return -1;
 
-    ret = 0;
-
- cleanup:
-    VIR_FREE(schema_path);
-    return ret;
+    return 0;
 }
 
 
@@ -221,7 +204,9 @@ mymain(void)
                 "lxcxml2xmloutdata", "bhyvexml2argvdata", "genericxml2xmlindata",
                 "genericxml2xmloutdata", "xlconfigdata", "libxlxml2domconfigdata",
                 "qemuhotplugtestdomains");
-    DO_TEST_DIR("domaincaps.rng", "domaincapsschemadata");
+    DO_TEST_DIR("domaincaps.rng", "domaincapsdata");
+    DO_TEST_DIR("domainbackup.rng", "domainbackupxml2xmlin",
+                "domainbackupxml2xmlout");
     DO_TEST_DIR("domaincheckpoint.rng", "qemudomaincheckpointxml2xmlin",
                 "qemudomaincheckpointxml2xmlout");
     DO_TEST_DIR("domainsnapshot.rng", "qemudomainsnapshotxml2xmlin",
@@ -231,7 +216,7 @@ mymain(void)
                 "networkxml2xmlout", "networkxml2confdata");
     DO_TEST_DIR("networkport.rng", "virnetworkportxml2xmldata");
     DO_TEST_DIR("nodedev.rng", "nodedevschemadata");
-    DO_TEST_DIR("nwfilter.rng", "nwfilterxml2xmlout", "../examples/xml/nwfilter");
+    DO_TEST_DIR("nwfilter.rng", "nwfilterxml2xmlout", "../src/nwfilter");
     DO_TEST_DIR("nwfilterbinding.rng", "virnwfilterbindingxml2xmldata");
     DO_TEST_DIR("secret.rng", "secretxml2xmlin");
     DO_TEST_DIR("storagepoolcaps.rng", "storagepoolcapsschemadata");

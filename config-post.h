@@ -16,62 +16,8 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-/*
- * Since virt-login-shell will be setuid, we must do everything
- * we can to avoid linking to other libraries. Many of them do
- * unsafe things in functions marked __attribute__((constructor)).
- * The only way to avoid such deps is to re-compile the
- * functions with the code in question disabled, and for that we
- * must override the main config.h rules. Hence this file :-(
- */
-
-#ifdef LIBVIRT_SETUID_RPC_CLIENT
-# undef HAVE_LIBNL
-# undef HAVE_LIBNL3
-# undef HAVE_LIBSASL2
-# undef HAVE_SYS_ACL_H
-# undef WITH_CAPNG
-# undef WITH_CURL
-# undef WITH_DBUS
-# undef WITH_DEVMAPPER
-# undef WITH_DTRACE_PROBES
-# undef WITH_GNUTLS
-# undef WITH_LIBSSH
-# undef WITH_MACVTAP
-# undef WITH_NUMACTL
-# undef WITH_SASL
-# undef WITH_SSH2
-# undef WITH_SYSTEMD_DAEMON
-# undef WITH_VIRTUALPORT
-# undef WITH_YAJL
-#endif
-
-/*
- * With the NSS module it's the same story as virt-login-shell. See the
- * explanation above.
- */
-#ifdef LIBVIRT_NSS
-# undef HAVE_LIBNL
-# undef HAVE_LIBNL3
-# undef HAVE_LIBSASL2
-# undef HAVE_SYS_ACL_H
-# undef WITH_CAPNG
-# undef WITH_CURL
-# undef WITH_DEVMAPPER
-# undef WITH_DTRACE_PROBES
-# undef WITH_GNUTLS
-# undef WITH_LIBSSH
-# undef WITH_MACVTAP
-# undef WITH_NUMACTL
-# undef WITH_SASL
-# undef WITH_SSH2
-# undef WITH_VIRTUALPORT
-# undef WITH_SECDRIVER_SELINUX
-# undef WITH_SECDRIVER_APPARMOR
-#endif /* LIBVIRT_NSS */
-
 #ifndef __GNUC__
-# error "Libvirt requires GCC >= 4.4, or CLang"
+# error "Libvirt requires GCC >= 4.8, or CLang"
 #endif
 
 /*
@@ -86,6 +32,30 @@
     ((__GNUC__ << 16) + __GNUC_MINOR__ >= ((maj) << 16) + (min))
 #endif
 
-#if !(__GNUC_PREREQ(4, 4) || defined(__clang__))
-# error "Libvirt requires GCC >= 4.4, or CLang"
+#if defined(__clang_major__) && defined(__clang_minor__)
+# ifdef __apple_build_version__
+#  if __clang_major__ < 5 || (__clang_major__ == 5 && __clang_minor__ < 1)
+#   error You need at least XCode Clang v5.1 to compile QEMU
+#  endif
+# else
+#  if __clang_major__ < 3 || (__clang_major__ == 3 && __clang_minor__ < 4)
+#   error You need at least Clang v3.4 to compile QEMU
+#  endif
+# endif
+#elif defined(__GNUC__) && defined(__GNUC_MINOR__)
+# if __GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 8)
+#  error You need at least GCC v4.8 to compile QEMU
+# endif
+#else
+# error You either need at least GCC 4.8 or Clang 3.4 or XCode Clang 5.1 to compile libvirt
 #endif
+
+/* Ask for warnings for anything that was marked deprecated in
+ * the defined version, or before. It is a candidate for rewrite.
+ */
+#define GLIB_VERSION_MIN_REQUIRED GLIB_VERSION_2_48
+
+/* Ask for warnings if code tries to use function that did not
+ * exist in the defined version. These risk breaking builds
+ */
+#define GLIB_VERSION_MAX_ALLOWED GLIB_VERSION_2_48

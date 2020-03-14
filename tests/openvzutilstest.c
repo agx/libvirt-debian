@@ -14,10 +14,11 @@
 # define VIR_FROM_THIS VIR_FROM_OPENVZ
 
 static int
-testLocateConfFile(int vpsid ATTRIBUTE_UNUSED, char **conffile,
-                   const char *ext ATTRIBUTE_UNUSED)
+testLocateConfFile(int vpsid G_GNUC_UNUSED, char **conffile,
+                   const char *ext G_GNUC_UNUSED)
 {
-    return virAsprintf(conffile, "%s/openvzutilstest.conf", abs_srcdir);
+    *conffile = g_strdup_printf("%s/openvzutilstest.conf", abs_srcdir);
+    return 0;
 }
 
 struct testConfigParam {
@@ -33,17 +34,16 @@ static struct testConfigParam configParams[] = {
 };
 
 static int
-testReadConfigParam(const void *data ATTRIBUTE_UNUSED)
+testReadConfigParam(const void *data G_GNUC_UNUSED)
 {
     int result = -1;
     size_t i;
     char *conf = NULL;
     char *value = NULL;
 
-    if (virAsprintf(&conf, "%s/openvzutilstest.conf", abs_srcdir) < 0)
-        return -1;
+    conf = g_strdup_printf("%s/openvzutilstest.conf", abs_srcdir);
 
-    for (i = 0; i < ARRAY_CARDINALITY(configParams); ++i) {
+    for (i = 0; i < G_N_ELEMENTS(configParams); ++i) {
         if (openvzReadConfigParam(conf, configParams[i].param,
                                   &value) != configParams[i].ret) {
             goto cleanup;
@@ -68,7 +68,7 @@ testReadConfigParam(const void *data ATTRIBUTE_UNUSED)
 }
 
 static int
-testReadNetworkConf(const void *data ATTRIBUTE_UNUSED)
+testReadNetworkConf(const void *data G_GNUC_UNUSED)
 {
     int result = -1;
     virDomainDefPtr def = NULL;
@@ -98,10 +98,15 @@ testReadNetworkConf(const void *data ATTRIBUTE_UNUSED)
         "    </interface>\n"
         "  </devices>\n"
         "</domain>\n";
+    struct openvz_driver driver = {
+        .xmlopt = openvzXMLOption(&driver),
+        .caps = openvzCapsInit(),
+    };
 
-    if (!(def = virDomainDefNew()) ||
-        VIR_STRDUP(def->os.init, "/sbin/init") < 0)
+    if (!(def = virDomainDefNew()))
         goto cleanup;
+
+    def->os.init = g_strdup("/sbin/init");
 
     def->virtType = VIR_DOMAIN_VIRT_OPENVZ;
     def->os.type = VIR_DOMAIN_OSTYPE_EXE;
@@ -111,7 +116,7 @@ testReadNetworkConf(const void *data ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    actual = virDomainDefFormat(def, NULL, VIR_DOMAIN_DEF_FORMAT_INACTIVE);
+    actual = virDomainDefFormat(def, driver.xmlopt, VIR_DOMAIN_DEF_FORMAT_INACTIVE);
 
     if (actual == NULL) {
         fprintf(stderr, "ERROR: %s\n", virGetLastErrorMessage());
@@ -126,6 +131,8 @@ testReadNetworkConf(const void *data ATTRIBUTE_UNUSED)
     result = 0;
 
  cleanup:
+    virObjectUnref(driver.xmlopt);
+    virObjectUnref(driver.caps);
     VIR_FREE(actual);
     virDomainDefFree(def);
 

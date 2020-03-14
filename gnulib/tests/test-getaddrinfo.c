@@ -1,6 +1,6 @@
 /* Test the getaddrinfo module.
 
-   Copyright (C) 2006-2019 Free Software Foundation, Inc.
+   Copyright (C) 2006-2020 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -38,6 +38,8 @@ SIGNATURE_CHECK (getaddrinfo, int, (char const *, char const *,
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "sockets.h"
 
 /* Whether to print debugging messages.  */
 #define ENABLE_DEBUGGING 0
@@ -167,6 +169,8 @@ simple (char const *host, char const *service)
 
 int main (void)
 {
+  (void) gl_sockets_startup (SOCKETS_1_1);
+
   return simple (HOST1, SERV1)
     + simple (HOST2, SERV2)
     + simple (HOST3, SERV3)

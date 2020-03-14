@@ -27,7 +27,6 @@
 #include "virxml.h"
 #include "qemu_monitor.h"
 #include "qemu_conf.h"
-#include "virautoclean.h"
 #include "virenum.h"
 
 typedef enum {
@@ -93,7 +92,7 @@ qemuMigrationParamsNew(void);
 
 void
 qemuMigrationParamsFree(qemuMigrationParamsPtr migParams);
-VIR_DEFINE_AUTOPTR_FUNC(qemuMigrationParams, qemuMigrationParamsFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(qemuMigrationParams, qemuMigrationParamsFree);
 
 int
 qemuMigrationParamsApply(virQEMUDriverPtr driver,

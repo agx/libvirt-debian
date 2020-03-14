@@ -47,15 +47,13 @@ struct findTestInfo {
 
 static int testDeviceFileActor(virUSBDevicePtr dev,
                                const char *path,
-                               void *opaque ATTRIBUTE_UNUSED)
+                               void *opaque G_GNUC_UNUSED)
 {
     char *str = NULL;
     int ret = 0;
 
-    if (virAsprintf(&str, USB_DEVFS "%03d/%03d",
-                    virUSBDeviceGetBus(dev),
-                    virUSBDeviceGetDevno(dev)) < 0)
-        return -1;
+    str = g_strdup_printf(USB_DEVFS "%03d/%03d", virUSBDeviceGetBus(dev),
+                          virUSBDeviceGetDevno(dev));
 
     if (STRNEQ(path, str)) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
@@ -147,7 +145,7 @@ testCheckNdevs(const char* occasion,
 
 
 static int
-testUSBList(const void *opaque ATTRIBUTE_UNUSED)
+testUSBList(const void *opaque G_GNUC_UNUSED)
 {
     virUSBDeviceListPtr list = NULL;
     virUSBDeviceListPtr devlist = NULL;
@@ -288,4 +286,4 @@ mymain(void)
     return EXIT_SUCCESS;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virusbmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virusb"))

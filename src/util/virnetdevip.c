@@ -166,12 +166,12 @@ virNetDevIPAddrAdd(const char *ifname,
                    unsigned int prefix)
 {
     unsigned int recvbuflen;
-    VIR_AUTOPTR(virNetlinkMsg) nlmsg = NULL;
-    VIR_AUTOPTR(virSocketAddr) broadcast = NULL;
-    VIR_AUTOFREE(struct nlmsghdr *) resp = NULL;
-    VIR_AUTOFREE(char *) ipStr = NULL;
-    VIR_AUTOFREE(char *) peerStr = NULL;
-    VIR_AUTOFREE(char *) bcastStr = NULL;
+    g_autoptr(virNetlinkMsg) nlmsg = NULL;
+    g_autoptr(virSocketAddr) broadcast = NULL;
+    g_autofree struct nlmsghdr *resp = NULL;
+    g_autofree char *ipStr = NULL;
+    g_autofree char *peerStr = NULL;
+    g_autofree char *bcastStr = NULL;
 
     ipStr = virSocketAddrFormat(addr);
     if (peer && VIR_SOCKET_ADDR_VALID(peer))
@@ -239,8 +239,8 @@ virNetDevIPAddrDel(const char *ifname,
                    unsigned int prefix)
 {
     unsigned int recvbuflen;
-    VIR_AUTOPTR(virNetlinkMsg) nlmsg = NULL;
-    VIR_AUTOFREE(struct nlmsghdr *) resp = NULL;
+    g_autoptr(virNetlinkMsg) nlmsg = NULL;
+    g_autofree struct nlmsghdr *resp = NULL;
 
     if (!(nlmsg = virNetDevCreateNetlinkAddressMessage(RTM_DELADDR, ifname,
                                                        addr, prefix,
@@ -289,10 +289,10 @@ virNetDevIPRouteAdd(const char *ifname,
     int errCode;
     virSocketAddr defaultAddr;
     virSocketAddrPtr actualAddr;
-    VIR_AUTOPTR(virNetlinkMsg) nlmsg = NULL;
-    VIR_AUTOFREE(char *) toStr = NULL;
-    VIR_AUTOFREE(char *) viaStr = NULL;
-    VIR_AUTOFREE(struct nlmsghdr *) resp = NULL;
+    g_autoptr(virNetlinkMsg) nlmsg = NULL;
+    g_autofree char *toStr = NULL;
+    g_autofree char *viaStr = NULL;
+    g_autofree struct nlmsghdr *resp = NULL;
 
     actualAddr = addr;
 
@@ -431,7 +431,7 @@ virNetDevIPWaitDadFinish(virSocketAddrPtr *addrs, size_t count)
     unsigned int recvbuflen;
     bool dad = true;
     time_t max_time = time(NULL) + VIR_DAD_WAIT_TIMEOUT;
-    VIR_AUTOPTR(virNetlinkMsg) nlmsg = NULL;
+    g_autoptr(virNetlinkMsg) nlmsg = NULL;
 
     if (!(nlmsg = nlmsg_alloc_simple(RTM_GETADDR,
                                      NLM_F_REQUEST | NLM_F_DUMP))) {
@@ -450,7 +450,7 @@ virNetDevIPWaitDadFinish(virSocketAddrPtr *addrs, size_t count)
 
     /* Periodically query netlink until DAD finishes on all known addresses. */
     while (dad && time(NULL) < max_time) {
-        VIR_AUTOFREE(struct nlmsghdr *) resp = NULL;
+        g_autofree struct nlmsghdr *resp = NULL;
 
         if (virNetlinkCommand(nlmsg, &resp, &recvbuflen, 0, 0,
                               NETLINK_ROUTE, 0) < 0)
@@ -465,7 +465,7 @@ virNetDevIPWaitDadFinish(virSocketAddrPtr *addrs, size_t count)
         /* Parse response. */
         dad = virNetDevIPParseDadStatus(resp, recvbuflen, addrs, count);
         if (dad)
-            usleep(1000 * 10);
+            g_usleep(1000 * 10);
     }
     /* Check timeout. */
     if (dad) {
@@ -482,14 +482,13 @@ virNetDevIPWaitDadFinish(virSocketAddrPtr *addrs, size_t count)
 static int
 virNetDevIPGetAcceptRA(const char *ifname)
 {
-    VIR_AUTOFREE(char *) path = NULL;
-    VIR_AUTOFREE(char *) buf = NULL;
+    g_autofree char *path = NULL;
+    g_autofree char *buf = NULL;
     char *suffix;
     int accept_ra = -1;
 
-    if (virAsprintf(&path, "/proc/sys/net/ipv6/conf/%s/accept_ra",
-                    ifname ? ifname : "all") < 0)
-        return -1;
+    path = g_strdup_printf("/proc/sys/net/ipv6/conf/%s/accept_ra",
+                           ifname ? ifname : "all");
 
     if ((virFileReadAll(path, 512, &buf) < 0) ||
         (virStrToLong_i(buf, &suffix, 10, &accept_ra) < 0))
@@ -534,7 +533,7 @@ virNetDevIPCheckIPv6ForwardingCallback(struct nlmsghdr *resp,
     struct rtattr *rta_attr;
     int accept_ra = -1;
     int ifindex = -1;
-    VIR_AUTOFREE(char *) ifname = NULL;
+    g_autofree char *ifname = NULL;
 
     /* Ignore messages other than route ones */
     if (resp->nlmsg_type != RTM_NEWROUTE)
@@ -620,7 +619,7 @@ virNetDevIPCheckIPv6Forwarding(void)
         .devices = NULL,
         .ndevices = 0
     };
-    VIR_AUTOPTR(virNetlinkMsg) nlmsg = NULL;
+    g_autoptr(virNetlinkMsg) nlmsg = NULL;
 
 
     /* Prepare the request message */
@@ -688,10 +687,10 @@ virNetDevIPAddrAdd(const char *ifname,
                    unsigned int prefix)
 {
     virSocketAddr broadcast;
-    VIR_AUTOPTR(virCommand) cmd = NULL;
-    VIR_AUTOFREE(char *) addrstr = NULL;
-    VIR_AUTOFREE(char *) bcaststr = NULL;
-    VIR_AUTOFREE(char *) peerstr = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    g_autofree char *addrstr = NULL;
+    g_autofree char *bcaststr = NULL;
+    g_autofree char *peerstr = NULL;
 
     if (!(addrstr = virSocketAddrFormat(addr)))
         return -1;
@@ -743,8 +742,8 @@ virNetDevIPAddrDel(const char *ifname,
                    virSocketAddr *addr,
                    unsigned int prefix)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
-    VIR_AUTOFREE(char *) addrstr = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    g_autofree char *addrstr = NULL;
 
     if (!(addrstr = virSocketAddrFormat(addr)))
         return -1;
@@ -778,9 +777,9 @@ virNetDevIPRouteAdd(const char *ifname,
                     virSocketAddrPtr gateway,
                     unsigned int metric)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
-    VIR_AUTOFREE(char *) addrstr = NULL;
-    VIR_AUTOFREE(char *) gatewaystr = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    g_autofree char *addrstr = NULL;
+    g_autofree char *gatewaystr = NULL;
 
     if (!(addrstr = virSocketAddrFormat(addr)))
         return -1;
@@ -802,8 +801,8 @@ virNetDevIPRouteAdd(const char *ifname,
 
 /* return after DAD finishes for all known IPv6 addresses or an error */
 int
-virNetDevIPWaitDadFinish(virSocketAddrPtr *addrs ATTRIBUTE_UNUSED,
-                         size_t count ATTRIBUTE_UNUSED)
+virNetDevIPWaitDadFinish(virSocketAddrPtr *addrs G_GNUC_UNUSED,
+                         size_t count G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s",
                          _("Unable to wait for IPv6 DAD on this platform"));
@@ -862,8 +861,8 @@ virNetDevGetIPv4AddressIoctl(const char *ifname,
 #else /* ! SIOCGIFADDR */
 
 static int
-virNetDevGetIPv4AddressIoctl(const char *ifname ATTRIBUTE_UNUSED,
-                             virSocketAddrPtr addr ATTRIBUTE_UNUSED)
+virNetDevGetIPv4AddressIoctl(const char *ifname G_GNUC_UNUSED,
+                             virSocketAddrPtr addr G_GNUC_UNUSED)
 {
     return -2;
 }
@@ -931,8 +930,8 @@ virNetDevGetifaddrsAddress(const char *ifname,
 #else  /* ! HAVE_GETIFADDRS */
 
 static int
-virNetDevGetifaddrsAddress(const char *ifname ATTRIBUTE_UNUSED,
-                           virSocketAddrPtr addr ATTRIBUTE_UNUSED)
+virNetDevGetifaddrsAddress(const char *ifname G_GNUC_UNUSED,
+                           virSocketAddrPtr addr G_GNUC_UNUSED)
 {
     return -2;
 }
@@ -1072,7 +1071,7 @@ virNetDevIPInfoAddToDev(const char *ifname,
 {
     size_t i;
     int prefix;
-    VIR_AUTOFREE(char *) ipStr = NULL;
+    g_autofree char *ipStr = NULL;
 
     /* add all IP addresses */
     for (i = 0; i < ipInfo->nips; i++) {

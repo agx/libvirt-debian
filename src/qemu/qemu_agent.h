@@ -74,6 +74,11 @@ int qemuAgentFSThaw(qemuAgentPtr mon);
 int qemuAgentGetFSInfo(qemuAgentPtr mon, virDomainFSInfoPtr **info,
                        virDomainDefPtr vmdef);
 
+int qemuAgentGetFSInfoParams(qemuAgentPtr mon,
+                             virTypedParameterPtr *params,
+                             int *nparams, int *maxparams,
+                             virDomainDefPtr vmdef);
+
 int qemuAgentSuspend(qemuAgentPtr mon,
                      unsigned int target);
 
@@ -120,3 +125,21 @@ int qemuAgentSetUserPassword(qemuAgentPtr mon,
                              const char *user,
                              const char *password,
                              bool crypted);
+
+int qemuAgentGetUsers(qemuAgentPtr mon,
+                      virTypedParameterPtr *params,
+                      int *nparams,
+                      int *maxparams);
+
+int qemuAgentGetOSInfo(qemuAgentPtr mon,
+                       virTypedParameterPtr *params,
+                       int *nparams,
+                       int *maxparams);
+
+int qemuAgentGetTimezone(qemuAgentPtr mon,
+                         virTypedParameterPtr *params,
+                         int *nparams,
+                         int *maxparams);
+
+void qemuAgentSetResponseTimeout(qemuAgentPtr mon,
+                                 int timeout);

@@ -38,10 +38,10 @@ testCompareXMLToXMLFiles(const char *inxml,
 {
     unsigned int parseflags = 0;
     unsigned int formatflags = VIR_DOMAIN_CHECKPOINT_FORMAT_SECURE;
-    VIR_AUTOFREE(char *) inXmlData = NULL;
-    VIR_AUTOFREE(char *) outXmlData = NULL;
-    VIR_AUTOFREE(char *) actual = NULL;
-    VIR_AUTOUNREF(virDomainCheckpointDefPtr) def = NULL;
+    g_autofree char *inXmlData = NULL;
+    g_autofree char *outXmlData = NULL;
+    g_autofree char *actual = NULL;
+    g_autoptr(virDomainCheckpointDef) def = NULL;
 
     if (flags & TEST_REDEFINE)
         parseflags |= VIR_DOMAIN_CHECKPOINT_PARSE_REDEFINE;
@@ -53,8 +53,8 @@ testCompareXMLToXMLFiles(const char *inxml,
         virTestLoadFile(outxml, &outXmlData) < 0)
         return -1;
 
-    if (!(def = virDomainCheckpointDefParseString(inXmlData, driver.caps,
-                                                  driver.xmlopt,
+    if (!(def = virDomainCheckpointDefParseString(inXmlData,
+                                                  driver.xmlopt, NULL,
                                                   parseflags))) {
         if (flags & TEST_INVALID)
             return 0;
@@ -63,8 +63,7 @@ testCompareXMLToXMLFiles(const char *inxml,
     if (flags & TEST_PARENT) {
         if (def->parent.parent_name)
             return -1;
-        if (VIR_STRDUP(def->parent.parent_name, "1525111885") < 0)
-            return -1;
+        def->parent.parent_name = g_strdup("1525111885");
     }
     if (flags & TEST_VDA_BITMAP) {
         virDomainCheckpointDiskDefPtr disk;
@@ -76,13 +75,11 @@ testCompareXMLToXMLFiles(const char *inxml,
             return -1;
         if (!disk->name) {
             disk->type = VIR_DOMAIN_CHECKPOINT_TYPE_BITMAP;
-            if (VIR_STRDUP(disk->name, "vda") < 0)
-                return -1;
+            disk->name = g_strdup("vda");
         } else if (STRNEQ(disk->name, "vda")) {
             return -1;
         }
-        if (VIR_STRDUP(disk->bitmap, def->parent.name) < 0)
-            return -1;
+        disk->bitmap = g_strdup(def->parent.name);
     }
     if (flags & TEST_SIZE) {
         def->disks[0].size = 1048576;
@@ -94,7 +91,7 @@ testCompareXMLToXMLFiles(const char *inxml,
     if (!def->parent.dom)
         formatflags |= VIR_DOMAIN_CHECKPOINT_FORMAT_NO_DOMAIN;
 
-    if (!(actual = virDomainCheckpointDefFormat(def, driver.caps,
+    if (!(actual = virDomainCheckpointDefFormat(def,
                                                 driver.xmlopt,
                                                 formatflags)))
         return -1;
@@ -123,9 +120,8 @@ testCheckpointPostParse(virDomainMomentDefPtr def)
     if (def->creationTime)
         return -1;
     def->creationTime = mocktime;
-    if (!def->name &&
-        virAsprintf(&def->name, "%lld", def->creationTime) < 0)
-        return -1;
+    if (!def->name)
+        def->name = g_strdup_printf("%lld", def->creationTime);
     return 0;
 }
 
@@ -179,7 +175,7 @@ mymain(void)
     /* Unset or set all envvars here that are copied in qemudBuildCommandLine
      * using ADD_ENV_COPY, otherwise these tests may fail due to unexpected
      * values for these envvars */
-    setenv("PATH", "/bin", 1);
+    g_setenv("PATH", "/bin", TRUE);
 
     /* Test a normal user redefine */
     DO_TEST_OUT("redefine", 0);

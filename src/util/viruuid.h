@@ -45,11 +45,11 @@ int virGetHostUUID(unsigned char *host_uuid) ATTRIBUTE_NONNULL(1);
 
 int virUUIDIsValid(unsigned char *uuid);
 
-int virUUIDGenerate(unsigned char *uuid) ATTRIBUTE_NOINLINE;
+int virUUIDGenerate(unsigned char *uuid) G_GNUC_NO_INLINE;
 
 int virUUIDParse(const char *uuidstr,
                  unsigned char *uuid)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 
 const char *virUUIDFormat(const unsigned char *uuid,
                           char *uuidstr) ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);

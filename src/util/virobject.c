@@ -188,8 +188,7 @@ virClassNew(virClassPtr parent,
                        _("too many object classes defined"));
         goto error;
     }
-    if (VIR_STRDUP(klass->name, name) < 0)
-        goto error;
+    klass->name = g_strdup(name);
     klass->objectSize = objectSize;
     klass->dispose = dispose;
 
@@ -364,20 +363,6 @@ virObjectUnref(void *anyobj)
     }
 
     return !lastRef;
-}
-
-
-/**
- * virObjectAutoUnref:
- *
- * Helper used by VIR_AUTOUNREF
- */
-void
-virObjectAutoUnref(void *objptr)
-{
-    virObjectPtr *obj = objptr;
-    virObjectUnref(*obj);
-    *obj = NULL;
 }
 
 
@@ -604,8 +589,7 @@ void virObjectFreeCallback(void *opaque)
  * typedef.
  */
 void
-virObjectFreeHashData(void *opaque,
-                      const void *name ATTRIBUTE_UNUSED)
+virObjectFreeHashData(void *opaque)
 {
     virObjectUnref(opaque);
 }

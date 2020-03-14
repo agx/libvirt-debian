@@ -81,7 +81,7 @@ testEventResultCallback(const void *opaque)
 }
 
 static void
-ATTRIBUTE_FMT_PRINTF(3, 4)
+G_GNUC_PRINTF(3, 4)
 testEventReport(const char *name, bool failed, const char *msg, ...)
 {
     va_list vargs;
@@ -89,8 +89,8 @@ testEventReport(const char *name, bool failed, const char *msg, ...)
     char *str = NULL;
     struct testEventResultData data;
 
-    if (msg && virVasprintfQuiet(&str, msg, vargs) != 0)
-        failed = true;
+    if (msg)
+        str = g_strdup_vprintf(msg, vargs);
 
     data.failed = failed;
     data.msg = str;
@@ -158,7 +158,7 @@ static pthread_cond_t eventThreadJobCond = PTHREAD_COND_INITIALIZER;
 static int eventThreadJobDone;
 
 
-ATTRIBUTE_NORETURN static void *eventThreadLoop(void *data ATTRIBUTE_UNUSED) {
+G_GNUC_NORETURN static void *eventThreadLoop(void *data G_GNUC_UNUSED) {
     while (1) {
         pthread_mutex_lock(&eventThreadMutex);
         while (!eventThreadRunOnce)
@@ -262,20 +262,14 @@ startJob(void)
 static int
 finishJob(const char *name, int handle, int timer)
 {
+    unsigned long long now_us;
     struct timespec waitTime;
     int rc;
-#if HAVE_MACH_CLOCK_ROUTINES
-    clock_serv_t cclock;
-    mach_timespec_t mts;
 
-    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
-    clock_get_time(cclock, &mts);
-    mach_port_deallocate(mach_task_self(), cclock);
-    waitTime.tv_sec = mts.tv_sec;
-    waitTime.tv_nsec = mts.tv_nsec;
-#else
-    clock_gettime(CLOCK_REALTIME, &waitTime);
-#endif
+    now_us = g_get_real_time();
+    waitTime.tv_sec = now_us / (1000*1000);
+    waitTime.tv_nsec = (now_us % ((now_us / (1000*1000)))) * 1000;
+
     waitTime.tv_sec += 5;
     rc = 0;
     while (!eventThreadJobDone && rc == 0)
@@ -321,8 +315,6 @@ mymain(void)
         }
     }
 
-    if (virThreadInitialize() < 0)
-        return EXIT_FAILURE;
     char *debugEnv = getenv("LIBVIRT_DEBUG");
     if (debugEnv && *debugEnv &&
         (virLogSetDefaultPriority(virLogParseDefaultPriority(debugEnv)) < 0)) {
@@ -384,7 +376,7 @@ mymain(void)
     startJob();
     pthread_mutex_unlock(&eventThreadMutex);
     sched_yield();
-    usleep(100 * 1000);
+    g_usleep(100 * 1000);
     pthread_mutex_lock(&eventThreadMutex);
     virEventPollRemoveHandle(handles[1].watch);
     if (finishJob("Interrupted during poll", -1, -1) != EXIT_SUCCESS)
@@ -450,7 +442,7 @@ mymain(void)
     startJob();
     pthread_mutex_unlock(&eventThreadMutex);
     sched_yield();
-    usleep(100 * 1000);
+    g_usleep(100 * 1000);
     pthread_mutex_lock(&eventThreadMutex);
     virEventPollRemoveTimeout(timers[1].timer);
     if (finishJob("Interrupted during poll", -1, -1) != EXIT_SUCCESS)

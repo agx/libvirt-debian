@@ -25,6 +25,7 @@ AM_CPPFLAGS = \
 	-I$(top_builddir)/src -I$(top_srcdir)/src \
 	-I$(top_srcdir)/src/util \
 	-I$(top_srcdir)/src/conf \
+	-I$(top_builddir)/src/rpc \
 	$(NULL)
 
 WARN_CFLAGS += $(RELAXED_FRAME_LIMIT_CFLAGS)
@@ -35,19 +36,21 @@ AM_CFLAGS = \
 	-Dabs_srcdir="\"$(abs_srcdir)\"" \
 	-Dabs_top_srcdir="\"$(abs_top_srcdir)\"" \
 	$(LIBXML_CFLAGS) \
+	$(GLIB_CFLAGS) \
 	$(LIBNL_CFLAGS) \
 	$(GNUTLS_CFLAGS) \
 	$(SASL_CFLAGS) \
 	$(SELINUX_CFLAGS) \
 	$(APPARMOR_CFLAGS) \
 	$(YAJL_CFLAGS) \
+	$(COVERAGE_CFLAGS) \
 	$(XDR_CFLAGS) \
 	$(WARN_CFLAGS)
 
 AM_LDFLAGS = \
 	-export-dynamic
 
-MOCKLIBS_LDFLAGS = -module -avoid-version \
+MOCKLIBS_LDFLAGS = -avoid-version \
 	-rpath /evil/libtool/hack/to/force/shared/lib/creation \
 	$(MINGW_EXTRA_LDFLAGS)
 
@@ -55,6 +58,9 @@ DRIVERLIB_LDFLAGS = \
 	-avoid-version \
 	-rpath /evil/libtool/hack/to/force/shared/lib/creation \
 	$(MINGW_EXTRA_LDFLAGS)
+if WITH_MACOS
+DRIVERLIB_LDFLAGS += -Wl,-flat_namespace
+endif WITH_MACOS
 
 PROBES_O =
 if WITH_DTRACE_PROBES
@@ -68,7 +74,9 @@ LDADDS = \
 	$(NO_INDIRECT_LDFLAGS) \
 	$(PROBES_O) \
 	$(GNULIB_LIBS) \
-	../src/libvirt.la
+	../src/libvirt.la \
+	$(GLIB_LIBS) \
+	$(NULL)
 
 MOCKLIBS_LIBS = \
 	$(GNULIB_LIBS) \
@@ -82,7 +90,9 @@ EXTRA_DIST = \
 	capabilityschemadata \
 	commanddata \
 	cputestdata \
-	domaincapsschemadata \
+	domaincapsdata \
+	domainbackupxml2xmlin \
+	domainbackupxml2xmlout \
 	domainconfdata \
 	domainschemadata \
 	fchostdata \
@@ -105,7 +115,6 @@ EXTRA_DIST = \
 	nwfilterxml2firewalldata \
 	nwfilterxml2xmlin \
 	nwfilterxml2xmlout \
-	oomtrace.pl \
 	qemuagentdata \
 	qemublocktestdata \
 	qemucapabilitiesdata \
@@ -124,6 +133,7 @@ EXTRA_DIST = \
 	qemustatusxml2xmldata \
 	qemumemlockdata \
 	qemufirmwaredata \
+	qemuvhostuserdata \
 	secretxml2xmlin \
 	securityselinuxhelperdata \
 	securityselinuxlabeldata \
@@ -205,16 +215,18 @@ test_programs = virshtest sockettest \
 	$(NULL)
 
 test_libraries = libshunload.la \
-	virportallocatormock.la \
-	virnetdaemonmock.la \
-	virnetserverclientmock.la \
-	vircgroupmock.la \
-	virpcimock.la \
-	virnetdevmock.la \
-	virrandommock.la \
-	virhostcpumock.la \
-	domaincapsmock.la \
-	virfilecachemock.la \
+	libvirportallocatormock.la \
+	libvirnetdaemonmock.la \
+	libvirnetserverclientmock.la \
+	libvircgroupmock.la \
+	libvirpcimock.la \
+	libvirnetdevmock.la \
+	libvirrandommock.la \
+	libvirprocessmock.la \
+	libvirhostcpumock.la \
+	libdomaincapsmock.la \
+	libvirfilecachemock.la \
+	libqemuhotplugmock.la \
 	$(NULL)
 
 if WITH_REMOTE
@@ -233,11 +245,11 @@ test_programs += fchosttest
 test_programs += scsihosttest
 test_programs += vircaps2xmltest
 test_programs += virresctrltest
-test_libraries += virusbmock.la \
-	virnetdevbandwidthmock.la \
-	virnumamock.la \
-	virtestmock.la \
-	virfilemock.la \
+test_libraries += libvirusbmock.la \
+	libvirnetdevbandwidthmock.la \
+	libvirnumamock.la \
+	libvirtestmock.la \
+	libvirfilemock.la \
 	$(NULL)
 endif WITH_LINUX
 
@@ -249,7 +261,7 @@ if WITH_DBUS
 test_programs += virdbustest \
                  virsystemdtest \
                  $(NULL)
-test_libraries += virdbusmock.la
+test_libraries += libvirdbusmock.la
 if WITH_POLKIT
 test_programs += virpolkittest
 endif WITH_POLKIT
@@ -267,6 +279,7 @@ endif WITH_SECDRIVER_SELINUX
 
 # This is a fake SSH we use from virnetsockettest
 ssh_SOURCES = ssh.c
+ssh_LDADD = $(COVERAGE_LDFLAGS)
 
 if WITH_LIBXL
 test_programs += xlconfigtest \
@@ -285,14 +298,15 @@ test_programs += qemuxml2argvtest qemuxml2xmltest \
 	qemumigparamstest \
 	qemusecuritytest \
 	qemufirmwaretest \
+	qemuvhostusertest \
 	$(NULL)
 test_helpers += qemucapsprobe
 test_libraries += libqemumonitortestutils.la \
 		libqemutestdriver.la \
-		qemuxml2argvmock.la \
-		qemucaps2xmlmock.la \
-		qemucapsprobemock.la \
-		qemucpumock.la \
+		libqemuxml2argvmock.la \
+		libqemucaps2xmlmock.la \
+		libqemucapsprobemock.la \
+		libqemucpumock.la \
 		$(NULL)
 endif WITH_QEMU
 
@@ -322,12 +336,8 @@ endif WITH_VMWARE
 
 if WITH_BHYVE
 test_programs += bhyvexml2argvtest bhyvexml2xmltest bhyveargv2xmltest
-test_libraries += bhyvexml2argvmock.la bhyveargv2xmlmock.la
+test_libraries += libbhyvexml2argvmock.la libbhyveargv2xmlmock.la
 endif WITH_BHYVE
-
-if WITH_CIL
-test_programs += objectlocking
-endif WITH_CIL
 
 if WITH_YAJL
 test_programs += virjsontest
@@ -377,7 +387,7 @@ endif WITH_LINUX
 if WITH_NSS
 test_helpers += nsslinktest nssguestlinktest
 test_programs += nsstest nssguesttest
-test_libraries += nssmock.la
+test_libraries += libnssmock.la
 endif WITH_NSS
 
 test_programs += storagevolxml2xmltest
@@ -426,7 +436,8 @@ test_scripts += $(libvirtd_test_scripts)
 
 test_programs += \
 	eventtest \
-	virdrivermoduletest
+	virdrivermoduletest \
+	virdriverconnvalidatetest
 else ! WITH_LIBVIRTD
 EXTRA_DIST += $(libvirtd_test_scripts)
 endif ! WITH_LIBVIRTD
@@ -445,14 +456,15 @@ EXTRA_DIST += $(test_scripts)
 if WITH_LINUX
 check-access: file-access-clean
 	VIR_TEST_FILE_ACCESS=1 $(MAKE) $(AM_MAKEFLAGS) check
-	$(PERL) check-file-access.pl | sort -u
+	$(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/check-file-access.py \
+		$(abs_builddir)/test_file_access.txt \
+		$(abs_srcdir)/file_access_whitelist.txt | sort -u
 
 file-access-clean:
 	> test_file_access.txt
 endif WITH_LINUX
 
 EXTRA_DIST += \
-	check-file-access.pl \
 	file_access_whitelist.txt
 
 if WITH_TESTS
@@ -491,11 +503,10 @@ sockettest_SOURCES = \
 sockettest_LDADD = $(LDADDS)
 
 if WITH_LIBXL
-libxl_LDADDS = ../src/libvirt_driver_libxl_impl.la
-if WITH_NETWORK
-libxl_LDADDS += ../src/libvirt_driver_network_impl.la
-endif WITH_NETWORK
-libxl_LDADDS += $(LDADDS)
+libxl_LDADDS = \
+	../src/libvirt_driver_libxl_impl.la \
+	$(LDADDS) \
+	$(NULL)
 
 libxltestdriver_la_SOURCES =
 libxltestdriver_la_LDFLAGS = $(DRIVERLIB_LDFLAGS)
@@ -518,7 +529,7 @@ libxlxml2domconfigtest_LDADD = $(libxl_LDADDS) $(LIBXML_LIBS)
 
 libxlmock_la_SOURCES = \
 	libxlmock.c
-libxlmock_la_CFLAGS = $(LIBXL_CFLAGS) $(LIBXML_CFLAGS)
+libxlmock_la_CFLAGS = $(LIBXL_CFLAGS) $(LIBXML_CFLAGS) $(GLIB_CFLAGS)
 libxlmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
 libxlmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
@@ -538,12 +549,6 @@ if WITH_QEMU
 libqemumonitortestutils_la_SOURCES = $(QEMUMONITORTESTUTILS_SOURCES)
 
 qemu_LDADDS = ../src/libvirt_driver_qemu_impl.la
-if WITH_NETWORK
-qemu_LDADDS += ../src/libvirt_driver_network_impl.la
-endif WITH_NETWORK
-if WITH_STORAGE
-qemu_LDADDS += ../src/libvirt_driver_storage_impl.la
-endif WITH_STORAGE
 if WITH_DTRACE_PROBES
 qemu_LDADDS += ../src/libvirt_qemu_probes.lo
 endif WITH_DTRACE_PROBES
@@ -553,10 +558,15 @@ libqemutestdriver_la_SOURCES =
 libqemutestdriver_la_LDFLAGS = $(DRIVERLIB_LDFLAGS)
 libqemutestdriver_la_LIBADD = $(qemu_LDADDS)
 
-qemucpumock_la_SOURCES = \
+libqemucpumock_la_SOURCES = \
 	qemucpumock.c testutilshostcpus.h
-qemucpumock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-qemucpumock_la_LIBADD = $(MOCKLIBS_LIBS)
+libqemucpumock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libqemucpumock_la_LIBADD = $(MOCKLIBS_LIBS)
+
+libqemuhotplugmock_la_SOURCES = \
+	qemuhotplugmock.c
+libqemuhotplugmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libqemuhotplugmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 qemuxml2argvtest_SOURCES = \
 	qemuxml2argvtest.c testutilsqemu.c testutilsqemu.h \
@@ -566,14 +576,15 @@ qemuxml2argvtest_SOURCES = \
 qemuxml2argvtest_LDADD = libqemutestdriver.la \
 	$(LDADDS) $(LIBXML_LIBS)
 
-qemuxml2argvmock_la_SOURCES = \
+libqemuxml2argvmock_la_SOURCES = \
 	qemuxml2argvmock.c
-qemuxml2argvmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-qemuxml2argvmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libqemuxml2argvmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libqemuxml2argvmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 qemuxml2xmltest_SOURCES = \
 	qemuxml2xmltest.c testutilsqemu.c testutilsqemu.h \
-	testutils.c testutils.h
+	testutils.c testutils.h \
+	virfilewrapper.c virfilewrapper.h
 qemuxml2xmltest_LDADD = $(qemu_LDADDS)
 
 qemumonitorjsontest_SOURCES = \
@@ -597,10 +608,10 @@ qemucapsprobe_SOURCES = \
 qemucapsprobe_LDADD = \
 	libqemutestdriver.la $(LDADDS)
 
-qemucapsprobemock_la_SOURCES = \
+libqemucapsprobemock_la_SOURCES = \
 	qemucapsprobemock.c
-qemucapsprobemock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-qemucapsprobemock_la_LIBADD = $(MOCKLIBS_LIBS)
+libqemucapsprobemock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libqemucapsprobemock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 qemucommandutiltest_SOURCES = \
 	qemucommandutiltest.c \
@@ -617,10 +628,10 @@ qemucaps2xmltest_SOURCES = \
 	$(NULL)
 qemucaps2xmltest_LDADD = $(qemu_LDADDS)
 
-qemucaps2xmlmock_la_SOURCES = \
+libqemucaps2xmlmock_la_SOURCES = \
 	qemucaps2xmlmock.c
-qemucaps2xmlmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-qemucaps2xmlmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libqemucaps2xmlmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libqemucaps2xmlmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 qemuagenttest_SOURCES = \
 	qemuagenttest.c \
@@ -634,7 +645,11 @@ qemuhotplugtest_SOURCES = \
 	testutils.c testutils.h \
 	testutilsqemu.c testutilsqemu.h \
 	$(NULL)
-qemuhotplugtest_LDADD = libqemumonitortestutils.la $(qemu_LDADDS)
+qemuhotplugtest_LDADD = \
+	libqemutestdriver.la \
+	libqemumonitortestutils.la \
+	$(qemu_LDADDS) \
+	$(NULL)
 
 qemublocktest_SOURCES = \
 	qemublocktest.c \
@@ -643,8 +658,7 @@ qemublocktest_SOURCES = \
 	$(NULL)
 qemublocktest_LDADD = \
 	libqemumonitortestutils.la \
-	../src/libvirt_conf.la \
-	../src/libvirt_util.la \
+	../src/libvirt.la \
 	$(qemu_LDADDS) \
 	$(NULL)
 
@@ -686,6 +700,13 @@ qemufirmwaretest_SOURCES = \
 	$(NULL)
 qemufirmwaretest_LDADD = $(qemu_LDADDS)
 
+qemuvhostusertest_SOURCES = \
+	qemuvhostusertest.c \
+	testutils.h testutils.c \
+	virfilewrapper.c virfilewrapper.h \
+	$(NULL)
+qemuvhostusertest_LDADD = $(qemu_LDADDS)
+
 else ! WITH_QEMU
 EXTRA_DIST += qemuxml2argvtest.c qemuxml2xmltest.c \
 	qemudomaincheckpointxml2xmltest.c qemudomainsnapshotxml2xmltest.c \
@@ -700,16 +721,17 @@ EXTRA_DIST += qemuxml2argvtest.c qemuxml2xmltest.c \
 	qemusecuritytest.c qemusecuritytest.h \
 	qemusecuritymock.c \
 	qemufirmwaretest.c \
+	qemuvhostusertest.c \
+	qemuhotplugmock.c \
 	$(QEMUMONITORTESTUTILS_SOURCES)
 endif ! WITH_QEMU
 
 if WITH_LXC
 
-lxc_LDADDS = ../src/libvirt_driver_lxc_impl.la
-if WITH_NETWORK
-lxc_LDADDS += ../src/libvirt_driver_network_impl.la
-endif WITH_NETWORK
-lxc_LDADDS += $(LDADDS)
+lxc_LDADDS = \
+	../src/libvirt_driver_lxc_impl.la \
+	$(LDADDS) \
+	$(NULL)
 
 lxcxml2xmltest_SOURCES = \
 	lxcxml2xmltest.c testutilslxc.c testutilslxc.h \
@@ -728,7 +750,8 @@ if WITH_OPENVZ
 openvzutilstest_SOURCES = \
 	openvzutilstest.c \
 	testutils.c testutils.h
-openvzutilstest_LDADD = $(LDADDS)
+openvzutilstest_LDADD = $(LDADDS) \
+	../src/libvirt_driver_openvz.la
 else ! WITH_OPENVZ
 EXTRA_DIST += openvzutilstest.c
 endif ! WITH_OPENVZ
@@ -739,6 +762,9 @@ esxutilstest_SOURCES = \
 	esxutilstest.c \
 	testutils.c testutils.h
 esxutilstest_LDADD = $(LDADDS)
+esxutilstest_CFLAGS = \
+	-I$(top_builddir)/src/esx \
+	$(AM_CFLAGS)
 else ! WITH_ESX
 EXTRA_DIST += esxutilstest.c
 endif ! WITH_ESX
@@ -777,21 +803,20 @@ EXTRA_DIST += vmwarevertest.c
 endif ! WITH_VMWARE
 
 if WITH_BHYVE
-bhyvexml2argvmock_la_SOURCES = \
+libbhyvexml2argvmock_la_SOURCES = \
 	bhyvexml2argvmock.c
-bhyvexml2argvmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-bhyvexml2argvmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libbhyvexml2argvmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libbhyvexml2argvmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
-bhyveargv2xmlmock_la_SOURCES = \
+libbhyveargv2xmlmock_la_SOURCES = \
 	bhyveargv2xmlmock.c
-bhyveargv2xmlmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-bhyveargv2xmlmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libbhyveargv2xmlmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libbhyveargv2xmlmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
-bhyve_LDADDS = ../src/libvirt_driver_bhyve_impl.la
-if WITH_STORAGE
-bhyve_LDADDS += ../src/libvirt_driver_storage_impl.la
-endif WITH_STORAGE
-bhyve_LDADDS += $(LDADDS)
+bhyve_LDADDS = \
+	../src/libvirt_driver_bhyve_impl.la \
+	$(LDADDS) \
+	$(NULL)
 bhyvexml2argvtest_SOURCES = \
 	bhyvexml2argvtest.c \
 	testutils.c testutils.h
@@ -908,8 +933,7 @@ storagevolxml2argvtest_SOURCES = \
 storagevolxml2argvtest_LDADD = \
 	$(LIBXML_LIBS) \
 	../src/libvirt_driver_storage_impl.la \
-	../src/libvirt_conf.la \
-	../src/libvirt_util.la \
+	../src/libvirt.la \
 	$(LDADDS)
 
 storagepoolxml2argvtest_SOURCES = \
@@ -918,8 +942,7 @@ storagepoolxml2argvtest_SOURCES = \
 storagepoolxml2argvtest_LDADD = \
 	$(LIBXML_LIBS) \
 	../src/libvirt_driver_storage_impl.la \
-	../src/libvirt_conf.la \
-	../src/libvirt_util.la \
+	../src/libvirt.la \
 	$(LDADDS)
 
 storagepoolxml2xmltest_SOURCES = \
@@ -1026,15 +1049,21 @@ endif WITH_LXC
 if WITH_QEMU
 vircapstest_SOURCES += testutilsqemu.c testutilsqemu.h
 endif WITH_QEMU
+vircapstest_LDADD =
 if WITH_QEMU
-vircapstest_LDADD = $(qemu_LDADDS)
-else ! WITH_QEMU
-vircapstest_LDADD = $(LDADDS)
-endif ! WITH_QEMU
+vircapstest_LDADD += ../src/libvirt_driver_qemu_impl.la
+if WITH_DTRACE_PROBES
+vircapstest_LDADD += ../src/libvirt_qemu_probes.lo
+endif WITH_DTRACE_PROBES
+endif WITH_QEMU
+if WITH_LXC
+vircapstest_LDADD += ../src/libvirt_driver_lxc_impl.la
+endif WITH_LXC
+vircapstest_LDADD += $(LDADDS)
 
-domaincapsmock_la_SOURCES = domaincapsmock.c
-domaincapsmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-domaincapsmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libdomaincapsmock_la_SOURCES = domaincapsmock.c
+libdomaincapsmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libdomaincapsmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 domaincapstest_SOURCES = \
 	domaincapstest.c testutils.h testutils.c \
@@ -1069,20 +1098,20 @@ virnetdaemontest_SOURCES = \
 	testutils.h testutils.c
 virnetdaemontest_LDADD = $(LDADDS)
 
-virnetdaemonmock_la_SOURCES = \
+libvirnetdaemonmock_la_SOURCES = \
 	virnetdaemonmock.c
-virnetdaemonmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virnetdaemonmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirnetdaemonmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirnetdaemonmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 virnetserverclienttest_SOURCES = \
 	virnetserverclienttest.c \
 	testutils.h testutils.c
 virnetserverclienttest_LDADD = $(LDADDS)
 
-virnetserverclientmock_la_SOURCES = \
+libvirnetserverclientmock_la_SOURCES = \
 	virnetserverclientmock.c
-virnetserverclientmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virnetserverclientmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirnetserverclientmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirnetserverclientmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 virnettlscontexttest_SOURCES = \
 	virnettlscontexttest.c \
@@ -1119,8 +1148,6 @@ virstoragetest_SOURCES = \
 	virstoragetest.c testutils.h testutils.c
 virstoragetest_LDADD = $(LDADDS) \
 	../src/libvirt.la \
-	../src/libvirt_conf.la \
-	../src/libvirt_util.la \
 	../src/libvirt_driver_storage_impl.la \
 	../gnulib/lib/libgnu.la \
 	$(NULL)
@@ -1154,19 +1181,19 @@ virportallocatortest_SOURCES = \
 	virportallocatortest.c testutils.h testutils.c
 virportallocatortest_LDADD = $(LDADDS)
 
-virportallocatormock_la_SOURCES = \
+libvirportallocatormock_la_SOURCES = \
 	virportallocatormock.c
-virportallocatormock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virportallocatormock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirportallocatormock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirportallocatormock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 vircgrouptest_SOURCES = \
 	vircgrouptest.c testutils.h testutils.c
 vircgrouptest_LDADD = $(LDADDS)
 
-vircgroupmock_la_SOURCES = \
+libvircgroupmock_la_SOURCES = \
 	vircgroupmock.c
-vircgroupmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-vircgroupmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvircgroupmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvircgroupmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 vircryptotest_SOURCES = \
 	vircryptotest.c testutils.h testutils.c
@@ -1180,44 +1207,50 @@ virpcitest_SOURCES = \
 	virpcitest.c testutils.h testutils.c
 virpcitest_LDADD = $(LDADDS)
 
-virpcimock_la_SOURCES = \
+libvirpcimock_la_SOURCES = \
 	virpcimock.c
-virpcimock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virpcimock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirpcimock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirpcimock_la_LIBADD = $(MOCKLIBS_LIBS)
 
-virrandommock_la_SOURCES = \
+libvirrandommock_la_SOURCES = \
 	virrandommock.c
-virrandommock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virrandommock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirrandommock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirrandommock_la_LIBADD = $(MOCKLIBS_LIBS)
 
-virhostcpumock_la_SOURCES = \
+libvirprocessmock_la_SOURCES = \
+	virprocessmock.c
+libvirprocessmock_la_CFLAGS = $(AM_CFLAGS)
+libvirprocessmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirprocessmock_la_LIBADD = $(MOCKLIBS_LIBS)
+
+libvirhostcpumock_la_SOURCES = \
 	virhostcpumock.c
-virhostcpumock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virhostcpumock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirhostcpumock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirhostcpumock_la_LIBADD = $(MOCKLIBS_LIBS)
 
-virfilecachemock_la_SOURCES = \
+libvirfilecachemock_la_SOURCES = \
 	virfilecachemock.c
-virfilecachemock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virfilecachemock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirfilecachemock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirfilecachemock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 if WITH_LINUX
 vircaps2xmltest_SOURCES = \
 	vircaps2xmltest.c testutils.h testutils.c virfilewrapper.h virfilewrapper.c
 vircaps2xmltest_LDADD = $(LDADDS)
 
-virnumamock_la_SOURCES = \
+libvirnumamock_la_SOURCES = \
 	virnumamock.c
-virnumamock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virnumamock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirnumamock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirnumamock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 virresctrltest_SOURCES = \
 	virresctrltest.c testutils.h testutils.c virfilewrapper.h virfilewrapper.c
 virresctrltest_LDADD = $(LDADDS)
 
-virfilemock_la_SOURCES = \
+libvirfilemock_la_SOURCES = \
 	virfilemock.c
-virfilemock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virfilemock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirfilemock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirfilemock_la_LIBADD = $(MOCKLIBS_LIBS)
 else ! WITH_LINUX
 EXTRA_DIST += vircaps2xmltest.c virnumamock.c virfilewrapper.c \
 			  virfilewrapper.h virresctrltest.c virfilemock.c
@@ -1243,10 +1276,10 @@ nssguesttest_LDADD = \
 	$(LDADDS) \
 	../tools/nss/libnss_libvirt_guest_impl.la
 
-nssmock_la_SOURCES = \
+libnssmock_la_SOURCES = \
 	nssmock.c
-nssmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-nssmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libnssmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libnssmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 ## Intentionaly not linking with anything else.
 ## See the test source for more detailed explanation.
@@ -1268,12 +1301,12 @@ else ! WITH_NSS
 EXTRA_DIST += nsstest.c nssmock.c nsslinktest.c
 endif ! WITH_NSS
 
-virdeterministichashmock_la_SOURCES = \
+libvirdeterministichashmock_la_SOURCES = \
 	virdeterministichashmock.c
-virdeterministichashmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virdeterministichashmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirdeterministichashmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirdeterministichashmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
-test_libraries += virdeterministichashmock.la
+test_libraries += libvirdeterministichashmock.la
 
 if WITH_YAJL
 virmacmaptest_SOURCES = \
@@ -1298,11 +1331,11 @@ virnetdevtest_SOURCES = \
 virnetdevtest_CFLAGS = $(AM_CFLAGS) $(LIBNL_CFLAGS)
 virnetdevtest_LDADD = $(LDADDS)
 
-virnetdevmock_la_SOURCES = \
+libvirnetdevmock_la_SOURCES = \
 	virnetdevmock.c
-virnetdevmock_la_CFLAGS = $(AM_CFLAGS) $(LIBNL_CFLAGS)
-virnetdevmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virnetdevmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirnetdevmock_la_CFLAGS = $(AM_CFLAGS) $(LIBNL_CFLAGS)
+libvirnetdevmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirnetdevmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 virrotatingfiletest_SOURCES = \
 	virrotatingfiletest.c testutils.h testutils.c
@@ -1317,21 +1350,21 @@ virnetdevbandwidthtest_SOURCES = \
 	virnetdevbandwidthtest.c testutils.h testutils.c
 virnetdevbandwidthtest_LDADD = $(LDADDS) $(LIBXML_LIBS)
 
-virusbmock_la_SOURCES = virusbmock.c
-virusbmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virusbmock_la_LIBADD = $(MOCKLIBS_LIBS) \
+libvirusbmock_la_SOURCES = virusbmock.c
+libvirusbmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirusbmock_la_LIBADD = $(MOCKLIBS_LIBS) \
 	$(PROBES_O) \
 	../src/libvirt_util.la
 
-virnetdevbandwidthmock_la_SOURCES = \
+libvirnetdevbandwidthmock_la_SOURCES = \
 	virnetdevbandwidthmock.c
-virnetdevbandwidthmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virnetdevbandwidthmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirnetdevbandwidthmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirnetdevbandwidthmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
-virtestmock_la_SOURCES = \
+libvirtestmock_la_SOURCES = \
 	virtestmock.c
-virtestmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virtestmock_la_LIBADD = \
+libvirtestmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirtestmock_la_LIBADD = \
 	$(MOCKLIBS_LIBS) \
 	$(PROBES_O) \
 	../src/libvirt_util.la
@@ -1347,11 +1380,11 @@ virdbustest_SOURCES = \
 virdbustest_CFLAGS = $(AM_CFLAGS) $(DBUS_CFLAGS)
 virdbustest_LDADD = $(LDADDS) $(DBUS_LIBS)
 
-virdbusmock_la_SOURCES = \
+libvirdbusmock_la_SOURCES = \
 	virdbusmock.c
-virdbusmock_la_CFLAGS = $(AM_CFLAGS) $(DBUS_CFLAGS)
-virdbusmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
-virdbusmock_la_LIBADD = $(MOCKLIBS_LIBS)
+libvirdbusmock_la_CFLAGS = $(AM_CFLAGS) $(DBUS_CFLAGS)
+libvirdbusmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+libvirdbusmock_la_LIBADD = $(MOCKLIBS_LIBS)
 
 virpolkittest_SOURCES = \
 	virpolkittest.c testutils.h testutils.c
@@ -1463,6 +1496,10 @@ if WITH_LIBVIRTD
 virdrivermoduletest_SOURCES = \
 	virdrivermoduletest.c testutils.h testutils.c
 virdrivermoduletest_LDADD = $(LDADDS)
+
+virdriverconnvalidatetest_SOURCES = \
+	virdriverconnvalidatetest.c testutils.h testutils.c
+virdriverconnvalidatetest_LDADD = $(LDADDS)
 endif WITH_LIBVIRTD
 
 if WITH_LIBVIRTD
@@ -1525,27 +1562,4 @@ else ! WITH_LINUX
 EXTRA_DIST += virscsitest.c
 endif  ! WITH_LINUX
 
-if WITH_CIL
-CILOPTFLAGS =
-CILOPTINCS =
-CILOPTPACKAGES = -package unix,str,cil
-CILOPTLIBS = -linkpkg
-
-objectlocking_SOURCES = objectlocking.ml
-
-%.cmx: %.ml
-	ocamlfind ocamlopt $(CILOPTFLAGS) $(CILOPTINCS) $(CILOPTPACKAGES) -c $<
-
-objectlocking: objectlocking.cmx objectlocking-files.txt
-	ocamlfind ocamlopt $(CILOPTFLAGS) $(CILOPTINCS) $(CILOPTPACKAGES) \
-	  $(CILOPTLIBS) $< -o $@
-
-objectlocking-files.txt:
-	find $(top_builddir)/src/ -name '*.i' > $@
-
-else ! WITH_CIL
-EXTRA_DIST += objectlocking.ml
-endif ! WITH_CIL
-
-CLEANFILES = *.cov *.gcov .libs/*.gcda .libs/*.gcno *.gcno *.gcda *.cmi *.cmx \
-	objectlocking-files.txt
+CLEANFILES = *.cov *.gcov .libs/*.gcda .libs/*.gcno *.gcno *.gcda

@@ -20,16 +20,13 @@
 
 #include <config.h>
 
-#include <fnmatch.h>
-
 #include "qemu_firmware.h"
+#include "qemu_interop_config.h"
 #include "configmake.h"
 #include "qemu_capabilities.h"
 #include "qemu_domain.h"
 #include "qemu_process.h"
 #include "virarch.h"
-#include "virfile.h"
-#include "virhash.h"
 #include "virjson.h"
 #include "virlog.h"
 #include "virstring.h"
@@ -187,7 +184,7 @@ qemuFirmwareOSInterfaceFree(qemuFirmwareOSInterface *interfaces)
 }
 
 
-VIR_DEFINE_AUTOPTR_FUNC(qemuFirmwareOSInterface, qemuFirmwareOSInterfaceFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(qemuFirmwareOSInterface, qemuFirmwareOSInterfaceFree);
 
 
 static void
@@ -252,7 +249,7 @@ qemuFirmwareTargetFree(qemuFirmwareTargetPtr target)
 }
 
 
-VIR_DEFINE_AUTOPTR_FUNC(qemuFirmwareTarget, qemuFirmwareTargetFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(qemuFirmwareTarget, qemuFirmwareTargetFree);
 
 
 static void
@@ -262,7 +259,7 @@ qemuFirmwareFeatureFree(qemuFirmwareFeature *features)
 }
 
 
-VIR_DEFINE_AUTOPTR_FUNC(qemuFirmwareFeature, qemuFirmwareFeatureFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(qemuFirmwareFeature, qemuFirmwareFeatureFree);
 
 
 void
@@ -290,8 +287,8 @@ qemuFirmwareInterfaceParse(const char *path,
                            qemuFirmwarePtr fw)
 {
     virJSONValuePtr interfacesJSON;
-    VIR_AUTOPTR(qemuFirmwareOSInterface) interfaces = NULL;
-    VIR_AUTOCLEAN(virBuffer) buf = VIR_BUFFER_INITIALIZER;
+    g_autoptr(qemuFirmwareOSInterface) interfaces = NULL;
+    g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
     size_t ninterfaces;
     size_t i;
 
@@ -326,7 +323,7 @@ qemuFirmwareInterfaceParse(const char *path,
     VIR_DEBUG("firmware description path '%s' supported interfaces: %s",
               path, NULLSTR_MINUS(virBufferCurrentContent(&buf)));
 
-    VIR_STEAL_PTR(fw->interfaces, interfaces);
+    fw->interfaces = g_steal_pointer(&interfaces);
     fw->ninterfaces = ninterfaces;
     return 0;
 }
@@ -347,8 +344,7 @@ qemuFirmwareFlashFileParse(const char *path,
         return -1;
     }
 
-    if (VIR_STRDUP(flash->filename, filename) < 0)
-        return -1;
+    flash->filename = g_strdup(filename);
 
     if (!(format = virJSONValueObjectGetString(doc, "format"))) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
@@ -357,8 +353,7 @@ qemuFirmwareFlashFileParse(const char *path,
         return -1;
     }
 
-    if (VIR_STRDUP(flash->format, format) < 0)
-        return -1;
+    flash->format = g_strdup(format);
 
     return 0;
 }
@@ -409,8 +404,7 @@ qemuFirmwareMappingKernelParse(const char *path,
                        path);
     }
 
-    if (VIR_STRDUP(kernel->filename, filename) < 0)
-        return -1;
+    kernel->filename = g_strdup(filename);
 
     return 0;
 }
@@ -429,8 +423,7 @@ qemuFirmwareMappingMemoryParse(const char *path,
                        path);
     }
 
-    if (VIR_STRDUP(memory->filename, filename) < 0)
-        return -1;
+    memory->filename = g_strdup(filename);
 
     return 0;
 }
@@ -510,7 +503,7 @@ qemuFirmwareTargetParse(const char *path,
     for (i = 0; i < ntargets; i++) {
         virJSONValuePtr item = virJSONValueArrayGet(targetsJSON, i);
         virJSONValuePtr machines;
-        VIR_AUTOPTR(qemuFirmwareTarget) t = NULL;
+        g_autoptr(qemuFirmwareTarget) t = NULL;
         const char *architectureStr = NULL;
         size_t nmachines;
         size_t j;
@@ -546,18 +539,17 @@ qemuFirmwareTargetParse(const char *path,
 
         for (j = 0; j < nmachines; j++) {
             virJSONValuePtr machine = virJSONValueArrayGet(machines, j);
-            VIR_AUTOFREE(char *) machineStr = NULL;
+            g_autofree char *machineStr = NULL;
 
-            if (VIR_STRDUP(machineStr, virJSONValueGetString(machine)) < 0)
-                goto cleanup;
+            machineStr = g_strdup(virJSONValueGetString(machine));
 
             VIR_APPEND_ELEMENT_INPLACE(t->machines, t->nmachines, machineStr);
         }
 
-        VIR_STEAL_PTR(targets[i], t);
+        targets[i] = g_steal_pointer(&t);
     }
 
-    VIR_STEAL_PTR(fw->targets, targets);
+    fw->targets = g_steal_pointer(&targets);
     fw->ntargets = ntargets;
     ntargets = 0;
     ret = 0;
@@ -576,7 +568,7 @@ qemuFirmwareFeatureParse(const char *path,
                          qemuFirmwarePtr fw)
 {
     virJSONValuePtr featuresJSON;
-    VIR_AUTOPTR(qemuFirmwareFeature) features = NULL;
+    g_autoptr(qemuFirmwareFeature) features = NULL;
     size_t nfeatures;
     size_t i;
 
@@ -607,7 +599,7 @@ qemuFirmwareFeatureParse(const char *path,
         features[i] = tmp;
     }
 
-    VIR_STEAL_PTR(fw->features, features);
+    fw->features = g_steal_pointer(&features);
     fw->nfeatures = nfeatures;
     return 0;
 }
@@ -619,10 +611,9 @@ qemuFirmwareFeatureParse(const char *path,
 qemuFirmwarePtr
 qemuFirmwareParse(const char *path)
 {
-    VIR_AUTOFREE(char *) cont = NULL;
-    VIR_AUTOPTR(virJSONValue) doc = NULL;
-    VIR_AUTOPTR(qemuFirmware) fw = NULL;
-    qemuFirmwarePtr ret = NULL;
+    g_autofree char *cont = NULL;
+    g_autoptr(virJSONValue) doc = NULL;
+    g_autoptr(qemuFirmware) fw = NULL;
 
     if (virFileReadAll(path, DOCUMENT_SIZE, &cont) < 0)
         return NULL;
@@ -649,8 +640,7 @@ qemuFirmwareParse(const char *path)
     if (qemuFirmwareFeatureParse(path, doc, fw) < 0)
         return NULL;
 
-    VIR_STEAL_PTR(ret, fw);
-    return ret;
+    return g_steal_pointer(&fw);
 }
 
 
@@ -658,7 +648,7 @@ static int
 qemuFirmwareInterfaceFormat(virJSONValuePtr doc,
                             qemuFirmwarePtr fw)
 {
-    VIR_AUTOPTR(virJSONValue) interfacesJSON = NULL;
+    g_autoptr(virJSONValue) interfacesJSON = NULL;
     size_t i;
 
     if (!(interfacesJSON = virJSONValueNewArray()))
@@ -683,7 +673,7 @@ qemuFirmwareInterfaceFormat(virJSONValuePtr doc,
 static virJSONValuePtr
 qemuFirmwareFlashFileFormat(qemuFirmwareFlashFile flash)
 {
-    VIR_AUTOPTR(virJSONValue) json = NULL;
+    g_autoptr(virJSONValue) json = NULL;
     virJSONValuePtr ret;
 
     if (!(json = virJSONValueNewObject()))
@@ -699,7 +689,7 @@ qemuFirmwareFlashFileFormat(qemuFirmwareFlashFile flash)
                                        flash.format) < 0)
         return NULL;
 
-    VIR_STEAL_PTR(ret, json);
+    ret = g_steal_pointer(&json);
     return ret;
 }
 
@@ -708,8 +698,8 @@ static int
 qemuFirmwareMappingFlashFormat(virJSONValuePtr mapping,
                                qemuFirmwareMappingFlashPtr flash)
 {
-    VIR_AUTOPTR(virJSONValue) executable = NULL;
-    VIR_AUTOPTR(virJSONValue) nvram_template = NULL;
+    g_autoptr(virJSONValue) executable = NULL;
+    g_autoptr(virJSONValue) nvram_template = NULL;
 
     if (!(executable = qemuFirmwareFlashFileFormat(flash->executable)))
         return -1;
@@ -765,7 +755,7 @@ static int
 qemuFirmwareMappingFormat(virJSONValuePtr doc,
                           qemuFirmwarePtr fw)
 {
-    VIR_AUTOPTR(virJSONValue) mapping = NULL;
+    g_autoptr(virJSONValue) mapping = NULL;
 
     if (!(mapping = virJSONValueNewObject()))
         return -1;
@@ -806,7 +796,7 @@ static int
 qemuFirmwareTargetFormat(virJSONValuePtr doc,
                          qemuFirmwarePtr fw)
 {
-    VIR_AUTOPTR(virJSONValue) targetsJSON = NULL;
+    g_autoptr(virJSONValue) targetsJSON = NULL;
     size_t i;
 
     if (!(targetsJSON = virJSONValueNewArray()))
@@ -814,8 +804,8 @@ qemuFirmwareTargetFormat(virJSONValuePtr doc,
 
     for (i = 0; i < fw->ntargets; i++) {
         qemuFirmwareTargetPtr t = fw->targets[i];
-        VIR_AUTOPTR(virJSONValue) target = NULL;
-        VIR_AUTOPTR(virJSONValue) machines = NULL;
+        g_autoptr(virJSONValue) target = NULL;
+        g_autoptr(virJSONValue) machines = NULL;
         size_t j;
 
         if (!(target = virJSONValueNewObject()))
@@ -858,7 +848,7 @@ static int
 qemuFirmwareFeatureFormat(virJSONValuePtr doc,
                           qemuFirmwarePtr fw)
 {
-    VIR_AUTOPTR(virJSONValue) featuresJSON = NULL;
+    g_autoptr(virJSONValue) featuresJSON = NULL;
     size_t i;
 
     if (!(featuresJSON = virJSONValueNewArray()))
@@ -883,7 +873,7 @@ qemuFirmwareFeatureFormat(virJSONValuePtr doc,
 char *
 qemuFirmwareFormat(qemuFirmwarePtr fw)
 {
-    VIR_AUTOPTR(virJSONValue) doc = NULL;
+    g_autoptr(virJSONValue) doc = NULL;
 
     if (!fw)
         return NULL;
@@ -907,150 +897,11 @@ qemuFirmwareFormat(qemuFirmwarePtr fw)
 }
 
 
-static int
-qemuFirmwareBuildFileList(virHashTablePtr files, const char *dir)
-{
-    DIR *dirp;
-    struct dirent *ent = NULL;
-    int rc;
-    int ret = -1;
-
-    if ((rc = virDirOpenIfExists(&dirp, dir)) < 0)
-        return -1;
-
-    if (rc == 0)
-        return 0;
-
-    while ((rc = virDirRead(dirp, &ent, dir)) > 0) {
-        VIR_AUTOFREE(char *) filename = NULL;
-        VIR_AUTOFREE(char *) path = NULL;
-        struct stat sb;
-
-        if (STRPREFIX(ent->d_name, "."))
-            continue;
-
-        if (VIR_STRDUP(filename, ent->d_name) < 0)
-            goto cleanup;
-
-        if (virAsprintf(&path, "%s/%s", dir, filename) < 0)
-            goto cleanup;
-
-        if (stat(path, &sb) < 0) {
-            virReportSystemError(errno, _("Unable to access %s"), path);
-            goto cleanup;
-        }
-
-        if (!S_ISREG(sb.st_mode) && !S_ISLNK(sb.st_mode))
-            continue;
-
-        if (virHashUpdateEntry(files, filename, path) < 0)
-            goto cleanup;
-
-        path = NULL;
-    }
-
-    if (rc < 0)
-        goto cleanup;
-
-    ret = 0;
- cleanup:
-    virDirClose(&dirp);
-    return ret;
-}
-
-static int
-qemuFirmwareFilesSorter(const virHashKeyValuePair *a,
-                        const virHashKeyValuePair *b)
-{
-    return strcmp(a->key, b->key);
-}
-
-#define QEMU_FIRMWARE_SYSTEM_LOCATION PREFIX "/share/qemu/firmware"
-#define QEMU_FIRMWARE_ETC_LOCATION SYSCONFDIR "/qemu/firmware"
-
 int
 qemuFirmwareFetchConfigs(char ***firmwares,
                          bool privileged)
 {
-    VIR_AUTOPTR(virHashTable) files = NULL;
-    VIR_AUTOFREE(char *) homeConfig = NULL;
-    VIR_AUTOFREE(char *) xdgConfig = NULL;
-    VIR_AUTOFREE(virHashKeyValuePairPtr) pairs = NULL;
-    virHashKeyValuePairPtr tmp = NULL;
-
-    *firmwares = NULL;
-
-    if (!privileged) {
-        /* This is a slight divergence from the specification.
-         * Since the system daemon runs as root, it doesn't make
-         * much sense to parse files in root's home directory. It
-         * makes sense only for session daemon which runs under
-         * regular user. */
-        if (VIR_STRDUP(xdgConfig, virGetEnvBlockSUID("XDG_CONFIG_HOME")) < 0)
-            return -1;
-
-        if (!xdgConfig) {
-            VIR_AUTOFREE(char *) home = virGetUserDirectory();
-
-            if (!home)
-                return -1;
-
-            if (virAsprintf(&xdgConfig, "%s/.config", home) < 0)
-                return -1;
-        }
-
-        if (virAsprintf(&homeConfig, "%s/qemu/firmware", xdgConfig) < 0)
-            return -1;
-    }
-
-    if (!(files = virHashCreate(10, virHashValueFree)))
-        return -1;
-
-    if (qemuFirmwareBuildFileList(files, QEMU_FIRMWARE_SYSTEM_LOCATION) < 0)
-        return -1;
-
-    if (qemuFirmwareBuildFileList(files, QEMU_FIRMWARE_ETC_LOCATION) < 0)
-        return -1;
-
-    if (homeConfig &&
-        qemuFirmwareBuildFileList(files, homeConfig) < 0)
-        return -1;
-
-    /* At this point, the @files hash table contains unique set of filenames
-     * where each filename (as key) has the highest priority full pathname
-     * associated with it. */
-
-    if (virHashSize(files) == 0)
-        return 0;
-
-    if (!(pairs = virHashGetItems(files, qemuFirmwareFilesSorter)))
-        return -1;
-
-    for (tmp = pairs; tmp->key; tmp++) {
-        const char *path = tmp->value;
-        off_t len;
-
-        if ((len = virFileLength(path, -1)) < 0) {
-            virReportSystemError(errno,
-                                 _("unable to get size of '%s'"),
-                                 path);
-            return -1;
-        }
-
-        VIR_DEBUG("firmware description path '%s' len=%jd",
-                  path, (intmax_t) len);
-
-        if (len == 0) {
-            /* Empty files are used to mask less specific instances
-             * of the same file. */
-            continue;
-        }
-
-        if (virStringListAdd(firmwares, path) < 0)
-            return -1;
-    }
-
-    return 0;
+    return qemuInteropFetchConfigs("firmware", firmwares, privileged);
 }
 
 
@@ -1068,12 +919,29 @@ qemuFirmwareMatchesMachineArch(const qemuFirmware *fw,
             continue;
 
         for (j = 0; j < fw->targets[i]->nmachines; j++) {
-            if (fnmatch(fw->targets[i]->machines[j], machine, 0) == 0)
+            if (g_pattern_match_simple(fw->targets[i]->machines[j], machine))
                 return true;
         }
     }
 
     return false;
+}
+
+
+static qemuFirmwareOSInterface
+qemuFirmwareOSInterfaceTypeFromOsDefFirmware(int fw)
+{
+    switch (fw) {
+    case VIR_DOMAIN_OS_DEF_FIRMWARE_BIOS:
+        return QEMU_FIRMWARE_OS_INTERFACE_BIOS;
+    case VIR_DOMAIN_OS_DEF_FIRMWARE_EFI:
+        return QEMU_FIRMWARE_OS_INTERFACE_UEFI;
+    case VIR_DOMAIN_OS_DEF_FIRMWARE_NONE:
+    case VIR_DOMAIN_OS_DEF_FIRMWARE_LAST:
+        break;
+    }
+
+    return QEMU_FIRMWARE_OS_INTERFACE_NONE;
 }
 
 
@@ -1083,16 +951,31 @@ qemuFirmwareMatchDomain(const virDomainDef *def,
                         const char *path)
 {
     size_t i;
+    qemuFirmwareOSInterface want;
     bool supportsS3 = false;
     bool supportsS4 = false;
     bool requiresSMM = false;
     bool supportsSEV = false;
 
+    want = qemuFirmwareOSInterfaceTypeFromOsDefFirmware(def->os.firmware);
+
+    if (want == QEMU_FIRMWARE_OS_INTERFACE_NONE &&
+        def->os.loader) {
+        want = qemuFirmwareOSInterfaceTypeFromOsDefFirmware(def->os.loader->type);
+
+        if (fw->mapping.device != QEMU_FIRMWARE_DEVICE_FLASH ||
+            STRNEQ(def->os.loader->path, fw->mapping.data.flash.executable.filename)) {
+            VIR_DEBUG("Not matching FW interface %s or loader "
+                      "path '%s' for user provided path '%s'",
+                      qemuFirmwareDeviceTypeToString(fw->mapping.device),
+                      fw->mapping.data.flash.executable.filename,
+                      def->os.loader->path);
+            return false;
+        }
+    }
+
     for (i = 0; i < fw->ninterfaces; i++) {
-        if ((def->os.firmware == VIR_DOMAIN_OS_DEF_FIRMWARE_BIOS &&
-             fw->interfaces[i] == QEMU_FIRMWARE_OS_INTERFACE_BIOS) ||
-            (def->os.firmware == VIR_DOMAIN_OS_DEF_FIRMWARE_EFI &&
-             fw->interfaces[i] == QEMU_FIRMWARE_OS_INTERFACE_UEFI))
+        if (fw->interfaces[i] == want)
             break;
     }
 
@@ -1168,7 +1051,7 @@ qemuFirmwareEnableFeatures(virQEMUDriverPtr driver,
                            virDomainDefPtr def,
                            const qemuFirmware *fw)
 {
-    VIR_AUTOUNREF(virQEMUDriverConfigPtr) cfg = virQEMUDriverGetConfig(driver);
+    g_autoptr(virQEMUDriverConfig) cfg = virQEMUDriverGetConfig(driver);
     const qemuFirmwareMappingFlash *flash = &fw->mapping.data.flash;
     const qemuFirmwareMappingKernel *kernel = &fw->mapping.data.kernel;
     const qemuFirmwareMappingMemory *memory = &fw->mapping.data.memory;
@@ -1191,9 +1074,7 @@ qemuFirmwareEnableFeatures(virQEMUDriverPtr driver,
         }
 
         VIR_FREE(def->os.loader->path);
-        if (VIR_STRDUP(def->os.loader->path,
-                       flash->executable.filename) < 0)
-            return -1;
+        def->os.loader->path = g_strdup(flash->executable.filename);
 
         if (STRNEQ(flash->nvram_template.format, "raw")) {
             virReportError(VIR_ERR_OPERATION_UNSUPPORTED,
@@ -1203,12 +1084,9 @@ qemuFirmwareEnableFeatures(virQEMUDriverPtr driver,
         }
 
         VIR_FREE(def->os.loader->templt);
-        if (VIR_STRDUP(def->os.loader->templt,
-                       flash->nvram_template.filename) < 0)
-            return -1;
+        def->os.loader->templt = g_strdup(flash->nvram_template.filename);
 
-        if (qemuDomainNVRAMPathGenerate(cfg, def) < 0)
-            return -1;
+        qemuDomainNVRAMPathGenerate(cfg, def);
 
         VIR_DEBUG("decided on firmware '%s' varstore template '%s'",
                   def->os.loader->path,
@@ -1217,8 +1095,7 @@ qemuFirmwareEnableFeatures(virQEMUDriverPtr driver,
 
     case QEMU_FIRMWARE_DEVICE_KERNEL:
         VIR_FREE(def->os.kernel);
-        if (VIR_STRDUP(def->os.kernel, kernel->filename) < 0)
-            return -1;
+        def->os.kernel = g_strdup(kernel->filename);
 
         VIR_DEBUG("decided on kernel '%s'",
                   def->os.kernel);
@@ -1230,8 +1107,7 @@ qemuFirmwareEnableFeatures(virQEMUDriverPtr driver,
             return -1;
 
         def->os.loader->type = VIR_DOMAIN_LOADER_TYPE_ROM;
-        if (VIR_STRDUP(def->os.loader->path, memory->filename) < 0)
-            return -1;
+        def->os.loader->path = g_strdup(memory->filename);
 
         VIR_DEBUG("decided on loader '%s'",
                   def->os.loader->path);
@@ -1343,9 +1219,9 @@ qemuFirmwareFetchParsedConfigs(bool privileged,
             goto error;
     }
 
-    VIR_STEAL_PTR(*firmwaresRet, firmwares);
+    *firmwaresRet = g_steal_pointer(&firmwares);
     if (pathsRet)
-        VIR_STEAL_PTR(*pathsRet, paths);
+        *pathsRet = g_steal_pointer(&paths);
     return npaths;
 
  error:
@@ -1358,28 +1234,43 @@ qemuFirmwareFetchParsedConfigs(bool privileged,
 
 int
 qemuFirmwareFillDomain(virQEMUDriverPtr driver,
-                       virDomainObjPtr vm,
+                       virDomainDefPtr def,
                        unsigned int flags)
 {
     VIR_AUTOSTRINGLIST paths = NULL;
     qemuFirmwarePtr *firmwares = NULL;
     ssize_t nfirmwares = 0;
     const qemuFirmware *theone = NULL;
+    bool needResult = true;
     size_t i;
     int ret = -1;
 
     if (!(flags & VIR_QEMU_PROCESS_START_NEW))
         return 0;
 
-    if (vm->def->os.firmware == VIR_DOMAIN_OS_DEF_FIRMWARE_NONE)
-        return 0;
+    /* Fill in FW paths if either os.firmware is enabled, or
+     * loader path was provided with no nvram varstore. */
+    if (def->os.firmware == VIR_DOMAIN_OS_DEF_FIRMWARE_NONE) {
+        /* This is horrific check, but loosely said, if UEFI
+         * image was provided by the old method (by specifying
+         * its path in domain XML) but no template for NVRAM was
+         * specified and the varstore doesn't exist ... */
+        if (!virDomainDefHasOldStyleROUEFI(def) ||
+            def->os.loader->templt ||
+            virFileExists(def->os.loader->nvram))
+            return 0;
+
+        /* ... then we want to consult JSON FW descriptors first,
+         * but we don't want to fail if we haven't found a match. */
+        needResult = false;
+    }
 
     if ((nfirmwares = qemuFirmwareFetchParsedConfigs(driver->privileged,
                                                      &firmwares, &paths)) < 0)
         return -1;
 
     for (i = 0; i < nfirmwares; i++) {
-        if (qemuFirmwareMatchDomain(vm->def, firmwares[i], paths[i])) {
+        if (qemuFirmwareMatchDomain(def, firmwares[i], paths[i])) {
             theone = firmwares[i];
             VIR_DEBUG("Found matching firmware (description path '%s')",
                       paths[i]);
@@ -1388,9 +1279,16 @@ qemuFirmwareFillDomain(virQEMUDriverPtr driver,
     }
 
     if (!theone) {
-        virReportError(VIR_ERR_OPERATION_FAILED,
-                       _("Unable to find any firmware to satisfy '%s'"),
-                       virDomainOsDefFirmwareTypeToString(vm->def->os.firmware));
+        if (needResult) {
+            virReportError(VIR_ERR_OPERATION_FAILED,
+                           _("Unable to find any firmware to satisfy '%s'"),
+                           virDomainOsDefFirmwareTypeToString(def->os.firmware));
+        } else {
+            VIR_DEBUG("Unable to find NVRAM template for '%s', "
+                      "falling back to old style",
+                      NULLSTR(def->os.loader ? def->os.loader->path : NULL));
+            ret = 0;
+        }
         goto cleanup;
     }
 
@@ -1399,10 +1297,10 @@ qemuFirmwareFillDomain(virQEMUDriverPtr driver,
      * likely that admin/FW manufacturer messed up. */
     qemuFirmwareSanityCheck(theone, paths[i]);
 
-    if (qemuFirmwareEnableFeatures(driver, vm->def, theone) < 0)
+    if (qemuFirmwareEnableFeatures(driver, def, theone) < 0)
         goto cleanup;
 
-    vm->def->os.firmware = VIR_DOMAIN_OS_DEF_FIRMWARE_NONE;
+    def->os.firmware = VIR_DOMAIN_OS_DEF_FIRMWARE_NONE;
 
     ret = 0;
  cleanup:
@@ -1413,12 +1311,44 @@ qemuFirmwareFillDomain(virQEMUDriverPtr driver,
 }
 
 
+/**
+ * qemuFirmwareGetSupported:
+ * @machine: machine type
+ * @arch: architecture
+ * @privileged: whether running as privileged user
+ * @supported: returned bitmap of supported interfaces
+ * @secure: true if at least one secure boot enabled FW was found
+ * @fws: (optional) list of found firmwares
+ * @nfws: (optional) number of members in @fws
+ *
+ * Parse all FW descriptors (depending whether running as @privileged this may
+ * or may not include user's $HOME) and for given combination of @machine and
+ * @arch extract information to be later reported in domain capabilities.
+ * The @supported contains a bitmap of found interfaces (and ORed values of 1
+ * << VIR_DOMAIN_OS_DEF_FIRMWARE_*). Then, @supported is true if at least one
+ * FW descriptor signalizes secure boot (although, this is checked against SMM
+ * rather than SECURE_BOOT because reasons).
+ *
+ * If @fws and @nfws are not NULL, then @fws is allocated (must be freed by
+ * caller when no longer needed) and contains list of firmwares found in form
+ * of virFirmware. This can be useful if caller wants to know the paths to
+ * firmware images (e.g. to present them in domain capabilities XML).
+ * Moreover, to allow the caller distinguish between no FW descriptors found
+ * and no matching FW descriptors found (nfws == 0 in both cases), the @fws is
+ * going to be allocated in case of the latter anyway (with no real content
+ * though).
+ *
+ * Returns: 0 on success,
+ *         -1 otherwise.
+ */
 int
 qemuFirmwareGetSupported(const char *machine,
                          virArch arch,
                          bool privileged,
                          uint64_t *supported,
-                         bool *secure)
+                         bool *secure,
+                         virFirmwarePtr **fws,
+                         size_t *nfws)
 {
     qemuFirmwarePtr *firmwares = NULL;
     ssize_t nfirmwares = 0;
@@ -1427,12 +1357,21 @@ qemuFirmwareGetSupported(const char *machine,
     *supported = VIR_DOMAIN_OS_DEF_FIRMWARE_NONE;
     *secure = false;
 
+    if (fws) {
+        *fws = NULL;
+        *nfws = 0;
+    }
+
     if ((nfirmwares = qemuFirmwareFetchParsedConfigs(privileged,
                                                      &firmwares, NULL)) < 0)
         return -1;
 
     for (i = 0; i < nfirmwares; i++) {
         qemuFirmwarePtr fw = firmwares[i];
+        const qemuFirmwareMappingFlash *flash = &fw->mapping.data.flash;
+        const qemuFirmwareMappingMemory *memory = &fw->mapping.data.memory;
+        const char *fwpath = NULL;
+        const char *nvrampath = NULL;
         size_t j;
 
         if (!qemuFirmwareMatchesMachineArch(fw, machine, arch))
@@ -1472,7 +1411,48 @@ qemuFirmwareGetSupported(const char *machine,
                 break;
             }
         }
+
+        switch (fw->mapping.device) {
+        case QEMU_FIRMWARE_DEVICE_FLASH:
+            fwpath = flash->executable.filename;
+            nvrampath = flash->nvram_template.filename;
+            break;
+
+        case QEMU_FIRMWARE_DEVICE_MEMORY:
+            fwpath = memory->filename;
+            break;
+
+        case QEMU_FIRMWARE_DEVICE_KERNEL:
+        case QEMU_FIRMWARE_DEVICE_NONE:
+        case QEMU_FIRMWARE_DEVICE_LAST:
+            break;
+        }
+
+        if (fws && fwpath) {
+            g_autoptr(virFirmware) tmp = NULL;
+
+            /* Append only unique pairs. */
+            for (j = 0; j < *nfws; j++) {
+                if (STREQ((*fws)[j]->name, fwpath) &&
+                    STREQ_NULLABLE((*fws)[j]->nvram, nvrampath))
+                    break;
+            }
+
+            if (j == *nfws) {
+                if (VIR_ALLOC(tmp) < 0)
+                    return -1;
+
+                tmp->name = g_strdup(fwpath);
+                tmp->nvram = g_strdup(nvrampath);
+                if (VIR_APPEND_ELEMENT(*fws, *nfws, tmp) < 0)
+                    return -1;
+            }
+        }
     }
+
+    if (fws && !*fws && nfirmwares &&
+        VIR_REALLOC_N(*fws, 0) < 0)
+        return -1;
 
     for (i = 0; i < nfirmwares; i++)
         qemuFirmwareFree(firmwares[i]);

@@ -196,10 +196,10 @@ virLogHandlerNew(bool privileged,
     virLogHandlerPtr handler;
 
     if (virLogHandlerInitialize() < 0)
-        goto error;
+        return NULL;
 
     if (!(handler = virObjectLockableNew(virLogHandlerClass)))
-        goto error;
+        return NULL;
 
     handler->privileged = privileged;
     handler->max_size = max_size;
@@ -208,9 +208,6 @@ virLogHandlerNew(bool privileged,
     handler->opaque = opaque;
 
     return handler;
-
- error:
-    return NULL;
 }
 
 
@@ -239,16 +236,14 @@ virLogHandlerLogFilePostExecRestart(virLogHandlerPtr handler,
                        _("Missing 'driver' in JSON document"));
         goto error;
     }
-    if (VIR_STRDUP(file->driver, tmp) < 0)
-        goto error;
+    file->driver = g_strdup(tmp);
 
     if ((tmp = virJSONValueObjectGetString(object, "domname")) == NULL) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                        _("Missing 'domname' in JSON document"));
         goto error;
     }
-    if (VIR_STRDUP(file->domname, tmp) < 0)
-        goto error;
+    file->domname = g_strdup(tmp);
 
     if ((domuuid = virJSONValueObjectGetString(object, "domuuid")) == NULL) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
@@ -402,9 +397,8 @@ virLogHandlerDomainOpenLogFile(virLogHandlerPtr handler,
     file->pipefd = pipefd[0];
     pipefd[0] = -1;
     memcpy(file->domuuid, domuuid, VIR_UUID_BUFLEN);
-    if (VIR_STRDUP(file->driver, driver) < 0 ||
-        VIR_STRDUP(file->domname, domname) < 0)
-        goto error;
+    file->driver = g_strdup(driver);
+    file->domname = g_strdup(domname);
 
     if ((file->file = virRotatingFileWriterNew(path,
                                                handler->max_size,
@@ -566,9 +560,9 @@ virLogHandlerDomainReadLogFile(virLogHandlerPtr handler,
 
 int
 virLogHandlerDomainAppendLogFile(virLogHandlerPtr handler,
-                                 const char *driver ATTRIBUTE_UNUSED,
-                                 const unsigned char *domuuid ATTRIBUTE_UNUSED,
-                                 const char *domname ATTRIBUTE_UNUSED,
+                                 const char *driver G_GNUC_UNUSED,
+                                 const unsigned char *domuuid G_GNUC_UNUSED,
+                                 const char *domname G_GNUC_UNUSED,
                                  const char *path,
                                  const char *message,
                                  unsigned int flags)

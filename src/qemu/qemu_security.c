@@ -32,7 +32,8 @@ VIR_LOG_INIT("qemu.qemu_process");
 int
 qemuSecuritySetAllLabel(virQEMUDriverPtr driver,
                         virDomainObjPtr vm,
-                        const char *stdin_path)
+                        const char *stdin_path,
+                        bool migrated)
 {
     int ret = -1;
     qemuDomainObjPrivatePtr priv = vm->privateData;
@@ -47,7 +48,8 @@ qemuSecuritySetAllLabel(virQEMUDriverPtr driver,
     if (virSecurityManagerSetAllLabel(driver->securityManager,
                                       vm->def,
                                       stdin_path,
-                                      priv->chardevStdioLogd) < 0)
+                                      priv->chardevStdioLogd,
+                                      migrated) < 0)
         goto cleanup;
 
     if (virSecurityManagerTransactionCommit(driver->securityManager,
@@ -434,6 +436,46 @@ qemuSecurityRestoreChardevLabel(virQEMUDriverPtr driver,
 
 
 /*
+ * qemuSecurityStartVhostUserGPU:
+ *
+ * @driver: the QEMU driver
+ * @vm: the domain object
+ * @cmd: the command to run
+ * @existstatus: pointer to int returning exit status of process
+ * @cmdret: pointer to int returning result of virCommandRun
+ *
+ * Start the vhost-user-gpu process with approriate labels.
+ * This function returns -1 on security setup error, 0 if all the
+ * setup was done properly. In case the virCommand failed to run
+ * 0 is returned but cmdret is set appropriately with the process
+ * exitstatus also set.
+ */
+int
+qemuSecurityStartVhostUserGPU(virQEMUDriverPtr driver,
+                              virDomainObjPtr vm,
+                              virCommandPtr cmd,
+                              int *exitstatus,
+                              int *cmdret)
+{
+    if (virSecurityManagerSetChildProcessLabel(driver->securityManager,
+                                               vm->def, cmd) < 0)
+        return -1;
+
+    if (virSecurityManagerPreFork(driver->securityManager) < 0)
+        return -1;
+
+    *cmdret = virCommandRun(cmd, exitstatus);
+
+    virSecurityManagerPostFork(driver->securityManager);
+
+    if (*cmdret < 0)
+        return -1;
+
+    return 0;
+}
+
+
+/*
  * qemuSecurityStartTPMEmulator:
  *
  * @driver: the QEMU driver
@@ -479,21 +521,10 @@ qemuSecurityStartTPMEmulator(virQEMUDriverPtr driver,
         goto cleanup_abort;
     transactionStarted = false;
 
-    if (virSecurityManagerSetChildProcessLabel(driver->securityManager,
-                                               vm->def, cmd) < 0)
-        goto cleanup;
-
-    if (virSecurityManagerPreFork(driver->securityManager) < 0)
+    if (qemuSecurityCommandRun(driver, vm, cmd, uid, gid, exitstatus, cmdret) < 0)
         goto cleanup;
 
     ret = 0;
-    /* make sure we run this with the appropriate user */
-    virCommandSetUID(cmd, uid);
-    virCommandSetGID(cmd, gid);
-
-    *cmdret = virCommandRun(cmd, exitstatus);
-
-    virSecurityManagerPostFork(driver->securityManager);
 
     if (*cmdret < 0)
         goto cleanup;
@@ -631,4 +662,49 @@ qemuSecurityRestoreSavedStateLabel(virQEMUDriverPtr driver,
  cleanup:
     virSecurityManagerTransactionAbort(driver->securityManager);
     return ret;
+}
+
+
+/**
+ * qemuSecurityCommandRun:
+ * @driver: the QEMU driver
+ * @vm: the domain object
+ * @cmd: the command to run
+ * @uid: the uid to force
+ * @gid: the gid to force
+ * @existstatus: pointer to int returning exit status of process
+ * @cmdret: pointer to int returning result of virCommandRun
+ *
+ * Run @cmd with seclabels set on it. If @uid and/or @gid are not
+ * -1 then their value is enforced.
+ *
+ * Returns: 0 on success,
+ *         -1 otherwise.
+ */
+int
+qemuSecurityCommandRun(virQEMUDriverPtr driver,
+                       virDomainObjPtr vm,
+                       virCommandPtr cmd,
+                       uid_t uid,
+                       gid_t gid,
+                       int *exitstatus,
+                       int *cmdret)
+{
+    if (virSecurityManagerSetChildProcessLabel(driver->securityManager,
+                                               vm->def, cmd) < 0)
+        return -1;
+
+    if (uid != (uid_t) -1)
+        virCommandSetUID(cmd, uid);
+    if (gid != (gid_t) -1)
+        virCommandSetGID(cmd, gid);
+
+    if (virSecurityManagerPreFork(driver->securityManager) < 0)
+        return -1;
+
+    *cmdret = virCommandRun(cmd, exitstatus);
+
+    virSecurityManagerPostFork(driver->securityManager);
+
+    return 0;
 }

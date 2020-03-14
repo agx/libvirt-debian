@@ -20,6 +20,7 @@
 
 #include "internal.h"
 
+#include "virobject.h"
 #include "virbitmap.h"
 #include "virutil.h"
 #include "virenum.h"
@@ -114,6 +115,9 @@ virResctrlInfoGetMemoryBandwidth(virResctrlInfoPtr resctrl,
 typedef struct _virResctrlAlloc virResctrlAlloc;
 typedef virResctrlAlloc *virResctrlAllocPtr;
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virResctrlAlloc, virObjectUnref);
+
+
 typedef int virResctrlAllocForeachCacheCallback(unsigned int level,
                                                 virCacheType type,
                                                 unsigned int cache,
@@ -193,8 +197,16 @@ typedef virResctrlMonitor *virResctrlMonitorPtr;
 typedef struct _virResctrlMonitorStats virResctrlMonitorStats;
 typedef virResctrlMonitorStats *virResctrlMonitorStatsPtr;
 struct _virResctrlMonitorStats {
-    unsigned int id;
-    unsigned int val;
+    /* The system assigned cache ID associated with statistical record */
+     unsigned int id;
+    /* @features is a NULL terminal string list tracking the statistical record
+     * name.*/
+    char **features;
+    /* @vals store the statistical record values and @val[0] is the value for
+     * @features[0], @val[1] for@features[1] ... respectively */
+    unsigned long long *vals;
+    /* The length of @vals array */
+    size_t nvals;
 };
 
 virResctrlMonitorPtr
@@ -227,10 +239,10 @@ int
 virResctrlMonitorRemove(virResctrlMonitorPtr monitor);
 
 int
-virResctrlMonitorGetCacheOccupancy(virResctrlMonitorPtr monitor,
-                                   virResctrlMonitorStatsPtr **stats,
-                                   size_t *nstats);
+virResctrlMonitorGetStats(virResctrlMonitorPtr monitor,
+                          const char **resources,
+                          virResctrlMonitorStatsPtr **stats,
+                          size_t *nstats);
 
 void
-virResctrlMonitorFreeStats(virResctrlMonitorStatsPtr *stats,
-                           size_t nstats);
+virResctrlMonitorStatsFree(virResctrlMonitorStatsPtr stats);

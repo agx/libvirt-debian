@@ -24,7 +24,6 @@
 #include "virmdev.h"
 #include "virobject.h"
 #include "virutil.h"
-#include "virautoclean.h"
 #include "virenum.h"
 
 typedef struct _virPCIDevice virPCIDevice;
@@ -34,6 +33,9 @@ typedef virPCIDeviceAddress *virPCIDeviceAddressPtr;
 typedef struct _virPCIDeviceList virPCIDeviceList;
 typedef virPCIDeviceList *virPCIDeviceListPtr;
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virPCIDeviceList, virObjectUnref);
+
+
 #define VIR_DOMAIN_DEVICE_ZPCI_MAX_UID UINT16_MAX
 #define VIR_DOMAIN_DEVICE_ZPCI_MAX_FID UINT32_MAX
 
@@ -42,7 +44,10 @@ typedef virZPCIDeviceAddress *virZPCIDeviceAddressPtr;
 struct _virZPCIDeviceAddress {
     unsigned int uid; /* exempt from syntax-check */
     unsigned int fid;
+    /* Don't forget to update virPCIDeviceAddressCopy if needed. */
 };
+
+#define VIR_PCI_DEVICE_ADDRESS_FMT "%04x:%02x:%02x.%d"
 
 struct _virPCIDeviceAddress {
     unsigned int domain;
@@ -52,12 +57,12 @@ struct _virPCIDeviceAddress {
     int multi; /* virTristateSwitch */
     int extFlags; /* enum virPCIDeviceAddressExtensionFlags */
     virZPCIDeviceAddress zpci;
+    /* Don't forget to update virPCIDeviceAddressCopy if needed. */
 };
 
 typedef enum {
     VIR_PCI_STUB_DRIVER_NONE = 0,
     VIR_PCI_STUB_DRIVER_XEN,
-    VIR_PCI_STUB_DRIVER_KVM,
     VIR_PCI_STUB_DRIVER_VFIO,
     VIR_PCI_STUB_DRIVER_LAST
 } virPCIStubDriver;
@@ -192,11 +197,11 @@ int virPCIDeviceAddressGetIOMMUGroupAddresses(virPCIDeviceAddressPtr devAddr,
                                               virPCIDeviceAddressPtr **iommuGroupDevices,
                                               size_t *nIommuGroupDevices);
 int virPCIDeviceAddressGetIOMMUGroupNum(virPCIDeviceAddressPtr addr);
+char *virPCIDeviceAddressGetIOMMUGroupDev(const virPCIDeviceAddress *devAddr);
 char *virPCIDeviceGetIOMMUGroupDev(virPCIDevicePtr dev);
 
 int virPCIDeviceIsAssignable(virPCIDevicePtr dev,
                              int strict_acs_check);
-int virPCIDeviceWaitForCleanup(virPCIDevicePtr dev, const char *matcher);
 
 virPCIDeviceAddressPtr
 virPCIGetDeviceAddressFromSysfsLink(const char *device_link);
@@ -225,16 +230,18 @@ int virPCIGetNetName(const char *device_link_sysfs_path,
 
 int virPCIGetSysfsFile(char *virPCIDeviceName,
                              char **pci_sysfs_device_link)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 
 bool virPCIDeviceAddressIsValid(virPCIDeviceAddressPtr addr,
                                 bool report);
 bool virPCIDeviceAddressIsEmpty(const virPCIDeviceAddress *addr);
 
-bool virPCIDeviceAddressEqual(virPCIDeviceAddress *addr1,
-                              virPCIDeviceAddress *addr2);
+bool virPCIDeviceAddressEqual(const virPCIDeviceAddress *addr1,
+                              const virPCIDeviceAddress *addr2);
+void virPCIDeviceAddressCopy(virPCIDeviceAddressPtr dst,
+                             const virPCIDeviceAddress *src);
 
-char *virPCIDeviceAddressAsString(virPCIDeviceAddressPtr addr)
+char *virPCIDeviceAddressAsString(const virPCIDeviceAddress *addr)
       ATTRIBUTE_NONNULL(1);
 
 int virPCIDeviceAddressParse(char *address, virPCIDeviceAddressPtr bdf);
@@ -271,6 +278,6 @@ ssize_t virPCIGetMdevTypes(const char *sysfspath,
 
 void virPCIDeviceAddressFree(virPCIDeviceAddressPtr address);
 
-VIR_DEFINE_AUTOPTR_FUNC(virPCIDevice, virPCIDeviceFree);
-VIR_DEFINE_AUTOPTR_FUNC(virPCIDeviceAddress, virPCIDeviceAddressFree);
-VIR_DEFINE_AUTOPTR_FUNC(virPCIEDeviceInfo, virPCIEDeviceInfoFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virPCIDevice, virPCIDeviceFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virPCIDeviceAddress, virPCIDeviceAddressFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virPCIEDeviceInfo, virPCIEDeviceInfoFree);

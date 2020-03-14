@@ -261,7 +261,7 @@ virStorageFileBackendGlusterReadlinkCallback(const char *path,
     size_t bufsiz = 0;
     ssize_t ret;
     struct stat st;
-    VIR_AUTOFREE(char *) buf = NULL;
+    g_autofree char *buf = NULL;
 
     *linkpath = NULL;
 
@@ -291,7 +291,7 @@ virStorageFileBackendGlusterReadlinkCallback(const char *path,
 
     buf[ret] = '\0';
 
-    VIR_STEAL_PTR(*linkpath, buf);
+    *linkpath = g_steal_pointer(&buf);
 
     return 0;
 }
@@ -301,7 +301,7 @@ static const char *
 virStorageFileBackendGlusterGetUniqueIdentifier(virStorageSourcePtr src)
 {
     virStorageFileBackendGlusterPrivPtr priv = src->drv->priv;
-    VIR_AUTOFREE(char *) filePath = NULL;
+    g_autofree char *filePath = NULL;
 
     if (priv->canonpath)
         return priv->canonpath;
@@ -311,11 +311,11 @@ virStorageFileBackendGlusterGetUniqueIdentifier(virStorageSourcePtr src)
                                                     priv)))
         return NULL;
 
-    ignore_value(virAsprintf(&priv->canonpath, "gluster://%s:%u/%s/%s",
-                             src->hosts->name,
-                             src->hosts->port,
-                             src->volume,
-                             filePath));
+    priv->canonpath = g_strdup_printf("gluster://%s:%u/%s/%s",
+                                      src->hosts->name,
+                                      src->hosts->port,
+                                      src->volume,
+                                      filePath);
 
     return priv->canonpath;
 }

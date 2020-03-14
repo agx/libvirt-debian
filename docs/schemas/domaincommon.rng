@@ -216,7 +216,7 @@
         <value>vmware</value>
         <value>hyperv</value>
         <value>vbox</value>
-        <value>phyp</value>
+        <value>phyp</value> <!-- NOT USED ANYMORE -->
         <value>vz</value>
         <value>bhyve</value>
       </choice>
@@ -980,41 +980,41 @@
             <attribute name="vcpus">
               <ref name='cpuset'/>
             </attribute>
-            <zeroOrMore>
-              <element name="cache">
-                <attribute name="id">
-                  <ref name='unsignedInt'/>
-                </attribute>
-                <attribute name="level">
-                  <ref name='unsignedInt'/>
-                </attribute>
-                <attribute name="type">
-                  <choice>
-                    <value>both</value>
-                    <value>code</value>
-                    <value>data</value>
-                  </choice>
-                </attribute>
-                <attribute name="size">
-                  <ref name='unsignedLong'/>
-                </attribute>
-                <optional>
-                  <attribute name='unit'>
-                    <ref name='unit'/>
+            <oneOrMore>
+              <choice>
+                <element name="cache">
+                  <attribute name="id">
+                    <ref name='unsignedInt'/>
                   </attribute>
-                </optional>
-              </element>
-            </zeroOrMore>
-            <zeroOrMore>
-              <element name="monitor">
-                <attribute name="level">
-                  <ref name='unsignedInt'/>
-                </attribute>
-                <attribute name="vcpus">
-                  <ref name='cpuset'/>
-                </attribute>
-              </element>
-            </zeroOrMore>
+                  <attribute name="level">
+                    <ref name='unsignedInt'/>
+                  </attribute>
+                  <attribute name="type">
+                    <choice>
+                      <value>both</value>
+                      <value>code</value>
+                      <value>data</value>
+                    </choice>
+                  </attribute>
+                  <attribute name="size">
+                    <ref name='unsignedLong'/>
+                  </attribute>
+                  <optional>
+                    <attribute name='unit'>
+                      <ref name='unit'/>
+                    </attribute>
+                  </optional>
+                </element>
+                <element name="monitor">
+                  <attribute name="level">
+                    <ref name='unsignedInt'/>
+                  </attribute>
+                  <attribute name="vcpus">
+                    <ref name='cpuset'/>
+                  </attribute>
+                </element>
+              </choice>
+            </oneOrMore>
           </element>
         </zeroOrMore>
         <zeroOrMore>
@@ -1023,14 +1023,21 @@
               <ref name='cpuset'/>
             </attribute>
             <oneOrMore>
-              <element name="node">
-                <attribute name="id">
-                  <ref name='unsignedInt'/>
-                </attribute>
-                <attribute name="bandwidth">
-                  <ref name='unsignedInt'/>
-                </attribute>
-              </element>
+              <choice>
+                <element name="node">
+                  <attribute name="id">
+                    <ref name='unsignedInt'/>
+                  </attribute>
+                  <attribute name="bandwidth">
+                    <ref name='unsignedInt'/>
+                  </attribute>
+                </element>
+                <element name="monitor">
+                  <attribute name="vcpus">
+                    <ref name='cpuset'/>
+                  </attribute>
+                </element>
+              </choice>
             </oneOrMore>
           </element>
         </zeroOrMore>
@@ -1603,6 +1610,7 @@
       <ref name="diskSourceDir"/>
       <ref name="diskSourceNetwork"/>
       <ref name="diskSourceVolume"/>
+      <ref name="diskSourceNvme"/>
     </choice>
   </define>
 
@@ -1764,17 +1772,19 @@
         <value>iscsi</value>
       </attribute>
       <attribute name="name"/>
-      <ref name="diskSourceCommon"/>
-      <ref name="diskSourceNetworkHost"/>
-      <optional>
-        <ref name="diskAuth"/>
-      </optional>
-      <optional>
-        <ref name="encryption"/>
-      </optional>
-      <optional>
-        <ref name="initiatorinfo"/>
-      </optional>
+      <interleave>
+        <ref name="diskSourceCommon"/>
+        <ref name="diskSourceNetworkHost"/>
+        <optional>
+          <ref name="diskAuth"/>
+        </optional>
+        <optional>
+          <ref name="encryption"/>
+        </optional>
+        <optional>
+          <ref name="initiatorinfo"/>
+        </optional>
+      </interleave>
     </element>
   </define>
 
@@ -1914,6 +1924,37 @@
         <zeroOrMore>
           <ref name='devSeclabel'/>
         </zeroOrMore>
+      </element>
+    </optional>
+  </define>
+
+  <define name="diskSourceNvme">
+    <attribute name="type">
+      <value>nvme</value>
+    </attribute>
+    <optional>
+      <element name="source">
+        <attribute name="type">
+          <value>pci</value>
+        </attribute>
+        <attribute name="namespace">
+          <ref name="uint32"/>
+        </attribute>
+        <optional>
+          <attribute name="managed">
+            <ref name="virYesNo"/>
+          </attribute>
+        </optional>
+        <element name="address">
+          <ref name="pciaddress"/>
+        </element>
+        <ref name="diskSourceCommon"/>
+        <optional>
+          <ref name="storageStartupPolicy"/>
+        </optional>
+        <optional>
+          <ref name="encryption"/>
+        </optional>
       </element>
     </optional>
   </define>
@@ -2885,6 +2926,11 @@
           <attribute name="dev">
             <ref name="deviceName"/>
           </attribute>
+          <optional>
+            <attribute name="managed">
+              <ref name="virYesNo"/>
+            </attribute>
+          </optional>
           <empty/>
         </element>
       </optional>
@@ -3561,6 +3607,14 @@
             <ref name="virtioOptions"/>
           </optional>
           <optional>
+            <attribute name="name">
+              <choice>
+                <value>qemu</value>
+                <value>vhostuser</value>
+              </choice>
+            </attribute>
+          </optional>
+          <optional>
             <attribute name="vgaconf">
               <choice>
                 <value>io</value>
@@ -3585,6 +3639,7 @@
                 <value>gop</value>
                 <value>none</value>
                 <value>bochs</value>
+                <value>ramfb</value>
               </choice>
             </attribute>
             <group>
@@ -3635,6 +3690,21 @@
                   <ref name="virYesNo"/>
                 </attribute>
               </optional>
+              <optional>
+                <attribute name="rendernode">
+                  <ref name="absFilePath"/>
+                </attribute>
+              </optional>
+            </element>
+          </optional>
+          <optional>
+            <element name="resolution">
+              <attribute name="x">
+                <ref name="unsignedInt"/>
+              </attribute>
+              <attribute name="y">
+                <ref name="unsignedInt"/>
+              </attribute>
             </element>
           </optional>
         </element>
@@ -4751,6 +4821,11 @@
       </choice>
     </attribute>
     <optional>
+      <attribute name="ramfb">
+        <ref name="virOnOff"/>
+      </attribute>
+    </optional>
+    <optional>
       <attribute name="display">
         <ref name="virOnOff"/>
       </attribute>
@@ -4892,7 +4967,7 @@
     </optional>
     <optional>
       <attribute name="port">
-        <ref name="driveUnit"/>
+        <ref name="virtioserialPort"/>
       </attribute>
     </optional>
   </define>
@@ -4902,7 +4977,7 @@
     </attribute>
     <optional>
       <attribute name="slot">
-        <ref name="driveUnit"/>
+        <ref name="ccidSlot"/>
       </attribute>
     </optional>
   </define>
@@ -5101,6 +5176,11 @@
           </optional>
           <optional>
             <ref name="msrs"/>
+          </optional>
+          <optional>
+            <element name="ccf-assist">
+              <ref name="featurestate"/>
+            </element>
           </optional>
         </interleave>
       </element>
@@ -5423,6 +5503,11 @@
             <value>dimm</value>
           </attribute>
           <ref name="dimmaddress"/>
+        </group>
+        <group>
+          <attribute name="type">
+            <value>unassigned</value>
+          </attribute>
         </group>
       </choice>
     </element>
@@ -5907,7 +5992,7 @@
         </optional>
         <optional>
           <element name="stimer">
-            <ref name="featurestate"/>
+            <ref name="stimer"/>
           </element>
         </optional>
         <optional>
@@ -5956,12 +6041,31 @@
     </element>
   </define>
 
+  <!-- Hyper-V stimer features -->
+  <define name="stimer">
+    <interleave>
+      <optional>
+        <ref name="featurestate"/>
+      </optional>
+      <optional>
+        <element name="direct">
+          <ref name="featurestate"/>
+        </element>
+      </optional>
+    </interleave>
+  </define>
+
   <!-- Optional KVM features -->
   <define name="kvm">
     <element name="kvm">
       <interleave>
         <optional>
           <element name="hidden">
+            <ref name="featurestate"/>
+          </element>
+        </optional>
+        <optional>
+          <element name="hint-dedicated">
             <ref name="featurestate"/>
           </element>
         </optional>
@@ -6193,37 +6297,41 @@
     -->
   <define name="qemucmdline">
     <element name="commandline" ns="http://libvirt.org/schemas/domain/qemu/1.0">
-      <zeroOrMore>
-        <element name="arg">
-          <attribute name='value'/>
-        </element>
-      </zeroOrMore>
-      <zeroOrMore>
-        <element name="env">
-          <attribute name='name'>
-            <ref name="filter-param-name"/>
-          </attribute>
-          <optional>
+      <interleave>
+        <zeroOrMore>
+          <element name="arg">
             <attribute name='value'/>
-          </optional>
-          <empty/>
-        </element>
-      </zeroOrMore>
+          </element>
+        </zeroOrMore>
+        <zeroOrMore>
+          <element name="env">
+            <attribute name='name'>
+              <ref name="filter-param-name"/>
+            </attribute>
+            <optional>
+              <attribute name='value'/>
+            </optional>
+            <empty/>
+          </element>
+        </zeroOrMore>
+      </interleave>
     </element>
   </define>
 
   <define name="qemucapabilities">
     <element name="capabilities" ns="http://libvirt.org/schemas/domain/qemu/1.0">
-      <zeroOrMore>
-        <element name="add">
-          <attribute name="capability"/>
-        </element>
-      </zeroOrMore>
-      <zeroOrMore>
-        <element name="del">
-          <attribute name="capability"/>
-        </element>
-      </zeroOrMore>
+      <interleave>
+        <zeroOrMore>
+          <element name="add">
+            <attribute name="capability"/>
+          </element>
+        </zeroOrMore>
+        <zeroOrMore>
+          <element name="del">
+            <attribute name="capability"/>
+          </element>
+        </zeroOrMore>
+      </interleave>
     </element>
   </define>
 
@@ -6402,7 +6510,7 @@
   </define>
   <define name="driveUnit">
     <data type="string">
-      <param name="pattern">[0-9]{1,2}</param>
+      <param name="pattern">[0-9]{1,5}</param>
     </data>
   </define>
   <define name="driveSCSIUnit">
@@ -6428,6 +6536,16 @@
   <define name='aliasName'>
     <data type="string">
       <param name="pattern">[a-zA-Z0-9_\-.]+</param>
+    </data>
+  </define>
+  <define name="virtioserialPort">
+    <data type="string">
+      <param name="pattern">[0-9]{1,2}</param>
+    </data>
+  </define>
+  <define name="ccidSlot">
+    <data type="string">
+      <param name="pattern">[0-9]{1,2}</param>
     </data>
   </define>
   <define name='alias'>

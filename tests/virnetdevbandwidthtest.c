@@ -84,11 +84,6 @@ testVirNetDevBandwidthSet(const void *data)
         goto cleanup;
 
     if (!(actual_cmd = virBufferContentAndReset(&buf))) {
-        int err = virBufferError(&buf);
-        if (err) {
-            fprintf(stderr, "buffer's in error state: %d", err);
-            goto cleanup;
-        }
         /* This is interesting, no command has been executed.
          * Maybe that's expected, actually. */
     }
@@ -166,4 +161,4 @@ mymain(void)
     return ret;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virnetdevbandwidthmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virnetdevbandwidth"))

@@ -173,15 +173,15 @@ hypervCreateInvokeParamsList(hypervPrivate *priv, const char *method,
     hypervWmiClassInfoPtr info = NULL;
 
     if (hypervGetWmiClassInfo(priv, obj, &info) < 0)
-        goto cleanup;
+        return NULL;
 
     if (VIR_ALLOC(params) < 0)
-        goto cleanup;
+        return NULL;
 
     if (VIR_ALLOC_N(params->params,
                 HYPERV_DEFAULT_PARAM_COUNT) < 0) {
         VIR_FREE(params);
-        goto cleanup;
+        return NULL;
     }
 
     params->method = method;
@@ -191,7 +191,6 @@ hypervCreateInvokeParamsList(hypervPrivate *priv, const char *method,
     params->nbParams = 0;
     params->nbAvailParams = HYPERV_DEFAULT_PARAM_COUNT;
 
- cleanup:
     return params;
 }
 
@@ -257,11 +256,10 @@ int
 hypervAddSimpleParam(hypervInvokeParamsListPtr params, const char *name,
         const char *value)
 {
-    int result = -1;
     hypervParamPtr p = NULL;
 
     if (hypervCheckParams(params) < 0)
-        goto cleanup;
+        return -1;
 
     p = &params->params[params->nbParams];
     p->type = HYPERV_SIMPLE_PARAM;
@@ -271,10 +269,7 @@ hypervAddSimpleParam(hypervInvokeParamsListPtr params, const char *name,
 
     params->nbParams++;
 
-    result = 0;
-
- cleanup:
-    return result;
+    return 0;
 }
 
 /*
@@ -439,8 +434,7 @@ hypervCreateInvokeXmlDoc(hypervInvokeParamsListPtr params, WsXmlDocH *docRoot)
     char *method = NULL;
     WsXmlNodeH xmlNodeMethod = NULL;
 
-    if (virAsprintf(&method, "%s_INPUT", params->method) < 0)
-        goto cleanup;
+    method = g_strdup_printf("%s_INPUT", params->method);
 
     *docRoot = ws_xml_create_doc(NULL, method);
     if (*docRoot == NULL) {
@@ -511,11 +505,6 @@ hypervSerializeEprParam(hypervParamPtr p, hypervPrivate *priv,
     }
     wsmc_set_action_option(options, FLAG_ENUMERATION_ENUM_EPR);
 
-    /* Get query and create filter based on it */
-    if (virBufferCheckError(p->epr.query) < 0) {
-        virBufferFreeAndReset(p->epr.query);
-        goto cleanup;
-    }
     query_string = virBufferContentAndReset(p->epr.query);
 
     filter = filter_create_simple(WSM_WQL_FILTER_DIALECT, query_string);
@@ -849,9 +838,8 @@ hypervInvokeMethod(hypervPrivate *priv, hypervInvokeParamsListPtr params,
             params->method, paramsDocRoot);
 
     /* check return code of invocation */
-    if (virAsprintf(&returnValue_xpath, "/s:Envelope/s:Body/p:%s_OUTPUT/p:ReturnValue",
-            params->method) < 0)
-        goto cleanup;
+    returnValue_xpath = g_strdup_printf("/s:Envelope/s:Body/p:%s_OUTPUT/p:ReturnValue",
+                                        params->method);
 
     returnValue = ws_xml_get_xpath_value(response, returnValue_xpath);
     if (!returnValue) {
@@ -865,12 +853,9 @@ hypervInvokeMethod(hypervPrivate *priv, hypervInvokeParamsListPtr params,
         goto cleanup;
 
     if (returnCode == CIM_RETURNCODE_TRANSITION_STARTED) {
-        if (virAsprintf(&jobcode_instance_xpath,
-                    "/s:Envelope/s:Body/p:%s_OUTPUT/p:Job/a:ReferenceParameters/"
-                    "w:SelectorSet/w:Selector[@Name='InstanceID']",
-                    params->method) < 0) {
-            goto cleanup;
-        }
+        jobcode_instance_xpath = g_strdup_printf("/s:Envelope/s:Body/p:%s_OUTPUT/p:Job/a:ReferenceParameters/"
+                                                 "w:SelectorSet/w:Selector[@Name='InstanceID']",
+                                                 params->method);
 
         instanceID = ws_xml_get_xpath_value(response, jobcode_instance_xpath);
         if (!instanceID) {
@@ -909,7 +894,7 @@ hypervInvokeMethod(hypervPrivate *priv, hypervInvokeParamsListPtr params,
                 case MSVM_CONCRETEJOB_JOBSTATE_SHUTTING_DOWN:
                     hypervFreeObject(priv, (hypervObject *)job);
                     job = NULL;
-                    usleep(100 * 1000); /* sleep 100 ms */
+                    g_usleep(100 * 1000); /* sleep 100 ms */
                     timeout -= 100;
                     continue;
                 case MSVM_CONCRETEJOB_JOBSTATE_COMPLETED:
@@ -982,11 +967,6 @@ hypervEnumAndPull(hypervPrivate *priv, hypervWqlQueryPtr wqlQuery,
     WsXmlNodeH node = NULL;
     XML_TYPE_PTR data = NULL;
     hypervObject *object;
-
-    if (virBufferCheckError(wqlQuery->query) < 0) {
-        virBufferFreeAndReset(wqlQuery->query);
-        return -1;
-    }
 
     query_string = virBufferContentAndReset(wqlQuery->query);
 
@@ -1127,7 +1107,7 @@ hypervEnumAndPull(hypervPrivate *priv, hypervWqlQueryPtr wqlQuery,
 }
 
 void
-hypervFreeObject(hypervPrivate *priv ATTRIBUTE_UNUSED, hypervObject *object)
+hypervFreeObject(hypervPrivate *priv G_GNUC_UNUSED, hypervObject *object)
 {
     hypervObject *next;
 #if WS_SERIALIZER_FREE_MEM_WORKS
@@ -1341,10 +1321,8 @@ hypervInvokeMsvmComputerSystemRequestStateChange(virDomainPtr domain,
 
     virUUIDFormat(domain->uuid, uuid_string);
 
-    if (virAsprintf(&selector, "Name=%s&CreationClassName=Msvm_ComputerSystem",
-                    uuid_string) < 0 ||
-        virAsprintf(&properties, "RequestedState=%d", requestedState) < 0)
-        goto cleanup;
+    selector = g_strdup_printf("Name=%s&CreationClassName=Msvm_ComputerSystem", uuid_string);
+    properties = g_strdup_printf("RequestedState=%d", requestedState);
 
     if (priv->wmiVersion == HYPERV_WMI_VERSION_V1)
         resourceUri = MSVM_COMPUTERSYSTEM_V1_RESOURCE_URI;
@@ -1418,7 +1396,7 @@ hypervInvokeMsvmComputerSystemRequestStateChange(virDomainPtr domain,
                 hypervFreeObject(priv, (hypervObject *)concreteJob);
                 concreteJob = NULL;
 
-                usleep(100 * 1000);
+                g_usleep(100 * 1000);
                 continue;
 
               case MSVM_CONCRETEJOB_JOBSTATE_COMPLETED:

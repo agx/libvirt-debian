@@ -232,17 +232,9 @@ static int
 gather_scsi_host_cap(LibHalContext *ctx, const char *udi,
                      virNodeDevCapDataPtr d)
 {
-    int retval = 0;
-
     (void)get_int_prop(ctx, udi, "scsi_host.host", (int *)&d->scsi_host.host);
 
-    retval = virNodeDeviceGetSCSIHostCaps(&d->scsi_host);
-
-    if (retval == -1)
-        goto out;
-
- out:
-    return retval;
+    return virNodeDeviceGetSCSIHostCaps(&d->scsi_host);
 }
 
 
@@ -362,7 +354,7 @@ gather_capability(LibHalContext *ctx, const char *udi,
 {
     caps_tbl_entry *entry;
 
-    entry = bsearch(&cap_name, caps_tbl, ARRAY_CARDINALITY(caps_tbl),
+    entry = bsearch(&cap_name, caps_tbl, G_N_ELEMENTS(caps_tbl),
                     sizeof(caps_tbl[0]), cmpstringp);
 
     if (entry) {
@@ -461,14 +453,10 @@ dev_create(const char *udi)
     if (VIR_ALLOC(def) < 0)
         goto failure;
 
-    if (VIR_STRDUP(def->name, name) < 0)
-        goto failure;
+    def->name = g_strdup(name);
 
     if (get_str_prop(ctx, udi, "info.parent", &parent_key) == 0) {
-        if (VIR_STRDUP(def->parent, hal_name(parent_key)) < 0) {
-            VIR_FREE(parent_key);
-            goto failure;
-        }
+        def->parent = g_strdup(hal_name(parent_key));
         VIR_FREE(parent_key);
     }
 
@@ -520,7 +508,7 @@ dev_refresh(const char *udi)
 }
 
 static void
-device_added(LibHalContext *ctx ATTRIBUTE_UNUSED,
+device_added(LibHalContext *ctx G_GNUC_UNUSED,
              const char *udi)
 {
     VIR_DEBUG("%s", hal_name(udi));
@@ -529,7 +517,7 @@ device_added(LibHalContext *ctx ATTRIBUTE_UNUSED,
 
 
 static void
-device_removed(LibHalContext *ctx ATTRIBUTE_UNUSED,
+device_removed(LibHalContext *ctx G_GNUC_UNUSED,
                const char *udi)
 {
     const char *name = hal_name(udi);
@@ -565,7 +553,7 @@ device_cap_added(LibHalContext *ctx,
 
 
 static void
-device_cap_lost(LibHalContext *ctx ATTRIBUTE_UNUSED,
+device_cap_lost(LibHalContext *ctx G_GNUC_UNUSED,
                 const char *udi,
                 const char *cap)
 {
@@ -577,11 +565,11 @@ device_cap_lost(LibHalContext *ctx ATTRIBUTE_UNUSED,
 
 
 static void
-device_prop_modified(LibHalContext *ctx ATTRIBUTE_UNUSED,
+device_prop_modified(LibHalContext *ctx G_GNUC_UNUSED,
                      const char *udi,
                      const char *key,
-                     dbus_bool_t is_removed ATTRIBUTE_UNUSED,
-                     dbus_bool_t is_added ATTRIBUTE_UNUSED)
+                     dbus_bool_t is_removed G_GNUC_UNUSED,
+                     dbus_bool_t is_added G_GNUC_UNUSED)
 {
     const char *name = hal_name(udi);
     VIR_DEBUG("%s %s", name, key);
@@ -591,43 +579,39 @@ device_prop_modified(LibHalContext *ctx ATTRIBUTE_UNUSED,
 
 
 static int
-nodeStateInitialize(bool privileged ATTRIBUTE_UNUSED,
-                    virStateInhibitCallback callback ATTRIBUTE_UNUSED,
-                    void *opaque ATTRIBUTE_UNUSED)
+nodeStateInitialize(bool privileged G_GNUC_UNUSED,
+                    virStateInhibitCallback callback G_GNUC_UNUSED,
+                    void *opaque G_GNUC_UNUSED)
 {
     LibHalContext *hal_ctx = NULL;
     char **udi = NULL;
     int num_devs;
     size_t i;
-    int ret = -1;
+    int ret = VIR_DRV_STATE_INIT_ERROR;
     DBusConnection *sysbus;
     DBusError err;
 
     /* Ensure caps_tbl is sorted by capability name */
-    qsort(caps_tbl, ARRAY_CARDINALITY(caps_tbl), sizeof(caps_tbl[0]),
+    qsort(caps_tbl, G_N_ELEMENTS(caps_tbl), sizeof(caps_tbl[0]),
           cmpstringp);
 
     if (VIR_ALLOC(driver) < 0)
-        return -1;
+        return VIR_DRV_STATE_INIT_ERROR;
 
     driver->lockFD = -1;
     if (virMutexInit(&driver->lock) < 0) {
         VIR_FREE(driver);
-        return -1;
+        return VIR_DRV_STATE_INIT_ERROR;
     }
     nodeDeviceLock();
 
     if (privileged) {
-        if (virAsprintf(&driver->stateDir,
-                        "%s/run/libvirt/nodedev", LOCALSTATEDIR) < 0)
-            goto failure;
+        driver->stateDir = g_strdup_printf("%s/libvirt/nodedev", RUNSTATEDIR);
     } else {
-        VIR_AUTOFREE(char *) rundir = NULL;
+        g_autofree char *rundir = NULL;
 
-        if (!(rundir = virGetUserRuntimeDirectory()))
-            goto failure;
-        if (virAsprintf(&driver->stateDir, "%s/nodedev/run", rundir) < 0)
-            goto failure;
+        rundir = virGetUserRuntimeDirectory();
+        driver->stateDir = g_strdup_printf("%s/nodedev/run", rundir);
     }
 
     if (virFileMakePathWithMode(driver->stateDir, S_IRWXU) < 0) {
@@ -648,7 +632,7 @@ nodeStateInitialize(bool privileged ATTRIBUTE_UNUSED,
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("DBus not available, disabling HAL driver: %s"),
                        virGetLastErrorMessage());
-        ret = 0;
+        ret = VIR_DRV_STATE_INIT_SKIPPED;
         goto failure;
     }
 
@@ -671,7 +655,7 @@ nodeStateInitialize(bool privileged ATTRIBUTE_UNUSED,
         /* We don't want to show a fatal error here,
            otherwise entire libvirtd shuts down when
            hald isn't running */
-        ret = 0;
+        ret = VIR_DRV_STATE_INIT_SKIPPED;
         goto failure;
     }
 
@@ -709,7 +693,7 @@ nodeStateInitialize(bool privileged ATTRIBUTE_UNUSED,
     }
     VIR_FREE(udi);
 
-    return 0;
+    return VIR_DRV_STATE_INIT_COMPLETE;
 
  failure:
     if (dbus_error_is_set(&err)) {

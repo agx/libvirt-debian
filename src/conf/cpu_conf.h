@@ -52,8 +52,8 @@ typedef enum {
 VIR_ENUM_DECL(virCPUMode);
 
 typedef enum {
-    VIR_CPU_MATCH_MINIMUM,
     VIR_CPU_MATCH_EXACT,
+    VIR_CPU_MATCH_MINIMUM,
     VIR_CPU_MATCH_STRICT,
 
     VIR_CPU_MATCH_LAST
@@ -122,6 +122,7 @@ struct _virCPUCacheDef {
 typedef struct _virCPUDef virCPUDef;
 typedef virCPUDef *virCPUDefPtr;
 struct _virCPUDef {
+    int refs;
     int type;           /* enum virCPUType */
     int mode;           /* enum virCPUMode */
     int match;          /* enum virCPUMatch */
@@ -142,6 +143,7 @@ struct _virCPUDef {
     virHostCPUTscInfoPtr tsc;
 };
 
+virCPUDefPtr virCPUDefNew(void);
 
 void ATTRIBUTE_NONNULL(1)
 virCPUDefFreeFeatures(virCPUDefPtr def);
@@ -150,7 +152,10 @@ void ATTRIBUTE_NONNULL(1)
 virCPUDefFreeModel(virCPUDefPtr def);
 
 void
+virCPUDefRef(virCPUDefPtr def);
+void
 virCPUDefFree(virCPUDefPtr def);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virCPUDef, virCPUDefFree);
 
 int ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2)
 virCPUDefCopyModel(virCPUDefPtr dst,
@@ -161,6 +166,7 @@ virCPUDefCopyModel(virCPUDefPtr dst,
  * Returns true if feature @name should copied, false otherwise.
  */
 typedef bool (*virCPUDefFeatureFilter)(const char *name,
+                                       virCPUFeaturePolicy policy,
                                        void *opaque);
 
 int
@@ -181,6 +187,11 @@ virCPUDefCopy(const virCPUDef *cpu);
 
 virCPUDefPtr
 virCPUDefCopyWithoutModel(const virCPUDef *cpu);
+
+int
+virCPUDefParseXMLString(const char *xml,
+                        virCPUType type,
+                        virCPUDefPtr *cpu);
 
 int
 virCPUDefParseXML(xmlXPathContextPtr ctxt,

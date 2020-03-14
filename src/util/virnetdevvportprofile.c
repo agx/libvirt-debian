@@ -49,7 +49,6 @@ VIR_ENUM_IMPL(virNetDevVPortProfileOp,
 #if WITH_VIRTUALPORT
 
 # include <fcntl.h>
-# include <c-ctype.h>
 # include <sys/socket.h>
 # include <sys/ioctl.h>
 
@@ -85,7 +84,7 @@ enum virNetDevVPortProfileLinkOp {
 #endif
 
 bool
-virNetDevVPortProfileEqual(virNetDevVPortProfilePtr a, virNetDevVPortProfilePtr b)
+virNetDevVPortProfileEqual(const virNetDevVPortProfile *a, const virNetDevVPortProfile *b)
 {
     /* NULL resistant */
     if (!a && !b)
@@ -226,7 +225,7 @@ virNetDevVPortProfileCheckComplete(virNetDevVPortProfilePtr virtport,
  * an error is logged and -1 is returned.
  */
 int
-virNetDevVPortProfileCheckNoExtras(virNetDevVPortProfilePtr virtport)
+virNetDevVPortProfileCheckNoExtras(const virNetDevVPortProfile *virtport)
 {
     const char *extra = NULL;
 
@@ -283,7 +282,7 @@ virNetDevVPortProfileCheckNoExtras(virNetDevVPortProfilePtr virtport)
  */
 static int
 virNetDevVPortProfileMerge(virNetDevVPortProfilePtr orig,
-                           virNetDevVPortProfilePtr mods)
+                           const virNetDevVPortProfile *mods)
 {
     enum virNetDevVPortProfile otype;
 
@@ -423,9 +422,9 @@ virNetDevVPortProfileMerge(virNetDevVPortProfilePtr orig,
  */
 
 int virNetDevVPortProfileMerge3(virNetDevVPortProfilePtr *result,
-                                virNetDevVPortProfilePtr fromInterface,
-                                virNetDevVPortProfilePtr fromNetwork,
-                                virNetDevVPortProfilePtr fromPortgroup)
+                                const virNetDevVPortProfile *fromInterface,
+                                const virNetDevVPortProfile *fromNetwork,
+                                const virNetDevVPortProfile *fromPortgroup)
 {
     int ret = -1;
     *result = NULL;
@@ -482,7 +481,7 @@ virNetDevVPortProfileGetLldpadPid(void)
             char *endptr;
 
             if (virStrToLong_ui(buffer, &endptr, 10, &res) == 0
-                && (*endptr == '\0' || c_isspace(*endptr))
+                && (*endptr == '\0' || g_ascii_isspace(*endptr))
                 && res != 0) {
                 pid = res;
             } else {
@@ -519,7 +518,6 @@ virNetDevVPortProfileGetStatus(struct nlattr **tb, int32_t vf,
                                bool is8021Qbg,
                                uint16_t *status)
 {
-    int rc = -1;
     struct nlattr *tb_port[IFLA_PORT_MAX + 1] = { NULL, };
 
     if (vf == PORT_SELF_VF && nltarget_kernel) {
@@ -528,12 +526,12 @@ virNetDevVPortProfileGetStatus(struct nlattr **tb, int32_t vf,
                                  ifla_port_policy)) {
                 virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                                _("error parsing IFLA_PORT_SELF part"));
-                goto cleanup;
+                return -1;
             }
         } else {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                            _("IFLA_PORT_SELF is missing"));
-            goto cleanup;
+            return -1;
         }
     } else {
         if (tb[IFLA_VF_PORTS]) {
@@ -547,14 +545,14 @@ virNetDevVPortProfileGetStatus(struct nlattr **tb, int32_t vf,
                     virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                                    _("error while iterating over "
                                      "IFLA_VF_PORTS part"));
-                    goto cleanup;
+                    return -1;
                 }
 
                 if (nla_parse_nested(tb_port, IFLA_PORT_MAX, tb_vf_ports,
                                      ifla_port_policy)) {
                     virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                                    _("error parsing IFLA_VF_PORT part"));
-                    goto cleanup;
+                    return -1;
                 }
 
                 /* This ensures that the given VF is present in the
@@ -602,7 +600,7 @@ virNetDevVPortProfileGetStatus(struct nlattr **tb, int32_t vf,
                         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                                        _("error parsing IFLA_VF_PORT "
                                          "during error reporting"));
-                        goto cleanup;
+                        return -1;
                     }
                     if (tb_port[IFLA_PORT_INSTANCE_UUID]) {
                         virUUIDFormat((unsigned char *)
@@ -614,31 +612,29 @@ virNetDevVPortProfileGetStatus(struct nlattr **tb, int32_t vf,
                              *(uint32_t *)RTA_DATA(tb_port[IFLA_PORT_VF]) : -1,
                              uuidstr);
                 }
-                goto cleanup;
+                return -1;
             }
         } else {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                            _("IFLA_VF_PORTS is missing"));
-            goto cleanup;
+            return -1;
         }
     }
 
     if (tb_port[IFLA_PORT_RESPONSE]) {
         *status = *(uint16_t *)RTA_DATA(tb_port[IFLA_PORT_RESPONSE]);
-        rc = 0;
     } else {
         if (is8021Qbg) {
             /* no in-progress here; may be missing */
             *status = PORT_PROFILE_RESPONSE_INPROGRESS;
-            rc = 0;
         } else {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                            _("no IFLA_PORT_RESPONSE found in netlink message"));
-            goto cleanup;
+            return -1;
         }
     }
- cleanup:
-    return rc;
+
+    return 0;
 }
 
 
@@ -999,7 +995,7 @@ virNetDevVPortProfileOpCommon(const char *ifname, int ifindex,
             break;
         }
 
-        usleep(STATUS_POLL_INTERVL_USEC);
+        g_usleep(STATUS_POLL_INTERVL_USEC);
     }
 
     if (status == PORT_PROFILE_RESPONSE_INPROGRESS) {
@@ -1052,7 +1048,6 @@ virNetDevVPortProfileOp8021Qbg(const char *ifname,
                                enum virNetDevVPortProfileLinkOp virtPortOp,
                                bool setlink_only)
 {
-    int rc = -1;
     int op = PORT_REQUEST_ASSOCIATE;
     struct ifla_port_vsi portVsi = {
         .vsi_mgr_id       = virtPort->managerID,
@@ -1070,7 +1065,7 @@ virNetDevVPortProfileOp8021Qbg(const char *ifname,
 
     if (virNetDevVPortProfileGetPhysdevAndVlan(ifname, &physdev_ifindex,
                                                physdev_ifname, &vlanid) < 0) {
-        goto cleanup;
+        return -1;
     }
 
     if (vlanid < 0)
@@ -1096,22 +1091,20 @@ virNetDevVPortProfileOp8021Qbg(const char *ifname,
     default:
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("operation type %d not supported"), virtPortOp);
-        goto cleanup;
+        return -1;
     }
 
-    rc = virNetDevVPortProfileOpCommon(physdev_ifname, physdev_ifindex,
-                                       nltarget_kernel,
-                                       macaddr,
-                                       vlanid,
-                                       NULL,
-                                       &portVsi,
-                                       virtPort->instanceID,
-                                       NULL,
-                                       vf,
-                                       op,
-                                       setlink_only);
- cleanup:
-    return rc;
+    return virNetDevVPortProfileOpCommon(physdev_ifname, physdev_ifindex,
+                                         nltarget_kernel,
+                                         macaddr,
+                                         vlanid,
+                                         NULL,
+                                         &portVsi,
+                                         virtPort->instanceID,
+                                         NULL,
+                                         vf,
+                                         op,
+                                         setlink_only);
 }
 
 /* Returns 0 on success, -1 on general failure, and -2 on timeout */
@@ -1145,10 +1138,7 @@ virNetDevVPortProfileOp8021Qbh(const char *ifname,
             goto cleanup;
         }
     } else {
-        if (VIR_STRDUP(physfndev, ifname) < 0) {
-            rc = -1;
-            goto cleanup;
-        }
+        physfndev = g_strdup(ifname);
     }
 
     rc = virNetDevGetIndex(physfndev, &ifindex);
@@ -1359,26 +1349,26 @@ virNetDevVPortProfileDisassociate(const char *macvtap_ifname,
 }
 
 #else /* ! WITH_VIRTUALPORT */
-int virNetDevVPortProfileAssociate(const char *macvtap_ifname ATTRIBUTE_UNUSED,
-                                   const virNetDevVPortProfile *virtPort ATTRIBUTE_UNUSED,
-                                   const virMacAddr *macvtap_macaddr ATTRIBUTE_UNUSED,
-                                   const char *linkdev ATTRIBUTE_UNUSED,
-                                   int vf ATTRIBUTE_UNUSED,
-                                   const unsigned char *vmuuid ATTRIBUTE_UNUSED,
-                                   virNetDevVPortProfileOp vmOp ATTRIBUTE_UNUSED,
-                                   bool setlink_only ATTRIBUTE_UNUSED)
+int virNetDevVPortProfileAssociate(const char *macvtap_ifname G_GNUC_UNUSED,
+                                   const virNetDevVPortProfile *virtPort G_GNUC_UNUSED,
+                                   const virMacAddr *macvtap_macaddr G_GNUC_UNUSED,
+                                   const char *linkdev G_GNUC_UNUSED,
+                                   int vf G_GNUC_UNUSED,
+                                   const unsigned char *vmuuid G_GNUC_UNUSED,
+                                   virNetDevVPortProfileOp vmOp G_GNUC_UNUSED,
+                                   bool setlink_only G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s",
                          _("Virtual port profile association not supported on this platform"));
     return -1;
 }
 
-int virNetDevVPortProfileDisassociate(const char *macvtap_ifname ATTRIBUTE_UNUSED,
-                                      const virNetDevVPortProfile *virtPort ATTRIBUTE_UNUSED,
-                                      const virMacAddr *macvtap_macaddr ATTRIBUTE_UNUSED,
-                                      const char *linkdev ATTRIBUTE_UNUSED,
-                                      int vf ATTRIBUTE_UNUSED,
-                                      virNetDevVPortProfileOp vmOp ATTRIBUTE_UNUSED)
+int virNetDevVPortProfileDisassociate(const char *macvtap_ifname G_GNUC_UNUSED,
+                                      const virNetDevVPortProfile *virtPort G_GNUC_UNUSED,
+                                      const virMacAddr *macvtap_macaddr G_GNUC_UNUSED,
+                                      const char *linkdev G_GNUC_UNUSED,
+                                      int vf G_GNUC_UNUSED,
+                                      virNetDevVPortProfileOp vmOp G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s",
                          _("Virtual port profile association not supported on this platform"));

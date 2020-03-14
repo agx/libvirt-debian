@@ -610,7 +610,7 @@ virResctrlGetCacheInfo(virResctrlInfoPtr resctrl,
             goto cleanup;
         }
 
-        VIR_STEAL_PTR(i_level->types[type], i_type);
+        i_level->types[type] = g_steal_pointer(&i_type);
     }
 
     ret = 0;
@@ -666,7 +666,7 @@ virResctrlGetMemoryBandwidthInfo(virResctrlInfoPtr resctrl)
     if (rv < 0)
         goto cleanup;
 
-    VIR_STEAL_PTR(resctrl->membw_info, i_membw);
+    resctrl->membw_info = g_steal_pointer(&i_membw);
     ret = 0;
  cleanup:
     VIR_FREE(i_membw);
@@ -748,8 +748,8 @@ virResctrlGetMonitorInfo(virResctrlInfoPtr resctrl)
     VIR_DEBUG("Resctrl supported %zd monitoring features", nfeatures);
 
     info_monitor->nfeatures = nfeatures;
-    VIR_STEAL_PTR(info_monitor->features, features);
-    VIR_STEAL_PTR(resctrl->monitor_info, info_monitor);
+    info_monitor->features = g_steal_pointer(&features);
+    resctrl->monitor_info = g_steal_pointer(&info_monitor);
 
     ret = 0;
  cleanup:
@@ -871,7 +871,6 @@ virResctrlInfoGetCache(virResctrlInfoPtr resctrl,
     virResctrlInfoPerLevelPtr i_level = NULL;
     virResctrlInfoPerTypePtr i_type = NULL;
     size_t i = 0;
-    int ret = -1;
 
     if (virResctrlInfoIsEmpty(resctrl))
         return 0;
@@ -928,14 +927,12 @@ virResctrlInfoGetCache(virResctrlInfoPtr resctrl,
         memcpy((*controls)[*ncontrols - 1], &i_type->control, sizeof(i_type->control));
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
  error:
     while (*ncontrols)
         VIR_FREE((*controls)[--*ncontrols]);
     VIR_FREE(*controls);
-    goto cleanup;
+    return -1;
 }
 
 
@@ -1025,7 +1022,7 @@ virResctrlInfoGetMonitorPrefix(virResctrlInfoPtr resctrl,
         goto cleanup;
     }
 
-    VIR_STEAL_PTR(*monitor, mon);
+    *monitor = g_steal_pointer(&mon);
  cleanup:
     virResctrlInfoMonFree(mon);
     return ret;
@@ -1388,7 +1385,8 @@ virResctrlSetID(char **resctrlid,
         return -1;
     }
 
-    return VIR_STRDUP(*resctrlid, id);
+    *resctrlid = g_strdup(id);
+    return 0;
 }
 
 
@@ -1436,7 +1434,7 @@ virResctrlAllocMemoryBandwidthFormat(virResctrlAllocPtr alloc,
 
     virBufferTrim(buf, ";", 1);
     virBufferAddChar(buf, '\n');
-    return virBufferCheckError(buf);
+    return 0;
 }
 
 
@@ -1581,7 +1579,7 @@ virResctrlAllocFormatCache(virResctrlAllocPtr alloc,
         }
     }
 
-    return virBufferCheckError(buf);
+    return 0;
 }
 
 
@@ -2318,8 +2316,7 @@ virResctrlDeterminePath(const char *parentpath,
         return NULL;
     }
 
-    if (virAsprintf(&path, "%s/%s-%s", parentpath, prefix, id) < 0)
-        return NULL;
+    path = g_strdup_printf("%s/%s-%s", parentpath, prefix, id);
 
     return path;
 }
@@ -2338,8 +2335,7 @@ virResctrlAllocDeterminePath(virResctrlAllocPtr alloc,
 
     /* If the allocation is empty, then the path will be SYSFS_RESCTRL_PATH */
     if (virResctrlAllocIsEmpty(alloc)) {
-        if (VIR_STRDUP(alloc->path, SYSFS_RESCTRL_PATH) < 0)
-            return -1;
+        alloc->path = g_strdup(SYSFS_RESCTRL_PATH);
 
         return 0;
     }
@@ -2416,8 +2412,7 @@ virResctrlAllocCreate(virResctrlInfoPtr resctrl,
     if (!alloc_str)
         goto cleanup;
 
-    if (virAsprintf(&schemata_path, "%s/schemata", alloc->path) < 0)
-        goto cleanup;
+    schemata_path = g_strdup_printf("%s/schemata", alloc->path);
 
     VIR_DEBUG("Writing resctrl schemata '%s' into '%s'", alloc_str, schemata_path);
     if (virFileWriteStr(schemata_path, alloc_str, 0) < 0) {
@@ -2451,11 +2446,9 @@ virResctrlAddPID(const char *path,
         return -1;
     }
 
-    if (virAsprintf(&tasks, "%s/tasks", path) < 0)
-        return -1;
+    tasks = g_strdup_printf("%s/tasks", path);
 
-    if (virAsprintf(&pidstr, "%lld", (long long int) pid) < 0)
-        goto cleanup;
+    pidstr = g_strdup_printf("%lld", (long long int)pid);
 
     if (virFileWriteStr(tasks, pidstr, 0) < 0) {
         virReportSystemError(errno,
@@ -2539,7 +2532,7 @@ int
 virResctrlMonitorDeterminePath(virResctrlMonitorPtr monitor,
                                const char *machinename)
 {
-    VIR_AUTOFREE(char *) parentpath = NULL;
+    g_autofree char *parentpath = NULL;
 
     if (!monitor) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
@@ -2560,14 +2553,13 @@ virResctrlMonitorDeterminePath(virResctrlMonitorPtr monitor,
         return -1;
     }
 
-    if (STREQ_NULLABLE(monitor->id, monitor->alloc->id)) {
-        if (VIR_STRDUP(monitor->path, monitor->alloc->path) < 0)
-            return -1;
+    if (!virResctrlAllocIsEmpty(monitor->alloc) &&
+        STREQ_NULLABLE(monitor->id, monitor->alloc->id)) {
+        monitor->path = g_strdup(monitor->alloc->path);
         return 0;
     }
 
-    if (virAsprintf(&parentpath, "%s/mon_groups", monitor->alloc->path) < 0)
-        return -1;
+    parentpath = g_strdup_printf("%s/mon_groups", monitor->alloc->path);
 
     monitor->path = virResctrlDeterminePath(parentpath, machinename,
                                             monitor->id);
@@ -2668,8 +2660,7 @@ virResctrlMonitorStatsSorter(const void *a,
  * virResctrlMonitorGetStats
  *
  * @monitor: The monitor that the statistic data will be retrieved from.
- * @resource: The name for resource name. 'llc_occupancy' for cache resource.
- * "mbm_total_bytes" and "mbm_local_bytes" for memory bandwidth resource.
+ * @resources: A string list for the monitor feature names.
  * @stats: Pointer of of virResctrlMonitorStatsPtr array for holding cache or
  * memory bandwidth usage data.
  * @nstats: A size_t pointer to hold the returned array length of @stats
@@ -2678,14 +2669,16 @@ virResctrlMonitorStatsSorter(const void *a,
  *
  * Returns 0 on success, -1 on error.
  */
-static int
+int
 virResctrlMonitorGetStats(virResctrlMonitorPtr monitor,
-                          const char *resource,
+                          const char **resources,
                           virResctrlMonitorStatsPtr **stats,
                           size_t *nstats)
 {
     int rv = -1;
     int ret = -1;
+    size_t i = 0;
+    unsigned long long val = 0;
     DIR *dirp = NULL;
     char *datapath = NULL;
     char *filepath = NULL;
@@ -2698,8 +2691,7 @@ virResctrlMonitorGetStats(virResctrlMonitorPtr monitor,
         return -1;
     }
 
-    if (virAsprintf(&datapath, "%s/mon_data", monitor->path) < 0)
-        return -1;
+    datapath = g_strdup_printf("%s/mon_data", monitor->path);
 
     if (virDirOpen(&dirp, datapath) < 0)
         goto cleanup;
@@ -2716,8 +2708,7 @@ virResctrlMonitorGetStats(virResctrlMonitorPtr monitor,
          * "mon_L3_01" are two target directories for a two nodes system
          * with resource utilization data file for each node respectively.
          */
-        if (virAsprintf(&filepath, "%s/%s", datapath, ent->d_name) < 0)
-            goto cleanup;
+        filepath = g_strdup_printf("%s/%s", datapath, ent->d_name);
 
         if (!virFileIsDir(filepath))
             continue;
@@ -2742,15 +2733,23 @@ virResctrlMonitorGetStats(virResctrlMonitorPtr monitor,
         if (virStrToLong_uip(node_id, NULL, 0, &stat->id) < 0)
             goto cleanup;
 
-        rv = virFileReadValueUint(&stat->val, "%s/%s/%s", datapath,
-                                  ent->d_name, resource);
-        if (rv == -2) {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("File '%s/%s/%s' does not exist."),
-                           datapath, ent->d_name, resource);
+        for (i = 0; resources[i]; i++) {
+            rv = virFileReadValueUllong(&val, "%s/%s/%s", datapath,
+                                        ent->d_name, resources[i]);
+            if (rv == -2) {
+                virReportError(VIR_ERR_INTERNAL_ERROR,
+                               _("File '%s/%s/%s' does not exist."),
+                               datapath, ent->d_name, resources[i]);
+            }
+            if (rv < 0)
+                goto cleanup;
+
+            if (VIR_APPEND_ELEMENT(stat->vals, stat->nvals, val) < 0)
+                goto cleanup;
+
+            if (virStringListAdd(&stat->features, resources[i]) < 0)
+                goto cleanup;
         }
-        if (rv < 0)
-            goto cleanup;
 
         if (VIR_APPEND_ELEMENT(*stats, *nstats, stat) < 0)
             goto cleanup;
@@ -2764,46 +2763,19 @@ virResctrlMonitorGetStats(virResctrlMonitorPtr monitor,
  cleanup:
     VIR_FREE(datapath);
     VIR_FREE(filepath);
-    VIR_FREE(stat);
+    virResctrlMonitorStatsFree(stat);
     VIR_DIR_CLOSE(dirp);
     return ret;
 }
 
 
 void
-virResctrlMonitorFreeStats(virResctrlMonitorStatsPtr *stats,
-                           size_t nstats)
+virResctrlMonitorStatsFree(virResctrlMonitorStatsPtr stat)
 {
-    size_t i = 0;
-
-    if (!stats)
+    if (!stat)
         return;
 
-    for (i = 0; i < nstats; i++)
-        VIR_FREE(stats[i]);
-
-    VIR_FREE(stats);
-}
-
-
-/*
- * virResctrlMonitorGetCacheOccupancy
- *
- * @monitor: The monitor that the statistic data will be retrieved from.
- * @stats: Array of virResctrlMonitorStatsPtr for receiving cache occupancy
- * data. Caller is responsible to free this array.
- * @nstats: A size_t pointer to hold the returned array length of @caches
- *
- * Get cache or memory bandwidth utilization information.
- *
- * Returns 0 on success, -1 on error.
- */
-
-int
-virResctrlMonitorGetCacheOccupancy(virResctrlMonitorPtr monitor,
-                                   virResctrlMonitorStatsPtr **stats,
-                                   size_t *nstats)
-{
-    return virResctrlMonitorGetStats(monitor, "llc_occupancy",
-                                     stats, nstats);
+    virStringListFree(stat->features);
+    VIR_FREE(stat->vals);
+    VIR_FREE(stat);
 }

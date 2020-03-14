@@ -234,9 +234,6 @@ testFirewallSingleGroup(const void *opaque)
     if (virFirewallApply(fw) < 0)
         goto cleanup;
 
-    if (virBufferError(&cmdbuf))
-        goto cleanup;
-
     actual = virBufferCurrentContent(&cmdbuf);
 
     if (STRNEQ_NULLABLE(expected, actual)) {
@@ -300,9 +297,6 @@ testFirewallRemoveRule(const void *opaque)
     if (virFirewallApply(fw) < 0)
         goto cleanup;
 
-    if (virBufferError(&cmdbuf))
-        goto cleanup;
-
     actual = virBufferCurrentContent(&cmdbuf);
 
     if (STRNEQ_NULLABLE(expected, actual)) {
@@ -322,7 +316,7 @@ testFirewallRemoveRule(const void *opaque)
 
 
 static int
-testFirewallManyGroups(const void *opaque ATTRIBUTE_UNUSED)
+testFirewallManyGroups(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer cmdbuf = VIR_BUFFER_INITIALIZER;
     virFirewallPtr fw = NULL;
@@ -373,9 +367,6 @@ testFirewallManyGroups(const void *opaque ATTRIBUTE_UNUSED)
     if (virFirewallApply(fw) < 0)
         goto cleanup;
 
-    if (virBufferError(&cmdbuf))
-        goto cleanup;
-
     actual = virBufferCurrentContent(&cmdbuf);
 
     if (STRNEQ_NULLABLE(expected, actual)) {
@@ -395,12 +386,12 @@ testFirewallManyGroups(const void *opaque ATTRIBUTE_UNUSED)
 
 static void
 testFirewallRollbackHook(const char *const*args,
-                         const char *const*env ATTRIBUTE_UNUSED,
-                         const char *input ATTRIBUTE_UNUSED,
-                         char **output ATTRIBUTE_UNUSED,
-                         char **error ATTRIBUTE_UNUSED,
+                         const char *const*env G_GNUC_UNUSED,
+                         const char *input G_GNUC_UNUSED,
+                         char **output G_GNUC_UNUSED,
+                         char **error G_GNUC_UNUSED,
                          int *status,
-                         void *opaque ATTRIBUTE_UNUSED)
+                         void *opaque G_GNUC_UNUSED)
 {
     bool isAdd = false;
     while (*args) {
@@ -416,7 +407,7 @@ testFirewallRollbackHook(const char *const*args,
 }
 
 static int
-testFirewallIgnoreFailGroup(const void *opaque ATTRIBUTE_UNUSED)
+testFirewallIgnoreFailGroup(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer cmdbuf = VIR_BUFFER_INITIALIZER;
     virFirewallPtr fw = NULL;
@@ -469,9 +460,6 @@ testFirewallIgnoreFailGroup(const void *opaque ATTRIBUTE_UNUSED)
     if (virFirewallApply(fw) < 0)
         goto cleanup;
 
-    if (virBufferError(&cmdbuf))
-        goto cleanup;
-
     actual = virBufferCurrentContent(&cmdbuf);
 
     if (STRNEQ_NULLABLE(expected, actual)) {
@@ -491,7 +479,7 @@ testFirewallIgnoreFailGroup(const void *opaque ATTRIBUTE_UNUSED)
 
 
 static int
-testFirewallIgnoreFailRule(const void *opaque ATTRIBUTE_UNUSED)
+testFirewallIgnoreFailRule(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer cmdbuf = VIR_BUFFER_INITIALIZER;
     virFirewallPtr fw = NULL;
@@ -543,9 +531,6 @@ testFirewallIgnoreFailRule(const void *opaque ATTRIBUTE_UNUSED)
     if (virFirewallApply(fw) < 0)
         goto cleanup;
 
-    if (virBufferError(&cmdbuf))
-        goto cleanup;
-
     actual = virBufferCurrentContent(&cmdbuf);
 
     if (STRNEQ_NULLABLE(expected, actual)) {
@@ -565,7 +550,7 @@ testFirewallIgnoreFailRule(const void *opaque ATTRIBUTE_UNUSED)
 
 
 static int
-testFirewallNoRollback(const void *opaque ATTRIBUTE_UNUSED)
+testFirewallNoRollback(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer cmdbuf = VIR_BUFFER_INITIALIZER;
     virFirewallPtr fw = NULL;
@@ -611,12 +596,6 @@ testFirewallNoRollback(const void *opaque ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    if (virTestOOMActive())
-        goto cleanup;
-
-    if (virBufferError(&cmdbuf))
-        goto cleanup;
-
     actual = virBufferCurrentContent(&cmdbuf);
 
     if (STRNEQ_NULLABLE(expected, actual)) {
@@ -635,7 +614,7 @@ testFirewallNoRollback(const void *opaque ATTRIBUTE_UNUSED)
 }
 
 static int
-testFirewallSingleRollback(const void *opaque ATTRIBUTE_UNUSED)
+testFirewallSingleRollback(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer cmdbuf = VIR_BUFFER_INITIALIZER;
     virFirewallPtr fw = NULL;
@@ -701,12 +680,6 @@ testFirewallSingleRollback(const void *opaque ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    if (virTestOOMActive())
-        goto cleanup;
-
-    if (virBufferError(&cmdbuf))
-        goto cleanup;
-
     actual = virBufferCurrentContent(&cmdbuf);
 
     if (STRNEQ_NULLABLE(expected, actual)) {
@@ -725,7 +698,7 @@ testFirewallSingleRollback(const void *opaque ATTRIBUTE_UNUSED)
 }
 
 static int
-testFirewallManyRollback(const void *opaque ATTRIBUTE_UNUSED)
+testFirewallManyRollback(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer cmdbuf = VIR_BUFFER_INITIALIZER;
     virFirewallPtr fw = NULL;
@@ -794,12 +767,6 @@ testFirewallManyRollback(const void *opaque ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    if (virTestOOMActive())
-        goto cleanup;
-
-    if (virBufferError(&cmdbuf))
-        goto cleanup;
-
     actual = virBufferCurrentContent(&cmdbuf);
 
     if (STRNEQ_NULLABLE(expected, actual)) {
@@ -818,7 +785,7 @@ testFirewallManyRollback(const void *opaque ATTRIBUTE_UNUSED)
 }
 
 static int
-testFirewallChainedRollback(const void *opaque ATTRIBUTE_UNUSED)
+testFirewallChainedRollback(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer cmdbuf = VIR_BUFFER_INITIALIZER;
     virFirewallPtr fw = NULL;
@@ -917,12 +884,6 @@ testFirewallChainedRollback(const void *opaque ATTRIBUTE_UNUSED)
         goto cleanup;
     }
 
-    if (virTestOOMActive())
-        goto cleanup;
-
-    if (virBufferError(&cmdbuf))
-        goto cleanup;
-
     actual = virBufferCurrentContent(&cmdbuf);
 
     if (STRNEQ_NULLABLE(expected, actual)) {
@@ -969,23 +930,21 @@ static bool expectedLineError;
 
 static void
 testFirewallQueryHook(const char *const*args,
-                      const char *const*env ATTRIBUTE_UNUSED,
-                      const char *input ATTRIBUTE_UNUSED,
+                      const char *const*env G_GNUC_UNUSED,
+                      const char *input G_GNUC_UNUSED,
                       char **output,
-                      char **error ATTRIBUTE_UNUSED,
-                      int *status,
-                      void *opaque ATTRIBUTE_UNUSED)
+                      char **error G_GNUC_UNUSED,
+                      int *status G_GNUC_UNUSED,
+                      void *opaque G_GNUC_UNUSED)
 {
     if (STREQ(args[0], IPTABLES_PATH) &&
         STREQ(args[1], "-L")) {
-        if (VIR_STRDUP(*output, TEST_FILTER_TABLE_LIST) < 0)
-            *status = 127;
+        *output = g_strdup(TEST_FILTER_TABLE_LIST);
     } else if (STREQ(args[0], IPTABLES_PATH) &&
                STREQ(args[1], "-t") &&
                STREQ(args[2], "nat") &&
                STREQ(args[3], "-L")) {
-        if (VIR_STRDUP(*output, TEST_NAT_TABLE_LIST) < 0)
-            *status = 127;
+        *output = g_strdup(TEST_NAT_TABLE_LIST);
     }
 }
 
@@ -994,7 +953,7 @@ static int
 testFirewallQueryCallback(virFirewallPtr fw,
                           virFirewallLayer layer,
                           const char *const *lines,
-                          void *opaque ATTRIBUTE_UNUSED)
+                          void *opaque G_GNUC_UNUSED)
 {
     size_t i;
     virFirewallAddRule(fw, layer,
@@ -1003,7 +962,7 @@ testFirewallQueryCallback(virFirewallPtr fw,
                        "--jump", "REJECT", NULL);
 
     for (i = 0; lines[i] != NULL; i++) {
-        if (expectedLineNum >= ARRAY_CARDINALITY(expectedLines)) {
+        if (expectedLineNum >= G_N_ELEMENTS(expectedLines)) {
             expectedLineError = true;
             break;
         }
@@ -1020,7 +979,7 @@ testFirewallQueryCallback(virFirewallPtr fw,
 }
 
 static int
-testFirewallQuery(const void *opaque ATTRIBUTE_UNUSED)
+testFirewallQuery(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer cmdbuf = VIR_BUFFER_INITIALIZER;
     virFirewallPtr fw = NULL;
@@ -1097,9 +1056,6 @@ testFirewallQuery(const void *opaque ATTRIBUTE_UNUSED)
                        "--jump", "REJECT", NULL);
 
     if (virFirewallApply(fw) < 0)
-        goto cleanup;
-
-    if (virBufferError(&cmdbuf))
         goto cleanup;
 
     actual = virBufferCurrentContent(&cmdbuf);
@@ -1198,7 +1154,7 @@ mymain(void)
 }
 
 # if WITH_DBUS
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virdbusmock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virdbus"))
 # else
 VIR_TEST_MAIN(mymain)
 # endif

@@ -27,6 +27,7 @@
 #include "qemu_block.h"
 #include "qemu_domain.h"
 #include "qemu_alias.h"
+#include "qemu_backup.h"
 
 #include "conf/domain_conf.h"
 #include "conf/domain_event.h"
@@ -65,9 +66,25 @@ VIR_ENUM_IMPL(qemuBlockjob,
               "copy",
               "commit",
               "active-commit",
-              "");
+              "backup",
+              "",
+              "create",
+              "broken");
 
 static virClassPtr qemuBlockJobDataClass;
+
+
+static void
+qemuBlockJobDataDisposeJobdata(qemuBlockJobDataPtr job)
+{
+    if (job->type == QEMU_BLOCKJOB_TYPE_CREATE)
+        virObjectUnref(job->data.create.src);
+
+    if (job->type == QEMU_BLOCKJOB_TYPE_BACKUP) {
+        virObjectUnref(job->data.backup.store);
+        g_free(job->data.backup.bitmap);
+    }
+}
 
 
 static void
@@ -78,8 +95,10 @@ qemuBlockJobDataDispose(void *obj)
     virObjectUnref(job->chain);
     virObjectUnref(job->mirrorChain);
 
-    VIR_FREE(job->name);
-    VIR_FREE(job->errmsg);
+    qemuBlockJobDataDisposeJobdata(job);
+
+    g_free(job->name);
+    g_free(job->errmsg);
 }
 
 
@@ -99,7 +118,7 @@ qemuBlockJobDataPtr
 qemuBlockJobDataNew(qemuBlockJobType type,
                     const char *name)
 {
-    VIR_AUTOUNREF(qemuBlockJobDataPtr) job = NULL;
+    g_autoptr(qemuBlockJobData) job = NULL;
 
     if (qemuBlockJobDataInitialize() < 0)
         return NULL;
@@ -107,14 +126,30 @@ qemuBlockJobDataNew(qemuBlockJobType type,
     if (!(job = virObjectNew(qemuBlockJobDataClass)))
         return NULL;
 
-    if (VIR_STRDUP(job->name, name) < 0)
-        return NULL;
+    job->name = g_strdup(name);
 
     job->state = QEMU_BLOCKJOB_STATE_NEW;
     job->newstate = -1;
     job->type = type;
 
-    VIR_RETURN_PTR(job);
+    return g_steal_pointer(&job);
+}
+
+
+/**
+ * qemuBlockJobMarkBroken:
+ * @job: job to mark as broken
+ *
+ * In case when we are unable to parse the block job data from the XML
+ * successfully we'll need to mark the job as broken and then attempt to abort
+ * it. This function marks the job as broken.
+ */
+static void
+qemuBlockJobMarkBroken(qemuBlockJobDataPtr job)
+{
+    qemuBlockJobDataDisposeJobdata(job);
+    job->brokentype = job->type;
+    job->type = QEMU_BLOCKJOB_TYPE_BROKEN;
 }
 
 
@@ -129,7 +164,7 @@ qemuBlockJobDataNew(qemuBlockJobType type,
  * xml (if @savestatus is true).
  *
  * Note that if @job also references a separate chain e.g. for disk mirroring,
- * then qemuBlockJobDiskRegisterMirror should be used separately.
+ * then job->mirrorchain needs to be set manually.
  */
 int
 qemuBlockJobRegister(qemuBlockJobDataPtr job,
@@ -138,6 +173,12 @@ qemuBlockJobRegister(qemuBlockJobDataPtr job,
                      bool savestatus)
 {
     qemuDomainObjPrivatePtr priv = vm->privateData;
+
+    if (disk && QEMU_DOMAIN_DISK_PRIVATE(disk)->blockjob) {
+        virReportError(VIR_ERR_INTERNAL_ERROR,
+                       _("disk '%s' has a blockjob assigned"), disk->dst);
+        return -1;
+    }
 
     if (virHashAddEntry(priv->blockjobs, job->name, virObjectRef(job)) < 0) {
         virObjectUnref(job);
@@ -196,7 +237,7 @@ qemuBlockJobDiskNew(virDomainObjPtr vm,
                     qemuBlockJobType type,
                     const char *jobname)
 {
-    VIR_AUTOUNREF(qemuBlockJobDataPtr) job = NULL;
+    g_autoptr(qemuBlockJobData) job = NULL;
 
     if (!(job = qemuBlockJobDataNew(type, jobname)))
         return NULL;
@@ -204,7 +245,7 @@ qemuBlockJobDiskNew(virDomainObjPtr vm,
     if (qemuBlockJobRegister(job, vm, disk, true) < 0)
         return NULL;
 
-    VIR_RETURN_PTR(job);
+    return g_steal_pointer(&job);
 }
 
 
@@ -214,12 +255,11 @@ qemuBlockJobDiskNewPull(virDomainObjPtr vm,
                         virStorageSourcePtr base)
 {
     qemuDomainObjPrivatePtr priv = vm->privateData;
-    VIR_AUTOUNREF(qemuBlockJobDataPtr) job = NULL;
-    VIR_AUTOFREE(char *) jobname = NULL;
+    g_autoptr(qemuBlockJobData) job = NULL;
+    g_autofree char *jobname = NULL;
 
     if (virQEMUCapsGet(priv->qemuCaps, QEMU_CAPS_BLOCKDEV)) {
-        if (virAsprintf(&jobname, "pull-%s-%s", disk->dst, disk->src->nodeformat) < 0)
-            return NULL;
+        jobname = g_strdup_printf("pull-%s-%s", disk->dst, disk->src->nodeformat);
     } else {
         if (!(jobname = qemuAliasDiskDriveFromDisk(disk)))
             return NULL;
@@ -233,7 +273,7 @@ qemuBlockJobDiskNewPull(virDomainObjPtr vm,
     if (qemuBlockJobRegister(job, vm, disk, true) < 0)
         return NULL;
 
-    VIR_RETURN_PTR(job);
+    return g_steal_pointer(&job);
 }
 
 
@@ -242,19 +282,19 @@ qemuBlockJobDiskNewCommit(virDomainObjPtr vm,
                           virDomainDiskDefPtr disk,
                           virStorageSourcePtr topparent,
                           virStorageSourcePtr top,
-                          virStorageSourcePtr base)
+                          virStorageSourcePtr base,
+                          bool delete_imgs)
 {
     qemuDomainObjPrivatePtr priv = vm->privateData;
-    VIR_AUTOUNREF(qemuBlockJobDataPtr) job = NULL;
-    VIR_AUTOFREE(char *) jobname = NULL;
+    g_autoptr(qemuBlockJobData) job = NULL;
+    g_autofree char *jobname = NULL;
     qemuBlockJobType jobtype = QEMU_BLOCKJOB_TYPE_COMMIT;
 
     if (topparent == NULL)
         jobtype = QEMU_BLOCKJOB_TYPE_ACTIVE_COMMIT;
 
     if (virQEMUCapsGet(priv->qemuCaps, QEMU_CAPS_BLOCKDEV)) {
-        if (virAsprintf(&jobname, "commit-%s-%s", disk->dst, top->nodeformat) < 0)
-            return NULL;
+        jobname = g_strdup_printf("commit-%s-%s", disk->dst, top->nodeformat);
     } else {
         if (!(jobname = qemuAliasDiskDriveFromDisk(disk)))
             return NULL;
@@ -266,29 +306,101 @@ qemuBlockJobDiskNewCommit(virDomainObjPtr vm,
     job->data.commit.topparent = topparent;
     job->data.commit.top = top;
     job->data.commit.base = base;
+    job->data.commit.deleteCommittedImages = delete_imgs;
 
     if (qemuBlockJobRegister(job, vm, disk, true) < 0)
         return NULL;
 
-    VIR_RETURN_PTR(job);
+    return g_steal_pointer(&job);
 }
 
 
-/**
- * qemuBlockJobDiskRegisterMirror:
- * @job: block job to register 'mirror' chain on
- *
- * In cases when the disk->mirror attribute references a separate storage chain
- * such as for block-copy, this function registers it with the job. Note
- * that this function does not save the status XML and thus must be used before
- * qemuBlockJobRegister or qemuBlockJobStarted to properly track the chain
- * in the status XML.
- */
-void
-qemuBlockJobDiskRegisterMirror(qemuBlockJobDataPtr job)
+qemuBlockJobDataPtr
+qemuBlockJobNewCreate(virDomainObjPtr vm,
+                      virStorageSourcePtr src,
+                      virStorageSourcePtr chain,
+                      bool storage)
 {
-    if (job->disk)
-        job->mirrorChain = virObjectRef(job->disk->mirror);
+    g_autoptr(qemuBlockJobData) job = NULL;
+    g_autofree char *jobname = NULL;
+    const char *nodename = src->nodeformat;
+
+    if (storage)
+        nodename = src->nodestorage;
+
+    jobname = g_strdup_printf("create-%s", nodename);
+
+    if (!(job = qemuBlockJobDataNew(QEMU_BLOCKJOB_TYPE_CREATE, jobname)))
+        return NULL;
+
+    if (virStorageSourceIsBacking(chain))
+        job->chain = virObjectRef(chain);
+
+     job->data.create.src = virObjectRef(src);
+
+    if (qemuBlockJobRegister(job, vm, NULL, true) < 0)
+        return NULL;
+
+    return g_steal_pointer(&job);
+}
+
+
+qemuBlockJobDataPtr
+qemuBlockJobDiskNewCopy(virDomainObjPtr vm,
+                        virDomainDiskDefPtr disk,
+                        virStorageSourcePtr mirror,
+                        bool shallow,
+                        bool reuse)
+{
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    g_autoptr(qemuBlockJobData) job = NULL;
+    g_autofree char *jobname = NULL;
+
+    if (virQEMUCapsGet(priv->qemuCaps, QEMU_CAPS_BLOCKDEV)) {
+        jobname = g_strdup_printf("copy-%s-%s", disk->dst, disk->src->nodeformat);
+    } else {
+        if (!(jobname = qemuAliasDiskDriveFromDisk(disk)))
+            return NULL;
+    }
+
+    if (!(job = qemuBlockJobDataNew(QEMU_BLOCKJOB_TYPE_COPY, jobname)))
+        return NULL;
+
+    job->mirrorChain = virObjectRef(mirror);
+
+    if (shallow && !reuse)
+        job->data.copy.shallownew = true;
+
+    if (qemuBlockJobRegister(job, vm, disk, true) < 0)
+        return NULL;
+
+    return g_steal_pointer(&job);
+}
+
+
+qemuBlockJobDataPtr
+qemuBlockJobDiskNewBackup(virDomainObjPtr vm,
+                          virDomainDiskDefPtr disk,
+                          virStorageSourcePtr store,
+                          const char *bitmap)
+{
+    g_autoptr(qemuBlockJobData) job = NULL;
+    g_autofree char *jobname = NULL;
+
+    jobname = g_strdup_printf("backup-%s-%s", disk->dst, disk->src->nodeformat);
+
+    if (!(job = qemuBlockJobDataNew(QEMU_BLOCKJOB_TYPE_BACKUP, jobname)))
+        return NULL;
+
+    job->data.backup.bitmap = g_strdup(bitmap);
+    job->data.backup.store = virObjectRef(store);
+
+    /* backup jobs are usually started in bulk by transaction so the caller
+     * shall save the status XML */
+    if (qemuBlockJobRegister(job, vm, disk, false) < 0)
+        return NULL;
+
+    return g_steal_pointer(&job);
 }
 
 
@@ -362,8 +474,8 @@ qemuBlockJobIsRunning(qemuBlockJobDataPtr job)
 /* returns 1 for a job we didn't reconnect to */
 static int
 qemuBlockJobRefreshJobsFindInactive(const void *payload,
-                                    const void *name ATTRIBUTE_UNUSED,
-                                    const void *data ATTRIBUTE_UNUSED)
+                                    const void *name G_GNUC_UNUSED,
+                                    const void *data G_GNUC_UNUSED)
 {
     const qemuBlockJobData *job = payload;
 
@@ -402,6 +514,9 @@ qemuBlockJobRefreshJobs(virQEMUDriverPtr driver,
          * in qemu and just forget about it in libvirt because there's not much
          * we coud do besides killing the VM */
         if (job->invalidData) {
+
+            qemuBlockJobMarkBroken(job);
+
             qemuDomainObjEnterMonitor(driver, vm);
 
             rc = qemuMonitorJobCancel(priv->mon, job->name, true);
@@ -413,6 +528,8 @@ qemuBlockJobRefreshJobs(virQEMUDriverPtr driver,
 
             if (rc < 0)
                 qemuBlockJobUnregister(job, vm);
+            else
+                job->reconnected = true;
             continue;
         }
 
@@ -426,8 +543,7 @@ qemuBlockJobRefreshJobs(virQEMUDriverPtr driver,
                  * execute the finishing steps */
                 job->newstate = job->state;
             } else if (newstate == QEMU_BLOCKJOB_STATE_CONCLUDED) {
-                if (VIR_STRDUP(job->errmsg, jobinfo[i]->error) < 0)
-                    goto cleanup;
+                job->errmsg = g_strdup(jobinfo[i]->error);
 
                 if (job->errmsg)
                     job->newstate = QEMU_BLOCKJOB_STATE_FAILED;
@@ -450,8 +566,10 @@ qemuBlockJobRefreshJobs(virQEMUDriverPtr driver,
 
     /* remove data for job which qemu didn't report (the algorithm is
      * inefficient, but the possibility of such jobs is very low */
-    while ((job = virHashSearch(priv->blockjobs, qemuBlockJobRefreshJobsFindInactive, NULL, NULL)))
+    while ((job = virHashSearch(priv->blockjobs, qemuBlockJobRefreshJobsFindInactive, NULL, NULL))) {
+        VIR_WARN("dropping blockjob '%s' untracked by qemu", job->name);
         qemuBlockJobUnregister(job, vm);
+    }
 
     ret = 0;
 
@@ -538,28 +656,39 @@ qemuBlockJobRewriteConfigDiskSource(virDomainObjPtr vm,
                                     virStorageSourcePtr newsrc)
 {
     virDomainDiskDefPtr persistDisk = NULL;
-    VIR_AUTOUNREF(virStorageSourcePtr) copy = NULL;
+    g_autoptr(virStorageSource) copy = NULL;
+    virStorageSourcePtr n;
 
     if (!vm->newDef)
         return;
 
-    if (!(persistDisk = virDomainDiskByName(vm->newDef, disk->dst, false)))
+    if (!(persistDisk = virDomainDiskByTarget(vm->newDef, disk->dst)))
         return;
 
     if (!virStorageSourceIsSameLocation(disk->src, persistDisk->src))
         return;
 
-    if (!(copy = virStorageSourceCopy(newsrc, false)) ||
+    if (!(copy = virStorageSourceCopy(newsrc, true)) ||
         virStorageSourceInitChainElement(copy, persistDisk->src, true) < 0) {
         VIR_WARN("Unable to update persistent definition on vm %s after block job",
                  vm->def->name);
         return;
     }
 
-    qemuBlockJobCleanStorageSourceRuntime(copy);
+    for (n = copy; virStorageSourceIsBacking(n); n = n->backingStore) {
+        qemuBlockJobCleanStorageSourceRuntime(n);
+
+        /* discard any detected backing store */
+        if (virStorageSourceIsBacking(n->backingStore) &&
+            n->backingStore->detected) {
+            virObjectUnref(n->backingStore);
+            n->backingStore = NULL;
+            break;
+        }
+    }
 
     virObjectUnref(persistDisk->src);
-    VIR_STEAL_PTR(persistDisk->src, copy);
+    persistDisk->src = g_steal_pointer(&copy);
 }
 
 
@@ -584,16 +713,30 @@ qemuBlockJobEventProcessLegacyCompleted(virQEMUDriverPtr driver,
         virDomainLockImageDetach(driver->lockManager, vm, disk->src);
 
         /* Move secret driver metadata */
-        if (qemuSecurityMoveImageMetadata(driver, vm, disk->src, disk->mirror) < 0)
-            VIR_WARN("Unable to move disk metadata on vm %s", vm->def->name);
+        if (qemuSecurityMoveImageMetadata(driver, vm, disk->src, disk->mirror) < 0) {
+            VIR_WARN("Unable to move disk metadata on "
+                     "vm %s from %s to %s (disk target %s)",
+                     vm->def->name,
+                     NULLSTR(disk->src->path),
+                     NULLSTR(disk->mirror->path),
+                     disk->dst);
+        }
 
         virObjectUnref(disk->src);
         disk->src = disk->mirror;
     } else {
         if (disk->mirror) {
             virDomainLockImageDetach(driver->lockManager, vm, disk->mirror);
+
+            /* Ideally, we would restore seclabels on the backing chain here
+             * but we don't know if somebody else is not using parts of it.
+             * Remove security driver metadata so that they are not leaked. */
+            qemuBlockRemoveImageMetadata(driver, vm, disk->dst, disk->mirror);
+
             virObjectUnref(disk->mirror);
         }
+
+        qemuBlockRemoveImageMetadata(driver, vm, disk->dst, disk->src);
     }
 
     /* Recompute the cached backing chain to match our
@@ -661,6 +804,12 @@ qemuBlockJobEventProcessLegacy(virQEMUDriverPtr driver,
     case VIR_DOMAIN_BLOCK_JOB_CANCELED:
         if (disk->mirror) {
             virDomainLockImageDetach(driver->lockManager, vm, disk->mirror);
+
+            /* Ideally, we would restore seclabels on the backing chain here
+             * but we don't know if somebody else is not using parts of it.
+             * Remove security driver metadata so that they are not leaked. */
+            qemuBlockRemoveImageMetadata(driver, vm, disk->dst, disk->mirror);
+
             virObjectUnref(disk->mirror);
             disk->mirror = NULL;
         }
@@ -681,7 +830,7 @@ qemuBlockJobEventProcessConcludedRemoveChain(virQEMUDriverPtr driver,
                                              qemuDomainAsyncJob asyncJob,
                                              virStorageSourcePtr chain)
 {
-    VIR_AUTOPTR(qemuBlockStorageSourceChainData) data = NULL;
+    g_autoptr(qemuBlockStorageSourceChainData) data = NULL;
 
     if (!(data = qemuBlockStorageSourceChainDetachPrepareBlockdev(chain)))
         return;
@@ -723,7 +872,7 @@ qemuBlockJobGetConfigDisk(virDomainObjPtr vm,
 
     disksrc = disk->src;
 
-    if (!(ret = virDomainDiskByName(vm->newDef, disk->dst, false)))
+    if (!(ret = virDomainDiskByTarget(vm->newDef, disk->dst)))
         return NULL;
 
     cfgsrc = ret->src;
@@ -768,7 +917,7 @@ qemuBlockJobClearConfigChain(virDomainObjPtr vm,
     if (!vm->newDef || !disk)
         return;
 
-    if (!(cfgdisk = virDomainDiskByName(vm->newDef, disk->dst, false)))
+    if (!(cfgdisk = virDomainDiskByTarget(vm->newDef, disk->dst)))
         return;
 
     if (!virStorageSourceIsSameLocation(disk->src, cfgdisk->src))
@@ -854,6 +1003,44 @@ qemuBlockJobProcessEventCompletedPull(virQEMUDriverPtr driver,
 
 
 /**
+ * qemuBlockJobDeleteImages:
+ * @driver: qemu driver object
+ * @vm: domain object
+ * @disk: disk object that the chain to be deleted is associated with
+ * @top: top snapshot of the chain to be deleted
+ *
+ * Helper for removing snapshot images.  Intended for callers like
+ * qemuBlockJobProcessEventCompletedCommit() and
+ * qemuBlockJobProcessEventCompletedActiveCommit() as it relies on adjustments
+ * these functions perform on the 'backingStore' chain to function correctly.
+ *
+ * TODO look into removing backing store for non-local snapshots too
+ */
+static void
+qemuBlockJobDeleteImages(virQEMUDriverPtr driver,
+                         virDomainObjPtr vm,
+                         virDomainDiskDefPtr disk,
+                         virStorageSourcePtr top)
+{
+    virStorageSourcePtr p = top;
+    g_autoptr(virQEMUDriverConfig) cfg = virQEMUDriverGetConfig(driver);
+    uid_t uid;
+    gid_t gid;
+
+    for (; p != NULL; p = p->backingStore) {
+        if (virStorageSourceGetActualType(p) == VIR_STORAGE_TYPE_FILE) {
+
+            qemuDomainGetImageIds(cfg, vm, p, disk->src, &uid, &gid);
+
+            if (virFileRemove(p->path, uid, gid) < 0) {
+                VIR_WARN("Unable to remove snapshot image file '%s' (%s)",
+                         p->path, g_strerror(errno));
+            }
+        }
+    }
+}
+
+/**
  * qemuBlockJobProcessEventCompletedCommit:
  * @driver: qemu driver object
  * @vm: domain object
@@ -919,6 +1106,10 @@ qemuBlockJobProcessEventCompletedCommit(virQEMUDriverPtr driver,
     job->data.commit.topparent->backingStore = job->data.commit.base;
 
     qemuBlockJobEventProcessConcludedRemoveChain(driver, vm, asyncJob, job->data.commit.top);
+
+    if (job->data.commit.deleteCommittedImages)
+        qemuBlockJobDeleteImages(driver, vm, job->disk, job->data.commit.top);
+
     virObjectUnref(job->data.commit.top);
     job->data.commit.top = NULL;
 
@@ -996,6 +1187,7 @@ qemuBlockJobProcessEventCompletedActiveCommit(virQEMUDriverPtr driver,
         cfgbase = cfgbaseparent->backingStore;
         cfgbaseparent->backingStore = NULL;
         cfgdisk->src = cfgbase;
+        cfgdisk->src->readonly = cfgtop->readonly;
         virObjectUnref(cfgtop);
     }
 
@@ -1005,8 +1197,13 @@ qemuBlockJobProcessEventCompletedActiveCommit(virQEMUDriverPtr driver,
 
     baseparent->backingStore = NULL;
     job->disk->src = job->data.commit.base;
+    job->disk->src->readonly = job->data.commit.top->readonly;
 
     qemuBlockJobEventProcessConcludedRemoveChain(driver, vm, asyncJob, job->data.commit.top);
+
+    if (job->data.commit.deleteCommittedImages)
+        qemuBlockJobDeleteImages(driver, vm, job->disk, job->data.commit.top);
+
     virObjectUnref(job->data.commit.top);
     job->data.commit.top = NULL;
     /* the mirror element does not serve functional purpose for the commit job */
@@ -1014,67 +1211,214 @@ qemuBlockJobProcessEventCompletedActiveCommit(virQEMUDriverPtr driver,
     job->disk->mirror = NULL;
 }
 
+
+static void
+qemuBlockJobProcessEventConcludedCopyPivot(virQEMUDriverPtr driver,
+                                           virDomainObjPtr vm,
+                                           qemuBlockJobDataPtr job,
+                                           qemuDomainAsyncJob asyncJob)
+{
+    VIR_DEBUG("copy job '%s' on VM '%s' pivoted", job->name, vm->def->name);
+
+    /* mirror may be NULL for copy job corresponding to migration */
+    if (!job->disk ||
+        !job->disk->mirror)
+        return;
+
+    /* for shallow copy without reusing external image the user can either not
+     * specify the backing chain in which case libvirt will open and use the
+     * chain the user provided or not specify a chain in which case we'll
+     * inherit the rest of the chain */
+    if (job->data.copy.shallownew &&
+        !virStorageSourceIsBacking(job->disk->mirror->backingStore))
+        job->disk->mirror->backingStore = g_steal_pointer(&job->disk->src->backingStore);
+
+    qemuBlockJobRewriteConfigDiskSource(vm, job->disk, job->disk->mirror);
+
+    qemuBlockJobEventProcessConcludedRemoveChain(driver, vm, asyncJob, job->disk->src);
+    virObjectUnref(job->disk->src);
+    job->disk->src = g_steal_pointer(&job->disk->mirror);
+}
+
+
+static void
+qemuBlockJobProcessEventConcludedCopyAbort(virQEMUDriverPtr driver,
+                                           virDomainObjPtr vm,
+                                           qemuBlockJobDataPtr job,
+                                           qemuDomainAsyncJob asyncJob)
+{
+    VIR_DEBUG("copy job '%s' on VM '%s' aborted", job->name, vm->def->name);
+
+    /* mirror may be NULL for copy job corresponding to migration */
+    if (!job->disk ||
+        !job->disk->mirror)
+        return;
+
+    qemuBlockJobEventProcessConcludedRemoveChain(driver, vm, asyncJob, job->disk->mirror);
+    virObjectUnref(job->disk->mirror);
+    job->disk->mirror = NULL;
+}
+
+
+static void
+qemuBlockJobProcessEventFailedActiveCommit(virQEMUDriverPtr driver,
+                                           virDomainObjPtr vm,
+                                           qemuBlockJobDataPtr job)
+{
+    virDomainDiskDefPtr disk = job->disk;
+
+    VIR_DEBUG("active commit job '%s' on VM '%s' failed", job->name, vm->def->name);
+
+    if (!disk)
+        return;
+
+    /* Ideally, we would make the backing chain read only again (yes, SELinux
+     * can do that using different labels). But that is not implemented yet and
+     * not leaking security driver metadata is more important. */
+    qemuBlockRemoveImageMetadata(driver, vm, disk->dst, disk->mirror);
+
+    virObjectUnref(disk->mirror);
+    disk->mirror = NULL;
+}
+
+
+static void
+qemuBlockJobProcessEventConcludedCreate(virQEMUDriverPtr driver,
+                                        virDomainObjPtr vm,
+                                        qemuBlockJobDataPtr job,
+                                        qemuDomainAsyncJob asyncJob)
+{
+    g_autoptr(qemuBlockStorageSourceAttachData) backend = NULL;
+
+    /* if there is a synchronous client waiting for this job that means that
+     * it will handle further hotplug of the created volume and also that
+     * the 'chain' which was registered is under their control */
+    if (job->synchronous) {
+        virObjectUnref(job->chain);
+        job->chain = NULL;
+        return;
+    }
+
+    if (!job->data.create.src)
+        return;
+
+    if (!(backend = qemuBlockStorageSourceDetachPrepare(job->data.create.src, NULL)))
+        return;
+
+    /* the format node part was not attached yet, so we don't need to detach it */
+    backend->formatAttached = false;
+    if (job->data.create.storage) {
+        backend->storageAttached = false;
+        VIR_FREE(backend->encryptsecretAlias);
+    }
+
+    if (qemuDomainObjEnterMonitorAsync(driver, vm, asyncJob) < 0)
+        return;
+
+    qemuBlockStorageSourceAttachRollback(qemuDomainGetMonitor(vm), backend);
+
+    if (qemuDomainObjExitMonitor(driver, vm) < 0)
+        return;
+
+    qemuDomainStorageSourceAccessRevoke(driver, vm, job->data.create.src);
+}
+
+
+static void
+qemuBlockJobProcessEventConcludedBackup(virQEMUDriverPtr driver,
+                                        virDomainObjPtr vm,
+                                        qemuBlockJobDataPtr job,
+                                        qemuDomainAsyncJob asyncJob,
+                                        qemuBlockjobState newstate,
+                                        unsigned long long progressCurrent,
+                                        unsigned long long progressTotal)
+{
+    g_autoptr(qemuBlockStorageSourceAttachData) backend = NULL;
+    g_autoptr(virJSONValue) actions = NULL;
+
+    qemuBackupNotifyBlockjobEnd(vm, job->disk, newstate,
+                                progressCurrent, progressTotal, asyncJob);
+
+    if (job->data.backup.store &&
+        !(backend = qemuBlockStorageSourceDetachPrepare(job->data.backup.store, NULL)))
+        return;
+
+    if (job->data.backup.bitmap) {
+        if (!(actions = virJSONValueNewArray()))
+            return;
+
+        if (qemuMonitorTransactionBitmapRemove(actions,
+                                               job->disk->src->nodeformat,
+                                               job->data.backup.bitmap) < 0)
+            return;
+    }
+
+    if (qemuDomainObjEnterMonitorAsync(driver, vm, asyncJob) < 0)
+        return;
+
+    if (backend)
+        qemuBlockStorageSourceAttachRollback(qemuDomainGetMonitor(vm), backend);
+
+    if (actions)
+        qemuMonitorTransaction(qemuDomainGetMonitor(vm), &actions);
+
+    if (qemuDomainObjExitMonitor(driver, vm) < 0)
+        return;
+
+    if (job->data.backup.store)
+        qemuDomainStorageSourceAccessRevoke(driver, vm, job->data.backup.store);
+}
+
+
 static void
 qemuBlockJobEventProcessConcludedTransition(qemuBlockJobDataPtr job,
                                             virQEMUDriverPtr driver,
                                             virDomainObjPtr vm,
-                                            qemuDomainAsyncJob asyncJob)
+                                            qemuDomainAsyncJob asyncJob,
+                                            unsigned long long progressCurrent,
+                                            unsigned long long progressTotal)
 {
-    switch ((qemuBlockjobState) job->newstate) {
-    case QEMU_BLOCKJOB_STATE_COMPLETED:
-        switch ((qemuBlockJobType) job->type) {
-        case QEMU_BLOCKJOB_TYPE_PULL:
+    bool success = job->newstate == QEMU_BLOCKJOB_STATE_COMPLETED;
+
+    switch ((qemuBlockJobType) job->type) {
+    case QEMU_BLOCKJOB_TYPE_PULL:
+        if (success)
             qemuBlockJobProcessEventCompletedPull(driver, vm, job, asyncJob);
-            break;
+        break;
 
-        case QEMU_BLOCKJOB_TYPE_COMMIT:
+    case QEMU_BLOCKJOB_TYPE_COMMIT:
+        if (success)
             qemuBlockJobProcessEventCompletedCommit(driver, vm, job, asyncJob);
-            break;
+        break;
 
-        case QEMU_BLOCKJOB_TYPE_ACTIVE_COMMIT:
+    case QEMU_BLOCKJOB_TYPE_ACTIVE_COMMIT:
+        if (success)
             qemuBlockJobProcessEventCompletedActiveCommit(driver, vm, job, asyncJob);
-            break;
-
-        case QEMU_BLOCKJOB_TYPE_COPY:
-        case QEMU_BLOCKJOB_TYPE_NONE:
-        case QEMU_BLOCKJOB_TYPE_INTERNAL:
-        case QEMU_BLOCKJOB_TYPE_LAST:
-        default:
-            break;
-        }
+        else
+            qemuBlockJobProcessEventFailedActiveCommit(driver, vm, job);
         break;
 
-    case QEMU_BLOCKJOB_STATE_FAILED:
-    case QEMU_BLOCKJOB_STATE_CANCELLED:
-        switch ((qemuBlockJobType) job->type) {
-        case QEMU_BLOCKJOB_TYPE_PULL:
-        case QEMU_BLOCKJOB_TYPE_COMMIT:
-            break;
-
-        case QEMU_BLOCKJOB_TYPE_ACTIVE_COMMIT:
-            if (job->disk) {
-                virObjectUnref(job->disk->mirror);
-                job->disk->mirror = NULL;
-            }
-            break;
-
-        case QEMU_BLOCKJOB_TYPE_COPY:
-        case QEMU_BLOCKJOB_TYPE_NONE:
-        case QEMU_BLOCKJOB_TYPE_INTERNAL:
-        case QEMU_BLOCKJOB_TYPE_LAST:
-        default:
-            break;
-        }
+    case QEMU_BLOCKJOB_TYPE_CREATE:
+        qemuBlockJobProcessEventConcludedCreate(driver, vm, job, asyncJob);
         break;
 
-    /* states below are impossible in this handler */
-    case QEMU_BLOCKJOB_STATE_READY:
-    case QEMU_BLOCKJOB_STATE_NEW:
-    case QEMU_BLOCKJOB_STATE_RUNNING:
-    case QEMU_BLOCKJOB_STATE_CONCLUDED:
-    case QEMU_BLOCKJOB_STATE_ABORTING:
-    case QEMU_BLOCKJOB_STATE_PIVOTING:
-    case QEMU_BLOCKJOB_STATE_LAST:
+    case QEMU_BLOCKJOB_TYPE_COPY:
+        if (job->state == QEMU_BLOCKJOB_STATE_PIVOTING && success)
+            qemuBlockJobProcessEventConcludedCopyPivot(driver, vm, job, asyncJob);
+        else
+            qemuBlockJobProcessEventConcludedCopyAbort(driver, vm, job, asyncJob);
+        break;
+
+    case QEMU_BLOCKJOB_TYPE_BACKUP:
+        qemuBlockJobProcessEventConcludedBackup(driver, vm, job, asyncJob,
+                                                job->newstate, progressCurrent,
+                                                progressTotal);
+        break;
+
+    case QEMU_BLOCKJOB_TYPE_BROKEN:
+    case QEMU_BLOCKJOB_TYPE_NONE:
+    case QEMU_BLOCKJOB_TYPE_INTERNAL:
+    case QEMU_BLOCKJOB_TYPE_LAST:
     default:
         break;
     }
@@ -1094,23 +1438,25 @@ qemuBlockJobEventProcessConcluded(qemuBlockJobDataPtr job,
     qemuMonitorJobInfoPtr *jobinfo = NULL;
     size_t njobinfo = 0;
     size_t i;
-    int rc = 0;
-    bool dismissed = false;
     bool refreshed = false;
+    unsigned long long progressCurrent = 0;
+    unsigned long long progressTotal = 0;
 
     if (qemuDomainObjEnterMonitorAsync(driver, vm, asyncJob) < 0)
         goto cleanup;
 
     /* we need to fetch the error state as the event does not propagate it */
     if (job->newstate == QEMU_BLOCKJOB_STATE_CONCLUDED &&
-        (rc = qemuMonitorGetJobInfo(qemuDomainGetMonitor(vm), &jobinfo, &njobinfo)) == 0) {
+        qemuMonitorGetJobInfo(qemuDomainGetMonitor(vm), &jobinfo, &njobinfo) == 0) {
 
         for (i = 0; i < njobinfo; i++) {
             if (STRNEQ_NULLABLE(job->name, jobinfo[i]->id))
                 continue;
 
-            if (VIR_STRDUP(job->errmsg, jobinfo[i]->error) < 0)
-                rc = -1;
+            progressCurrent = jobinfo[i]->progressCurrent;
+            progressTotal = jobinfo[i]->progressTotal;
+
+            job->errmsg = g_strdup(jobinfo[i]->error);
 
             if (job->errmsg)
                 job->newstate = QEMU_BLOCKJOB_STATE_FAILED;
@@ -1122,27 +1468,18 @@ qemuBlockJobEventProcessConcluded(qemuBlockJobDataPtr job,
             break;
         }
 
-        if (i == njobinfo) {
+        if (i == njobinfo)
             VIR_WARN("failed to refresh job '%s'", job->name);
-            rc = -1;
-        }
     }
 
     /* dismiss job in qemu */
-    if (rc >= 0) {
-        if ((rc = qemuMonitorJobDismiss(qemuDomainGetMonitor(vm), job->name)) >= 0)
-            dismissed = true;
-    }
+    ignore_value(qemuMonitorJobDismiss(qemuDomainGetMonitor(vm), job->name));
 
-    if (job->invalidData) {
-        VIR_WARN("terminating job '%s' with invalid data", job->name);
-        goto cleanup;
-    }
-
-    if (qemuDomainObjExitMonitor(driver, vm) < 0 || rc < 0)
+    if (qemuDomainObjExitMonitor(driver, vm) < 0)
         goto cleanup;
 
-    if (job->newstate == QEMU_BLOCKJOB_STATE_COMPLETED &&
+    if ((job->newstate == QEMU_BLOCKJOB_STATE_COMPLETED ||
+         job->newstate == QEMU_BLOCKJOB_STATE_FAILED) &&
         job->state == QEMU_BLOCKJOB_STATE_ABORTING)
         job->newstate = QEMU_BLOCKJOB_STATE_CANCELLED;
 
@@ -1151,7 +1488,8 @@ qemuBlockJobEventProcessConcluded(qemuBlockJobDataPtr job,
 
     VIR_DEBUG("handling job '%s' state '%d' newstate '%d'", job->name, job->state, job->newstate);
 
-    qemuBlockJobEventProcessConcludedTransition(job, driver, vm, asyncJob);
+    qemuBlockJobEventProcessConcludedTransition(job, driver, vm, asyncJob,
+                                                progressCurrent, progressTotal);
 
     /* unplug the backing chains in case the job inherited them */
     if (!job->disk) {
@@ -1164,10 +1502,8 @@ qemuBlockJobEventProcessConcluded(qemuBlockJobDataPtr job,
     }
 
  cleanup:
-    if (dismissed) {
-        qemuBlockJobUnregister(job, vm);
-        qemuDomainSaveConfig(vm);
-    }
+    qemuBlockJobUnregister(job, vm);
+    qemuDomainSaveConfig(vm);
 
     for (i = 0; i < njobinfo; i++)
         qemuMonitorJobInfoFree(jobinfo[i]);
@@ -1191,7 +1527,8 @@ qemuBlockJobEventProcess(virQEMUDriverPtr driver,
         break;
 
     case QEMU_BLOCKJOB_STATE_READY:
-        if (job->disk && job->disk->mirror) {
+        /* mirror may be NULL for copy job corresponding to migration */
+        if (job->disk) {
             job->disk->mirrorState = VIR_DOMAIN_DISK_MIRROR_STATE_READY;
             qemuBlockJobEmitEvents(driver, vm, job->disk, job->type, job->newstate);
         }

@@ -24,9 +24,12 @@
 #include "qemu_conf.h"
 #include "domain_conf.h"
 
-bool qemuHostdevHostSupportsPassthroughLegacy(void);
+bool qemuHostdevNeedsVFIO(const virDomainHostdevDef *hostdev);
+
 bool qemuHostdevHostSupportsPassthroughVFIO(void);
 
+int qemuHostdevUpdateActiveNVMeDisks(virQEMUDriverPtr driver,
+                                     virDomainDefPtr def);
 int qemuHostdevUpdateActiveMediatedDevices(virQEMUDriverPtr driver,
                                            virDomainDefPtr def);
 int qemuHostdevUpdateActivePCIDevices(virQEMUDriverPtr driver,
@@ -38,6 +41,13 @@ int qemuHostdevUpdateActiveSCSIDevices(virQEMUDriverPtr driver,
 int qemuHostdevUpdateActiveDomainDevices(virQEMUDriverPtr driver,
                                          virDomainDefPtr def);
 
+int qemuHostdevPrepareOneNVMeDisk(virQEMUDriverPtr driver,
+                                  const char *name,
+                                  virStorageSourcePtr src);
+int qemuHostdevPrepareNVMeDisks(virQEMUDriverPtr driver,
+                                const char *name,
+                                virDomainDiskDefPtr *disks,
+                                size_t ndisks);
 int qemuHostdevPreparePCIDevices(virQEMUDriverPtr driver,
                                  const char *name,
                                  const unsigned char *uuid,
@@ -67,6 +77,13 @@ int qemuHostdevPrepareDomainDevices(virQEMUDriverPtr driver,
                                     virQEMUCapsPtr qemuCaps,
                                     unsigned int flags);
 
+void qemuHostdevReAttachOneNVMeDisk(virQEMUDriverPtr driver,
+                                    const char *name,
+                                    virStorageSourcePtr src);
+void qemuHostdevReAttachNVMeDisks(virQEMUDriverPtr driver,
+                                  const char *name,
+                                  virDomainDiskDefPtr *disks,
+                                  size_t ndisks);
 void qemuHostdevReAttachPCIDevices(virQEMUDriverPtr driver,
                                    const char *name,
                                    virDomainHostdevDefPtr *hostdevs,

@@ -55,7 +55,7 @@ testVirPCIDeviceCheckDriver(virPCIDevicePtr dev, const char *expected)
 }
 
 static int
-testVirPCIDeviceNew(const void *opaque ATTRIBUTE_UNUSED)
+testVirPCIDeviceNew(const void *opaque G_GNUC_UNUSED)
 {
     int ret = -1;
     virPCIDevicePtr dev;
@@ -87,11 +87,11 @@ testVirPCIDeviceNew(const void *opaque ATTRIBUTE_UNUSED)
     }
 
 static int
-testVirPCIDeviceDetach(const void *opaque ATTRIBUTE_UNUSED)
+testVirPCIDeviceDetach(const void *opaque G_GNUC_UNUSED)
 {
     int ret = -1;
     virPCIDevicePtr dev[] = {NULL, NULL, NULL};
-    size_t i, nDev = ARRAY_CARDINALITY(dev);
+    size_t i, nDev = G_N_ELEMENTS(dev);
     virPCIDeviceListPtr activeDevs = NULL, inactiveDevs = NULL;
     int count;
 
@@ -106,12 +106,12 @@ testVirPCIDeviceDetach(const void *opaque ATTRIBUTE_UNUSED)
         if (!(dev[i] = virPCIDeviceNew(0, 0, i + 1, 0)))
             goto cleanup;
 
-        virPCIDeviceSetStubDriver(dev[i], VIR_PCI_STUB_DRIVER_KVM);
+        virPCIDeviceSetStubDriver(dev[i], VIR_PCI_STUB_DRIVER_VFIO);
 
         if (virPCIDeviceDetach(dev[i], activeDevs, inactiveDevs) < 0)
             goto cleanup;
 
-        if (testVirPCIDeviceCheckDriver(dev[i], "pci-stub") < 0)
+        if (testVirPCIDeviceCheckDriver(dev[i], "vfio-pci") < 0)
             goto cleanup;
 
         CHECK_LIST_COUNT(activeDevs, 0);
@@ -128,11 +128,11 @@ testVirPCIDeviceDetach(const void *opaque ATTRIBUTE_UNUSED)
 }
 
 static int
-testVirPCIDeviceReset(const void *opaque ATTRIBUTE_UNUSED)
+testVirPCIDeviceReset(const void *opaque G_GNUC_UNUSED)
 {
     int ret = -1;
     virPCIDevicePtr dev[] = {NULL, NULL, NULL};
-    size_t i, nDev = ARRAY_CARDINALITY(dev);
+    size_t i, nDev = G_N_ELEMENTS(dev);
     virPCIDeviceListPtr activeDevs = NULL, inactiveDevs = NULL;
     int count;
 
@@ -147,7 +147,7 @@ testVirPCIDeviceReset(const void *opaque ATTRIBUTE_UNUSED)
         if (!(dev[i] = virPCIDeviceNew(0, 0, i + 1, 0)))
             goto cleanup;
 
-        virPCIDeviceSetStubDriver(dev[i], VIR_PCI_STUB_DRIVER_KVM);
+        virPCIDeviceSetStubDriver(dev[i], VIR_PCI_STUB_DRIVER_VFIO);
 
         if (virPCIDeviceReset(dev[i], activeDevs, inactiveDevs) < 0)
             goto cleanup;
@@ -163,11 +163,11 @@ testVirPCIDeviceReset(const void *opaque ATTRIBUTE_UNUSED)
 }
 
 static int
-testVirPCIDeviceReattach(const void *opaque ATTRIBUTE_UNUSED)
+testVirPCIDeviceReattach(const void *opaque G_GNUC_UNUSED)
 {
     int ret = -1;
     virPCIDevicePtr dev[] = {NULL, NULL, NULL};
-    size_t i, nDev = ARRAY_CARDINALITY(dev);
+    size_t i, nDev = G_N_ELEMENTS(dev);
     virPCIDeviceListPtr activeDevs = NULL, inactiveDevs = NULL;
     int count;
 
@@ -187,7 +187,7 @@ testVirPCIDeviceReattach(const void *opaque ATTRIBUTE_UNUSED)
         CHECK_LIST_COUNT(activeDevs, 0);
         CHECK_LIST_COUNT(inactiveDevs, i + 1);
 
-        virPCIDeviceSetStubDriver(dev[i], VIR_PCI_STUB_DRIVER_KVM);
+        virPCIDeviceSetStubDriver(dev[i], VIR_PCI_STUB_DRIVER_VFIO);
     }
 
     CHECK_LIST_COUNT(activeDevs, 0);
@@ -224,13 +224,12 @@ testVirPCIDeviceIsAssignable(const void *opaque)
     virPCIDevicePtr dev;
 
     if (!(dev = virPCIDeviceNew(data->domain, data->bus, data->slot, data->function)))
-        goto cleanup;
+        return -1;
 
     if (virPCIDeviceIsAssignable(dev, true))
         ret = 0;
 
     virPCIDeviceFree(dev);
- cleanup:
     return ret;
 }
 
@@ -245,42 +244,12 @@ testVirPCIDeviceDetachSingle(const void *opaque)
     if (!dev)
         goto cleanup;
 
-    virPCIDeviceSetStubDriver(dev, VIR_PCI_STUB_DRIVER_KVM);
+    virPCIDeviceSetStubDriver(dev, VIR_PCI_STUB_DRIVER_VFIO);
 
     if (virPCIDeviceDetach(dev, NULL, NULL) < 0)
         goto cleanup;
 
     ret = 0;
- cleanup:
-    virPCIDeviceFree(dev);
-    return ret;
-}
-
-static int
-testVirPCIDeviceDetachFail(const void *opaque)
-{
-    const struct testPCIDevData *data = opaque;
-    int ret = -1;
-    virPCIDevicePtr dev;
-
-    dev = virPCIDeviceNew(data->domain, data->bus, data->slot, data->function);
-    if (!dev)
-        goto cleanup;
-
-    virPCIDeviceSetStubDriver(dev, VIR_PCI_STUB_DRIVER_VFIO);
-
-    if (virPCIDeviceDetach(dev, NULL, NULL) < 0) {
-        if (virTestGetVerbose() || virTestGetDebug())
-            virDispatchError(NULL);
-        virResetLastError();
-        ret = 0;
-    } else {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                       "Attaching device %s to %s should have failed",
-                       virPCIDeviceGetName(dev),
-                       virPCIStubDriverTypeToString(VIR_PCI_STUB_DRIVER_VFIO));
-    }
-
  cleanup:
     virPCIDeviceFree(dev);
     return ret;
@@ -358,17 +327,14 @@ mymain(void)
     int ret = 0;
     char *fakerootdir;
 
-    if (VIR_STRDUP_QUIET(fakerootdir, FAKEROOTDIRTEMPLATE) < 0) {
-        VIR_TEST_DEBUG("Out of memory\n");
-        abort();
-    }
+    fakerootdir = g_strdup(FAKEROOTDIRTEMPLATE);
 
-    if (!mkdtemp(fakerootdir)) {
+    if (!g_mkdtemp(fakerootdir)) {
         VIR_TEST_DEBUG("Cannot create fakerootdir");
         abort();
     }
 
-    setenv("LIBVIRT_FAKE_ROOT_DIR", fakerootdir, 1);
+    g_setenv("LIBVIRT_FAKE_ROOT_DIR", fakerootdir, TRUE);
 
 # define DO_TEST(fnc) \
     do { \
@@ -382,11 +348,8 @@ mymain(void)
             domain, bus, slot, function, NULL \
         }; \
         char *label = NULL; \
-        if (virAsprintf(&label, "%s(%04x:%02x:%02x.%x)", \
-                        #fnc, domain, bus, slot, function) < 0) { \
-            ret = -1; \
-            break; \
-        } \
+        label = g_strdup_printf("%s(%04x:%02x:%02x.%x)", \
+                                #fnc, domain, bus, slot, function); \
         if (virTestRun(label, fnc, &data) < 0) \
             ret = -1; \
         VIR_FREE(label); \
@@ -398,12 +361,9 @@ mymain(void)
             domain, bus, slot, function, driver \
         }; \
         char *label = NULL; \
-        if (virAsprintf(&label, "PCI driver %04x:%02x:%02x.%x is %s", \
-                        domain, bus, slot, function, \
-                        NULLSTR(driver)) < 0) { \
-            ret = -1; \
-            break; \
-        } \
+        label = g_strdup_printf("PCI driver %04x:%02x:%02x.%x is %s", \
+                                domain, bus, slot, function, \
+                                NULLSTR(driver)); \
         if (virTestRun(label, testVirPCIDeviceCheckDriverTest, \
                        &data) < 0) \
             ret = -1; \
@@ -421,8 +381,6 @@ mymain(void)
     DO_TEST_PCI(testVirPCIDeviceIsAssignable, 5, 0x90, 1, 0);
     DO_TEST_PCI(testVirPCIDeviceIsAssignable, 1, 1, 0, 0);
 
-    DO_TEST_PCI(testVirPCIDeviceDetachFail, 0, 0x0a, 1, 0);
-
     /* Reattach a device already bound to non-stub a driver */
     DO_TEST_PCI_DRIVER(0, 0x0a, 1, 0, "i915");
     DO_TEST_PCI(testVirPCIDeviceReattachSingle, 0, 0x0a, 1, 0);
@@ -437,7 +395,7 @@ mymain(void)
     /* Detach an unbound device */
     DO_TEST_PCI_DRIVER(0, 0x0a, 2, 0, NULL);
     DO_TEST_PCI(testVirPCIDeviceDetachSingle, 0, 0x0a, 2, 0);
-    DO_TEST_PCI_DRIVER(0, 0x0a, 2, 0, "pci-stub");
+    DO_TEST_PCI_DRIVER(0, 0x0a, 2, 0, "vfio-pci");
 
     /* Reattach an unknown unbound device */
     DO_TEST_PCI_DRIVER(0, 0x0a, 3, 0, NULL);
@@ -452,7 +410,7 @@ mymain(void)
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virpcimock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virpci"))
 #else
 int
 main(void)

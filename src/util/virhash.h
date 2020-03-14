@@ -9,8 +9,6 @@
 
 #pragma once
 
-#include "virautoclean.h"
-
 /*
  * The hash table.
  */
@@ -27,11 +25,11 @@ typedef virHashAtomic *virHashAtomicPtr;
 /**
  * virHashDataFree:
  * @payload:  the data in the hash
- * @name:  the name associated
  *
  * Callback to free data from a hash.
  */
-typedef void (*virHashDataFree) (void *payload, const void *name);
+typedef void (*virHashDataFree) (void *payload);
+
 /**
  * virHashIterator:
  * @payload: the data in the hash
@@ -100,6 +98,7 @@ typedef void (*virHashKeyFree)(void *name);
 /*
  * Constructor and destructor.
  */
+virHashTablePtr virHashNew(virHashDataFree dataFree);
 virHashTablePtr virHashCreate(ssize_t size,
                               virHashDataFree dataFree);
 virHashAtomicPtr virHashAtomicNew(ssize_t size,
@@ -141,6 +140,7 @@ ssize_t virHashRemoveAll(virHashTablePtr table);
  * Retrieve the userdata.
  */
 void *virHashLookup(const virHashTable *table, const void *name);
+bool virHashHasEntry(const virHashTable *table, const void *name);
 
 /*
  * Retrieve & remove the userdata.
@@ -193,6 +193,6 @@ void *virHashSearch(const virHashTable *table, virHashSearcher iter,
                     const void *data, void **name);
 
 /* Convenience for when VIR_FREE(value) is sufficient as a data freer.  */
-void virHashValueFree(void *value, const void *name);
+void virHashValueFree(void *value);
 
-VIR_DEFINE_AUTOPTR_FUNC(virHashTable, virHashFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virHashTable, virHashFree);

@@ -47,6 +47,7 @@
 #include "virstring.h"
 #include "virgettext.h"
 
+#include "virsh-backup.h"
 #include "virsh-checkpoint.h"
 #include "virsh-console.h"
 #include "virsh-domain.h"
@@ -93,7 +94,7 @@ virshCatchDisconnect(virConnectPtr conn,
         virErrorPtr error;
         char *uri;
 
-        error = virSaveLastError();
+        virErrorPreserveLast(&error);
         uri = virConnectGetURI(conn);
 
         switch ((virConnectCloseReason) reason) {
@@ -114,10 +115,7 @@ virshCatchDisconnect(virConnectPtr conn,
         vshError(ctl, _(str), NULLSTR(uri));
         VIR_FREE(uri);
 
-        if (error) {
-            virSetError(error);
-            virFreeError(error);
-        }
+        virErrorRestore(&error);
         disconnected++;
         vshEventDone(ctl);
     }
@@ -239,7 +237,7 @@ virshReconnect(vshControl *ctl, const char *name, bool readonly, bool force)
     } else {
         if (name) {
             VIR_FREE(ctl->connname);
-            ctl->connname = vshStrdup(ctl, name);
+            ctl->connname = g_strdup(name);
         }
 
         priv->readonly = readonly;
@@ -392,7 +390,7 @@ virshInit(vshControl *ctl)
 }
 
 static void
-virshDeinitTimer(int timer ATTRIBUTE_UNUSED, void *opaque ATTRIBUTE_UNUSED)
+virshDeinitTimer(int timer G_GNUC_UNUSED, void *opaque G_GNUC_UNUSED)
 {
     /* nothing to be done here */
 }
@@ -498,7 +496,7 @@ virshUsage(void)
  * Show version and options compiled in
  */
 static void
-virshShowVersion(vshControl *ctl ATTRIBUTE_UNUSED)
+virshShowVersion(vshControl *ctl G_GNUC_UNUSED)
 {
     /* FIXME - list a copyright blurb, as in GNU programs?  */
     vshPrint(ctl, _("Virsh command line tool of libvirt %s\n"), VERSION);
@@ -524,9 +522,6 @@ virshShowVersion(vshControl *ctl ATTRIBUTE_UNUSED)
 #ifdef WITH_VMWARE
     vshPrint(ctl, " VMware");
 #endif
-#ifdef WITH_PHYP
-    vshPrint(ctl, " PHYP");
-#endif
 #ifdef WITH_VBOX
     vshPrint(ctl, " VirtualBox");
 #endif
@@ -535,9 +530,6 @@ virshShowVersion(vshControl *ctl ATTRIBUTE_UNUSED)
 #endif
 #ifdef WITH_HYPERV
     vshPrint(ctl, " Hyper-V");
-#endif
-#ifdef WITH_XENAPI
-    vshPrint(ctl, " XenAPI");
 #endif
 #ifdef WITH_BHYVE
     vshPrint(ctl, " Bhyve");
@@ -683,7 +675,7 @@ virshParseArgv(vshControl *ctl, int argc, char **argv)
         switch (arg) {
         case 'c':
             VIR_FREE(ctl->connname);
-            ctl->connname = vshStrdup(ctl, optarg);
+            ctl->connname = g_strdup(optarg);
             break;
         case 'd':
             if (virStrToLong_i(optarg, NULL, 10, &debug) < 0) {
@@ -748,7 +740,7 @@ virshParseArgv(vshControl *ctl, int argc, char **argv)
             break;
         case 'l':
             vshCloseLogFile(ctl);
-            ctl->logfile = vshStrdup(ctl, optarg);
+            ctl->logfile = g_strdup(optarg);
             vshOpenLogFile(ctl);
             break;
         case 'q':
@@ -765,7 +757,7 @@ virshParseArgv(vshControl *ctl, int argc, char **argv)
                 puts(VERSION);
                 exit(EXIT_SUCCESS);
             }
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
         case 'V':
             virshShowVersion(ctl);
             exit(EXIT_SUCCESS);
@@ -837,6 +829,7 @@ static const vshCmdGrp cmdGroups[] = {
     {VIRSH_CMD_GRP_NODEDEV, "nodedev", nodedevCmds},
     {VIRSH_CMD_GRP_SECRET, "secret", secretCmds},
     {VIRSH_CMD_GRP_SNAPSHOT, "snapshot", snapshotCmds},
+    {VIRSH_CMD_GRP_BACKUP, "backup", backupCmds},
     {VIRSH_CMD_GRP_STORAGE_POOL, "pool", storagePoolCmds},
     {VIRSH_CMD_GRP_STORAGE_VOL, "volume", storageVolCmds},
     {VIRSH_CMD_GRP_VIRSH, "virsh", virshCmds},
@@ -900,7 +893,7 @@ main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    virFileActivateDirOverride(argv[0]);
+    virFileActivateDirOverrideForProg(argv[0]);
 
     if (!vshInit(ctl, cmdGroups, NULL))
         exit(EXIT_FAILURE);
@@ -912,8 +905,7 @@ main(int argc, char **argv)
     }
 
     if (!ctl->connname)
-        ctl->connname = vshStrdup(ctl,
-                                  virGetEnvBlockSUID("VIRSH_DEFAULT_CONNECT_URI"));
+        ctl->connname = g_strdup(getenv("VIRSH_DEFAULT_CONNECT_URI"));
 
     if (!ctl->imode) {
         ret = vshCommandRun(ctl, ctl->cmd);

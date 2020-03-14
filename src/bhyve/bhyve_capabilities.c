@@ -116,9 +116,9 @@ virBhyveDomainCapsFill(virDomainCapsPtr caps,
     }
 
     caps->hostdev.supported = VIR_TRISTATE_BOOL_NO;
-    caps->iothreads = VIR_TRISTATE_BOOL_NO;
-    caps->vmcoreinfo = VIR_TRISTATE_BOOL_NO;
-    caps->genid = VIR_TRISTATE_BOOL_NO;
+    caps->features[VIR_DOMAIN_CAPS_FEATURE_IOTHREADS] = VIR_TRISTATE_BOOL_NO;
+    caps->features[VIR_DOMAIN_CAPS_FEATURE_VMCOREINFO] = VIR_TRISTATE_BOOL_NO;
+    caps->features[VIR_DOMAIN_CAPS_FEATURE_GENID] = VIR_TRISTATE_BOOL_NO;
     caps->gic.supported = VIR_TRISTATE_BOOL_NO;
 
     return 0;
@@ -159,11 +159,8 @@ virBhyveDomainCapsBuild(bhyveConnPtr conn,
                 firmwares_alloc, firmwares->nvalues, 1) < 0)
                 goto cleanup;
 
-            if (virAsprintf(
-                    &firmwares->values[firmwares->nvalues],
-                    "%s/%s", firmware_dir, entry->d_name) < 0)
-                goto cleanup;
-
+            firmwares->values[firmwares->nvalues] = g_strdup_printf("%s/%s",
+                                                    firmware_dir, entry->d_name);
             firmwares->nvalues++;
         }
     } else {

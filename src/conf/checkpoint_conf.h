@@ -57,6 +57,7 @@ struct _virDomainCheckpointDef {
     virDomainCheckpointDiskDef *disks;
 };
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virDomainCheckpointDef, virObjectUnref);
 
 typedef enum {
     VIR_DOMAIN_CHECKPOINT_PARSE_REDEFINE = 1 << 0,
@@ -73,8 +74,8 @@ virDomainCheckpointFormatConvertXMLFlags(unsigned int flags);
 
 virDomainCheckpointDefPtr
 virDomainCheckpointDefParseString(const char *xmlStr,
-                                  virCapsPtr caps,
                                   virDomainXMLOptionPtr xmlopt,
+                                  void *parseOpaque,
                                   unsigned int flags);
 
 virDomainCheckpointDefPtr
@@ -82,15 +83,13 @@ virDomainCheckpointDefNew(void);
 
 char *
 virDomainCheckpointDefFormat(virDomainCheckpointDefPtr def,
-                             virCapsPtr caps,
                              virDomainXMLOptionPtr xmlopt,
                              unsigned int flags);
 
 int
 virDomainCheckpointAlignDisks(virDomainCheckpointDefPtr checkpoint);
 
-int virDomainCheckpointRedefinePrep(virDomainPtr domain,
-                                    virDomainObjPtr vm,
+int virDomainCheckpointRedefinePrep(virDomainObjPtr vm,
                                     virDomainCheckpointDefPtr *def,
                                     virDomainMomentObjPtr *checkpoint,
                                     virDomainXMLOptionPtr xmlopt,

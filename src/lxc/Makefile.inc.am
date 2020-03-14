@@ -22,8 +22,6 @@ LXC_GENERATED = \
 LXC_MONITOR_PROTOCOL = $(srcdir)/lxc/lxc_monitor_protocol.x
 
 LXC_DRIVER_SOURCES = \
-	$(LXC_MONITOR_PROTOCOL_GENERATED) \
-	$(LXC_MONITOR_GENERATED) \
 	lxc/lxc_conf.c \
 	lxc/lxc_conf.h \
 	lxc/lxc_container.c \
@@ -47,8 +45,6 @@ LXC_DRIVER_SOURCES = \
 	$(NULL)
 
 LXC_CONTROLLER_SOURCES = \
-	$(LXC_MONITOR_PROTOCOL_GENERATED) \
-	$(LXC_CONTROLLER_GENERATED) \
 	lxc/lxc_conf.c \
 	lxc/lxc_conf.h \
 	lxc/lxc_container.c \
@@ -62,13 +58,17 @@ LXC_CONTROLLER_SOURCES = \
 	lxc/lxc_controller.c \
 	$(NULL)
 
-
-DRIVER_SOURCE_FILES += $(LXC_DRIVER_SOURCES)
-STATEFUL_DRIVER_SOURCE_FILES += $(LXC_DRIVER_SOURCES)
+DRIVER_SOURCE_FILES += \
+	$(LXC_MONITOR_PROTOCOL_GENERATED) \
+	$(LXC_MONITOR_GENERATED) \
+	$(addprefix $(srcdir)/,$(LXC_DRIVER_SOURCES))
+STATEFUL_DRIVER_SOURCE_FILES += \
+	$(LXC_MONITOR_PROTOCOL_GENERATED) \
+	$(LXC_MONITOR_GENERATED) \
+	$(addprefix $(srcdir)/,$(LXC_DRIVER_SOURCES))
 EXTRA_DIST += \
 	$(LXC_DRIVER_SOURCES) \
 	$(LXC_MONITOR_PROTOCOL) \
-	$(LXC_GENERATED) \
 	$(LXC_CONTROLLER_SOURCES) \
 	$(NULL)
 
@@ -83,6 +83,7 @@ libvirt_driver_lxc_la_SOURCES =
 libvirt_driver_lxc_la_LIBADD = \
 	libvirt_driver_lxc_impl.la \
 	libvirt.la \
+	$(GLIB_LIBS) \
 	../gnulib/lib/libgnu.la \
 	$(NULL)
 mod_LTLIBRARIES += libvirt_driver_lxc.la
@@ -93,7 +94,10 @@ libvirt_driver_lxc_impl_la_CFLAGS = \
 	$(FUSE_CFLAGS) \
 	$(XDR_CFLAGS) \
 	-I$(srcdir)/access \
+	-I$(builddir)/access \
 	-I$(srcdir)/conf \
+	-I$(builddir)/lxc \
+	-I$(builddir)/rpc \
 	$(AM_CFLAGS) \
 	$(NULL)
 libvirt_driver_lxc_impl_la_LIBADD = \
@@ -108,7 +112,85 @@ libvirt_driver_lxc_impl_la_CFLAGS += $(BLKID_CFLAGS)
 libvirt_driver_lxc_impl_la_LIBADD += $(BLKID_LIBS)
 endif WITH_BLKID
 libvirt_driver_lxc_impl_la_LIBADD += $(SECDRIVER_LIBS)
-libvirt_driver_lxc_impl_la_SOURCES = $(LXC_DRIVER_SOURCES)
+libvirt_driver_lxc_impl_la_SOURCES = \
+	$(LXC_DRIVER_SOURCES)
+nodist_libvirt_driver_lxc_impl_la_SOURCES = \
+	$(LXC_MONITOR_PROTOCOL_GENERATED) \
+	$(LXC_MONITOR_GENERATED)
+
+
+sbin_PROGRAMS += virtlxcd
+
+nodist_conf_DATA += lxc/virtlxcd.conf
+augeas_DATA += lxc/virtlxcd.aug
+augeastest_DATA += lxc/test_virtlxcd.aug
+CLEANFILES += lxc/virtlxcd.aug
+
+virtlxcd_SOURCES = $(REMOTE_DAEMON_SOURCES)
+nodist_virtlxcd_SOURCES = $(REMOTE_DAEMON_GENERATED)
+virtlxcd_CFLAGS = \
+       $(REMOTE_DAEMON_CFLAGS) \
+       -DDAEMON_NAME="\"virtlxcd\"" \
+       -DMODULE_NAME="\"lxc\"" \
+       $(NULL)
+virtlxcd_LDFLAGS = $(REMOTE_DAEMON_LD_FLAGS)
+virtlxcd_LDADD = $(REMOTE_DAEMON_LD_ADD)
+
+SYSTEMD_UNIT_FILES += \
+	virtlxcd.service \
+	virtlxcd.socket \
+	virtlxcd-ro.socket \
+	virtlxcd-admin.socket \
+	$(NULL)
+SYSTEMD_UNIT_FILES_IN += \
+	lxc/virtlxcd.service.in \
+	$(NULL)
+
+OPENRC_INIT_FILES += \
+	virtlxcd.init \
+	$(NULL)
+OPENRC_INIT_FILES_IN += \
+	lxc/virtlxcd.init.in \
+	$(NULL)
+
+VIRTLXCD_UNIT_VARS = \
+	$(VIRTD_UNIT_VARS) \
+	-e 's|[@]name[@]|Libvirt lxc|g' \
+	-e 's|[@]service[@]|virtlxcd|g' \
+	-e 's|[@]sockprefix[@]|virtlxcd|g' \
+	$(NULL)
+
+virtlxcd.init: lxc/virtlxcd.init.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(LIBVIRTD_INIT_VARS) $< > $@-t && mv $@-t $@
+
+virtlxcd.service: lxc/virtlxcd.service.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(VIRTLXCD_UNIT_VARS) $< > $@-t && mv $@-t $@
+
+virtlxc%.socket: remote/libvirt%.socket.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(VIRTLXCD_UNIT_VARS) $< > $@-t && mv $@-t $@
+
+lxc/virtlxcd.conf: remote/libvirtd.conf.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtlxcd/' \
+		$< > $@
+
+lxc/virtlxcd.aug: remote/libvirtd.aug.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtlxcd/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtlxcd/' \
+		$< > $@
+
+lxc/test_virtlxcd.aug: remote/test_libvirtd.aug.in \
+		lxc/virtlxcd.conf $(AUG_GENTEST_SCRIPT)
+	$(AM_V_GEN)$(AUG_GENTEST) lxc/virtlxcd.conf \
+		$(srcdir)/remote/test_libvirtd.aug.in | \
+		$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtlxcd/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtlxcd/' \
+		> $@ || rm -f $@
 
 libexec_PROGRAMS += libvirt_lxc
 
@@ -116,15 +198,21 @@ libvirt_lxc_SOURCES = \
 	$(LXC_CONTROLLER_SOURCES) \
 	$(DATATYPES_SOURCES) \
 	$(NULL)
+nodist_libvirt_lxc_SOURCES = \
+	$(LXC_MONITOR_PROTOCOL_GENERATED) \
+	$(LXC_CONTROLLER_GENERATED) \
+	$(NULL)
 libvirt_lxc_LDFLAGS = \
 	$(AM_LDFLAGS) \
 	$(PIE_LDFLAGS) \
 	$(CAPNG_LIBS) \
 	$(LIBXML_LIBS) \
+	$(GLIB_LIBS) \
 	$(NULL)
 libvirt_lxc_LDADD = \
 	libvirt.la \
 	$(FUSE_LIBS) \
+	$(GLIB_LIBS) \
 	../gnulib/lib/libgnu.la \
 	$(NULL)
 if WITH_DTRACE_PROBES
@@ -133,10 +221,13 @@ endif WITH_DTRACE_PROBES
 libvirt_lxc_LDADD += $(SECDRIVER_LIBS)
 libvirt_lxc_CFLAGS = \
 	-I$(srcdir)/conf \
+	-I$(builddir)/lxc \
+	-I$(builddir)/rpc \
 	$(AM_CFLAGS) \
 	$(PIE_CFLAGS) \
 	$(CAPNG_CFLAGS) \
 	$(LIBXML_CFLAGS) \
+	$(GLIB_CFLAGS) \
 	$(LIBNL_CFLAGS) \
 	$(FUSE_CFLAGS) \
 	$(DBUS_CFLAGS) \
@@ -156,30 +247,22 @@ endif
 conf_DATA += lxc/lxc.conf
 
 augeas_DATA += lxc/libvirtd_lxc.aug
-augeastest_DATA += test_libvirtd_lxc.aug
-CLEANFILES += test_libvirtd_lxc.aug
+augeastest_DATA += lxc/test_libvirtd_lxc.aug
 
-AUGEAS_DIRS += lxc
-
-test_libvirtd_lxc.aug: lxc/test_libvirtd_lxc.aug.in \
-		$(srcdir)/lxc/lxc.conf $(AUG_GENTEST)
-	$(AM_V_GEN)$(AUG_GENTEST) $(srcdir)/lxc/lxc.conf $< $@
-
-check-augeas-lxc: test_libvirtd_lxc.aug
-	$(AM_V_GEN)if test -x '$(AUGPARSE)'; then \
-	    '$(AUGPARSE)' -I $(srcdir)/lxc test_libvirtd_lxc.aug; \
-	fi
+lxc/test_libvirtd_lxc.aug: lxc/test_libvirtd_lxc.aug.in \
+		$(srcdir)/lxc/lxc.conf $(AUG_GENTEST_SCRIPT)
+	$(AM_V_GEN)$(AUG_GENTEST) $(srcdir)/lxc/lxc.conf $< > $@
 
 INSTALL_DATA_DIRS += lxc
 
 install-data-lxc:
 	$(MKDIR_P) "$(DESTDIR)$(localstatedir)/lib/libvirt/lxc"
-	$(MKDIR_P) "$(DESTDIR)$(localstatedir)/run/libvirt/lxc"
+	$(MKDIR_P) "$(DESTDIR)$(runstatedir)/libvirt/lxc"
 	$(MKDIR_P) "$(DESTDIR)$(localstatedir)/log/libvirt/lxc"
 
 uninstall-data-lxc:
 	rmdir "$(DESTDIR)$(localstatedir)/lib/libvirt/lxc" ||:
-	rmdir "$(DESTDIR)$(localstatedir)/run/libvirt/lxc" ||:
+	rmdir "$(DESTDIR)$(runstatedir)/libvirt/lxc" ||:
 	rmdir "$(DESTDIR)$(localstatedir)/log/libvirt/lxc" ||:
 
 endif WITH_LXC
@@ -188,16 +271,15 @@ lxc/lxc_monitor_dispatch.h: $(srcdir)/rpc/gendispatch.pl \
 		$(LXC_MONITOR_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=client \
 	  virLXCMonitor VIR_LXC_MONITOR $(LXC_MONITOR_PROTOCOL) > \
-	  $(srcdir)/lxc/lxc_monitor_dispatch.h
+	  lxc/lxc_monitor_dispatch.h
 
 lxc/lxc_controller_dispatch.h: $(srcdir)/rpc/gendispatch.pl \
 		$(REMOTE_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=server \
 	  virLXCMonitor VIR_LXC_MONITOR $(LXC_MONITOR_PROTOCOL) > \
-	  $(srcdir)/lxc/lxc_controller_dispatch.h
+	  lxc/lxc_controller_dispatch.h
 
 .PHONY: \
-	check-agueas-lxc \
 	install-data-lxc \
 	uninstall-data-lxc \
 	$(NULL)

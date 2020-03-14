@@ -50,7 +50,7 @@ static int testFormat(virSocketAddr *addr, const char *addrstr, bool pass)
         return pass ? -1 : 0;
 
     if (STRNEQ(newaddrstr, addrstr)) {
-        virTestDifference(stderr, newaddrstr, addrstr);
+        virTestDifference(stderr, addrstr, newaddrstr);
         VIR_FREE(newaddrstr);
         return pass ? -1 : 0;
     } else {
@@ -378,7 +378,7 @@ mymain(void)
     DO_TEST_PARSE_AND_FORMAT("::1", AF_INET, false);
     DO_TEST_PARSE_AND_FORMAT("::1", AF_INET6, true);
     DO_TEST_PARSE_AND_FORMAT("::1", AF_UNIX, false);
-    DO_TEST_PARSE_AND_FORMAT("::ffff", AF_UNSPEC, true);
+    DO_TEST_PARSE_AND_FORMAT("::fffe:0:0", AF_UNSPEC, true);
 
     /* tests that specify a network that should contain the range */
     DO_TEST_RANGE("192.168.122.1", "192.168.122.1", "192.168.122.1", 24, 1, true);
@@ -465,7 +465,11 @@ mymain(void)
 
     DO_TEST_LOCALHOST("127.0.0.1", true);
     DO_TEST_LOCALHOST("2130706433", true);
+
+    /* Octal IPv4 doesn't work in getaddrinfo on macOS */
+#ifndef __APPLE__
     DO_TEST_LOCALHOST("0177.0.0.01", true);
+#endif
     DO_TEST_LOCALHOST("::1", true);
     DO_TEST_LOCALHOST("0::1", true);
     DO_TEST_LOCALHOST("0:0:0::1", true);

@@ -58,7 +58,7 @@ VIR_LOG_INIT("esx.esx_vi_types");
     void \
     esxVI_##_type##_Free(esxVI_##_type **ptrptr) \
     { \
-        esxVI_##_type *item ATTRIBUTE_UNUSED; \
+        esxVI_##_type *item G_GNUC_UNUSED; \
  \
         if (!ptrptr || !(*ptrptr)) { \
             return; \
@@ -185,7 +185,7 @@ VIR_LOG_INIT("esx.esx_vi_types");
     esxVI_##_type##_Cast##_dest_extra##FromAnyType(esxVI_AnyType *anyType, \
                                                    _dest_type **ptrptr) \
     { \
-        _dest_type *item ATTRIBUTE_UNUSED; \
+        _dest_type *item G_GNUC_UNUSED; \
  \
         if (!anyType || !ptrptr || *ptrptr) { \
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s", \
@@ -951,10 +951,8 @@ esxVI_AnyType_DeepCopy(esxVI_AnyType **dest, esxVI_AnyType *src)
 
     (*dest)->type = src->type;
 
-    if (VIR_STRDUP((*dest)->other, src->other) < 0 ||
-        VIR_STRDUP((*dest)->value, src->value) < 0) {
-        goto failure;
-    }
+    (*dest)->other = g_strdup(src->other);
+    (*dest)->value = g_strdup(src->value);
 
     switch ((int)src->type) {
       case esxVI_Type_Boolean:
@@ -1034,8 +1032,8 @@ esxVI_AnyType_Deserialize(xmlNodePtr node, esxVI_AnyType **anyType)
     (*anyType)->value =
       (char *)xmlNodeListGetString(node->doc, node->children, 1);
 
-    if (!(*anyType)->value && VIR_STRDUP((*anyType)->value, "") < 0)
-        goto failure;
+    if (!(*anyType)->value)
+        (*anyType)->value = g_strdup("");
 
 #define _DESERIALIZE_NUMBER(_type, _xsdType, _name, _min, _max) \
         do { \
@@ -1153,8 +1151,7 @@ esxVI_String_AppendValueToList(esxVI_String **stringList, const char *value)
     if (esxVI_String_Alloc(&string) < 0)
         return -1;
 
-    if (VIR_STRDUP(string->value, value) < 0)
-        goto failure;
+    string->value = g_strdup(value);
 
     if (esxVI_String_AppendToList(stringList, string) < 0)
         goto failure;
@@ -1206,10 +1203,8 @@ esxVI_String_DeepCopyValue(char **dest, const char *src)
 {
     ESX_VI_CHECK_ARG_LIST(dest);
 
-    if (!src)
-        return 0;
-
-    return VIR_STRDUP(*dest, src);
+    *dest = g_strdup(src);
+    return 0;
 }
 
 /* esxVI_String_CastFromAnyType */
@@ -1277,8 +1272,10 @@ esxVI_String_DeserializeValue(xmlNodePtr node, char **value)
     ESX_VI_CHECK_ARG_LIST(value);
 
     *value = (char *)xmlNodeListGetString(node->doc, node->children, 1);
+    if (!*value)
+        *value = g_strdup("");
 
-    return *value ? 0 : VIR_STRDUP(*value, "");
+    return 0;
 }
 
 
@@ -1476,24 +1473,13 @@ int
 esxVI_DateTime_ConvertToCalendarTime(esxVI_DateTime *dateTime,
                                      long long *secondsSinceEpoch)
 {
-    char value[64] = "";
     char *tmp;
-    struct tm tm;
-    int milliseconds;
-    char sign;
-    int tz_hours;
-    int tz_minutes;
-    int tz_offset = 0;
+    g_autoptr(GDateTime) then = NULL;
+    g_autoptr(GTimeZone) tz = NULL;
+    int year, mon, mday, hour, min, sec, milliseconds;
 
     if (!dateTime || !secondsSinceEpoch) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _("Invalid argument"));
-        return -1;
-    }
-
-    if (virStrcpyStatic(value, dateTime->value) < 0) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("xsd:dateTime value '%s' too long for destination"),
-                       dateTime->value);
         return -1;
     }
 
@@ -1505,14 +1491,23 @@ esxVI_DateTime_ConvertToCalendarTime(esxVI_DateTime *dateTime,
      *
      * map negative years to 0, since the base for time_t is the year 1970.
      */
-    if (*value == '-') {
+    if (dateTime->value[0] == '-') {
         *secondsSinceEpoch = 0;
         return 0;
     }
 
-    tmp = strptime(value, "%Y-%m-%dT%H:%M:%S", &tm);
-
-    if (!tmp) {
+    if (/* year */
+        virStrToLong_i(dateTime->value, &tmp, 10, &year) < 0 || *tmp != '-' ||
+        /* month */
+        virStrToLong_i(tmp+1, &tmp, 10, &mon) < 0 || *tmp != '-' ||
+        /* day */
+        virStrToLong_i(tmp+1, &tmp, 10, &mday) < 0 || *tmp != 'T' ||
+        /* hour */
+        virStrToLong_i(tmp+1, &tmp, 10, &hour) < 0 || *tmp != ':' ||
+        /* minute */
+        virStrToLong_i(tmp+1, &tmp, 10, &min) < 0 || *tmp != ':' ||
+        /* second */
+        virStrToLong_i(tmp+1, &tmp, 10, &sec) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("xsd:dateTime value '%s' has unexpected format"),
                        dateTime->value);
@@ -1531,29 +1526,17 @@ esxVI_DateTime_ConvertToCalendarTime(esxVI_DateTime *dateTime,
 
         /* parse timezone offset if present. if missing assume UTC */
         if (*tmp == '+' || *tmp == '-') {
-            sign = *tmp;
-
-            if (virStrToLong_i(tmp + 1, &tmp, 10, &tz_hours) < 0 ||
-                *tmp != ':' ||
-                virStrToLong_i(tmp + 1, NULL, 10, &tz_minutes) < 0) {
-                virReportError(VIR_ERR_INTERNAL_ERROR,
-                               _("xsd:dateTime value '%s' has unexpected format"),
-                               dateTime->value);
-                return -1;
-            }
-
-            tz_offset = tz_hours * 60 * 60 + tz_minutes * 60;
-
-            if (sign == '-')
-                tz_offset = -tz_offset;
+            tz = g_time_zone_new(tmp);
         } else if (STREQ(tmp, "Z")) {
-            /* Z refers to UTC. tz_offset is already initialized to zero */
+            tz = g_time_zone_new_utc();
         } else {
             virReportError(VIR_ERR_INTERNAL_ERROR,
                            _("xsd:dateTime value '%s' has unexpected format"),
                            dateTime->value);
             return -1;
         }
+    } else {
+        tz = g_time_zone_new_utc();
     }
 
     /*
@@ -1564,7 +1547,8 @@ esxVI_DateTime_ConvertToCalendarTime(esxVI_DateTime *dateTime,
      * handling all the possible over- and underflows when trying to apply
      * it to the tm struct.
      */
-    *secondsSinceEpoch = timegm(&tm) - tz_offset;
+    then = g_date_time_new(tz, year, mon, mday, hour, min, sec);
+    *secondsSinceEpoch = (long long)g_date_time_to_unix(then);
 
     return 0;
 }

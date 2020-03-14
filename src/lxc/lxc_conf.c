@@ -70,10 +70,8 @@ virCapsPtr virLXCDriverCapsInit(virLXCDriverPtr driver)
      * unexpected failures. We don't want to break the lxc
      * driver in this scenario, so log errors & carry on
      */
-    if (virCapabilitiesInitNUMA(caps) < 0) {
-        virCapabilitiesFreeNUMAInfo(caps);
-        VIR_WARN("Failed to query host NUMA topology, disabling NUMA capabilities");
-    }
+    if (!(caps->host.numa = virCapabilitiesHostNUMANewHost()))
+        goto error;
 
     if (virCapabilitiesInitCaches(caps) < 0)
         VIR_WARN("Failed to get host CPU cache info");
@@ -150,10 +148,8 @@ virCapsPtr virLXCDriverCapsInit(virLXCDriverPtr driver)
         if (VIR_ALLOC(caps->host.secModels) < 0)
             goto error;
         caps->host.nsecModels = 1;
-        if (VIR_STRDUP(caps->host.secModels[0].model, model) < 0)
-            goto error;
-        if (VIR_STRDUP(caps->host.secModels[0].doi, doi) < 0)
-            goto error;
+        caps->host.secModels[0].model = g_strdup(model);
+        caps->host.secModels[0].doi = g_strdup(doi);
         if (label &&
             virCapabilitiesHostSecModelAddBaseLabel(&caps->host.secModels[0],
                                                     type,
@@ -200,6 +196,13 @@ virCapsPtr virLXCDriverGetCapabilities(virLXCDriverPtr driver,
         driver->caps = caps;
     } else {
         lxcDriverLock(driver);
+
+        if (driver->caps == NULL) {
+            VIR_DEBUG("Capabilities didn't detect any guests. Forcing a "
+                      "refresh.");
+            lxcDriverUnlock(driver);
+            return virLXCDriverGetCapabilities(driver, true);
+        }
     }
 
     ret = virObjectRef(driver->caps);
@@ -209,8 +212,9 @@ virCapsPtr virLXCDriverGetCapabilities(virLXCDriverPtr driver,
 
 
 virDomainXMLOptionPtr
-lxcDomainXMLConfInit(void)
+lxcDomainXMLConfInit(virLXCDriverPtr driver)
 {
+    virLXCDriverDomainDefParserConfig.priv = driver;
     return virDomainXMLOptionNew(&virLXCDriverDomainDefParserConfig,
                                  &virLXCDriverPrivateDataCallbacks,
                                  &virLXCDriverDomainXMLNamespace,
@@ -233,27 +237,19 @@ virLXCDriverConfigNew(void)
     cfg->securityRequireConfined = false;
 
     /* Set the container configuration directory */
-    if (VIR_STRDUP(cfg->configDir, LXC_CONFIG_DIR) < 0)
-        goto error;
-    if (VIR_STRDUP(cfg->stateDir, LXC_STATE_DIR) < 0)
-        goto error;
-    if (VIR_STRDUP(cfg->logDir, LXC_LOG_DIR) < 0)
-        goto error;
-    if (VIR_STRDUP(cfg->autostartDir, LXC_AUTOSTART_DIR) < 0)
-        goto error;
+    cfg->configDir = g_strdup(LXC_CONFIG_DIR);
+    cfg->stateDir = g_strdup(LXC_STATE_DIR);
+    cfg->logDir = g_strdup(LXC_LOG_DIR);
+    cfg->autostartDir = g_strdup(LXC_AUTOSTART_DIR);
 
     return cfg;
- error:
-    virObjectUnref(cfg);
-    return NULL;
 }
 
 int
 virLXCLoadDriverConfig(virLXCDriverConfigPtr cfg,
                        const char *filename)
 {
-    virConfPtr conf;
-    int ret = -1;
+    g_autoptr(virConf) conf = NULL;
 
     /* Avoid error from non-existent or unreadable file. */
     if (access(filename, R_OK) == -1)
@@ -264,21 +260,18 @@ virLXCLoadDriverConfig(virLXCDriverConfigPtr cfg,
         return -1;
 
     if (virConfGetValueBool(conf, "log_with_libvirtd", &cfg->log_libvirtd) < 0)
-        goto cleanup;
+        return -1;
 
     if (virConfGetValueString(conf, "security_driver", &cfg->securityDriverName) < 0)
-        goto cleanup;
+        return -1;
 
     if (virConfGetValueBool(conf, "security_default_confined", &cfg->securityDefaultConfined) < 0)
-        goto cleanup;
+        return -1;
 
     if (virConfGetValueBool(conf, "security_require_confined", &cfg->securityRequireConfined) < 0)
-        goto cleanup;
+        return -1;
 
-    ret = 0;
- cleanup:
-    virConfFree(conf);
-    return ret;
+    return 0;
 }
 
 virLXCDriverConfigPtr virLXCDriverGetConfig(virLXCDriverPtr driver)

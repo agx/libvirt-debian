@@ -82,6 +82,7 @@ struct _virNetworkPortDef {
 
 void
 virNetworkPortDefFree(virNetworkPortDefPtr port);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virNetworkPortDef, virNetworkPortDefFree);
 
 virNetworkPortDefPtr
 virNetworkPortDefParseNode(xmlDocPtr xml,

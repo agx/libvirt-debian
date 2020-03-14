@@ -60,6 +60,9 @@
     <include filename="x86_Opteron_G5.xml"/>
     <include filename="x86_EPYC.xml"/>
     <include filename="x86_EPYC-IBPB.xml"/>
+
+    <!-- Hygon CPU models -->
+    <include filename="x86_Dhyana.xml"/>
   </arch>
 
   <arch name='ppc64'>
@@ -74,5 +77,9 @@
     <!-- Freescale-based CPU models -->
     <include filename="ppc64_POWERPC_e5500.xml"/>
     <include filename="ppc64_POWERPC_e6500.xml"/>
+  </arch>
+
+  <arch name='arm'>
+    <include filename='arm_features.xml'/>
   </arch>
 </cpus>

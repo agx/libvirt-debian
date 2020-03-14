@@ -22,8 +22,6 @@
 
 #include <config.h>
 
-#include <regex.h>
-
 #include "viriscsi.h"
 
 #include "viralloc.h"
@@ -60,8 +58,10 @@ virISCSIExtractSession(char **const groups,
     struct virISCSISessionData *data = opaque;
 
     if (!data->session &&
-        STREQ(groups[1], data->devpath))
-        return VIR_STRDUP(data->session, groups[0]);
+        STREQ(groups[1], data->devpath)) {
+        data->session = g_strdup(groups[0]);
+        return 0;
+    }
     return 0;
 }
 
@@ -88,9 +88,9 @@ virISCSIGetSession(const char *devpath,
         .devpath = devpath,
     };
     int exitstatus = 0;
-    VIR_AUTOFREE(char *) error = NULL;
+    g_autofree char *error = NULL;
 
-    VIR_AUTOPTR(virCommand) cmd = virCommandNewArgList(ISCSIADM, "--mode",
+    g_autoptr(virCommand) cmd = virCommandNewArgList(ISCSIADM, "--mode",
                                                        "session", NULL);
     virCommandSetErrorBuffer(cmd, &error);
 
@@ -122,10 +122,10 @@ virStorageBackendIQNFound(const char *initiatoriqn,
 {
     int ret = IQN_ERROR;
     char *line = NULL;
-    VIR_AUTOFREE(char *) outbuf = NULL;
-    VIR_AUTOFREE(char *) iface = NULL;
-    VIR_AUTOFREE(char *) iqn = NULL;
-    VIR_AUTOPTR(virCommand) cmd = virCommandNewArgList(ISCSIADM,
+    g_autofree char *outbuf = NULL;
+    g_autofree char *iface = NULL;
+    g_autofree char *iqn = NULL;
+    g_autoptr(virCommand) cmd = virCommandNewArgList(ISCSIADM,
                                                        "--mode", "iface", NULL);
 
     *ifacename = NULL;
@@ -160,8 +160,7 @@ virStorageBackendIQNFound(const char *initiatoriqn,
         if (!(next = strchr(current, ' ')))
             goto error;
 
-        if (VIR_STRNDUP(iface, current, (next - current)) < 0)
-            goto cleanup;
+        iface = g_strndup(current, next - current);
 
         current = next + 1;
 
@@ -174,11 +173,10 @@ virStorageBackendIQNFound(const char *initiatoriqn,
             current = next + 1;
         }
 
-        if (VIR_STRDUP(iqn, current) < 0)
-            goto cleanup;
+        iqn = g_strdup(current);
 
         if (STREQ(iqn, initiatoriqn)) {
-            VIR_STEAL_PTR(*ifacename, iface);
+            *ifacename = g_steal_pointer(&iface);
 
             VIR_DEBUG("Found interface '%s' with IQN '%s'", *ifacename, iqn);
             break;
@@ -208,14 +206,12 @@ virStorageBackendCreateIfaceIQN(const char *initiatoriqn,
                                 char **ifacename)
 {
     int exitstatus = -1;
-    VIR_AUTOFREE(char *) iface_name = NULL;
-    VIR_AUTOFREE(char *) temp_ifacename = NULL;
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autofree char *iface_name = NULL;
+    g_autofree char *temp_ifacename = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
-    if (virAsprintf(&temp_ifacename,
-                    "libvirt-iface-%08llx",
-                    (unsigned long long)virRandomBits(32)) < 0)
-        return -1;
+    temp_ifacename = g_strdup_printf("libvirt-iface-%08llx",
+                                     (unsigned long long)virRandomBits(32));
 
     VIR_DEBUG("Attempting to create interface '%s' with IQN '%s'",
               temp_ifacename, initiatoriqn);
@@ -266,7 +262,7 @@ virStorageBackendCreateIfaceIQN(const char *initiatoriqn,
                   iface_name, initiatoriqn);
     }
 
-    VIR_STEAL_PTR(*ifacename, iface_name);
+    *ifacename = g_steal_pointer(&iface_name);
 
     return 0;
 }
@@ -285,8 +281,8 @@ virISCSIConnection(const char *portal,
         "--targetname", target,
         NULL
     };
-    VIR_AUTOPTR(virCommand) cmd = NULL;
-    VIR_AUTOFREE(char *) ifacename = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    g_autofree char *ifacename = NULL;
 
     cmd = virCommandNewArgs(baseargv);
     virCommandAddArgSet(cmd, extraargv);
@@ -349,7 +345,7 @@ virISCSIConnectionLogout(const char *portal,
 int
 virISCSIRescanLUNs(const char *session)
 {
-    VIR_AUTOPTR(virCommand) cmd = virCommandNewArgList(ISCSIADM,
+    g_autoptr(virCommand) cmd = virCommandNewArgList(ISCSIADM,
                                                        "--mode", "session",
                                                        "-r", session,
                                                        "-R",
@@ -369,10 +365,9 @@ virISCSIGetTargets(char **const groups,
                    void *data)
 {
     struct virISCSITargetList *list = data;
-    VIR_AUTOFREE(char *) target = NULL;
+    g_autofree char *target = NULL;
 
-    if (VIR_STRDUP(target, groups[1]) < 0)
-        return -1;
+    target = g_strdup(groups[1]);
 
     if (VIR_APPEND_ELEMENT(list->targets, list->ntargets, target) < 0)
         return -1;
@@ -404,7 +399,7 @@ virISCSIScanTargetsInternal(const char *portal,
     int vars[] = { 2 };
     struct virISCSITargetList list;
     size_t i;
-    VIR_AUTOPTR(virCommand) cmd = virCommandNewArgList(ISCSIADM,
+    g_autoptr(virCommand) cmd = virCommandNewArgList(ISCSIADM,
                                                        "--mode", "discovery",
                                                        "--type", "sendtargets",
                                                        "--portal", portal,
@@ -471,7 +466,7 @@ virISCSIScanTargets(const char *portal,
                     size_t *ntargets,
                     char ***targets)
 {
-    VIR_AUTOFREE(char *) ifacename = NULL;
+    g_autofree char *ifacename = NULL;
 
     if (ntargets)
         *ntargets = 0;
@@ -487,7 +482,7 @@ virISCSIScanTargets(const char *portal,
             virReportError(VIR_ERR_OPERATION_FAILED,
                            _("no iSCSI interface defined for IQN %s"),
                            initiatoriqn);
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
         case IQN_ERROR:
         default:
             return -1;
@@ -519,7 +514,7 @@ int
 virISCSINodeNew(const char *portal,
                 const char *target)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
     int status;
 
     cmd = virCommandNewArgList(ISCSIADM,
@@ -553,7 +548,7 @@ virISCSINodeUpdate(const char *portal,
                    const char *name,
                    const char *value)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
     int status;
 
     cmd = virCommandNewArgList(ISCSIADM,

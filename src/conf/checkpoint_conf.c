@@ -21,8 +21,6 @@
 
 #include <config.h>
 
-#include <unistd.h>
-
 #include "configmake.h"
 #include "internal.h"
 #include "virbitmap.h"
@@ -75,13 +73,10 @@ virDomainCheckpointDiskDefClear(virDomainCheckpointDiskDefPtr disk)
 virDomainCheckpointDefPtr
 virDomainCheckpointDefNew(void)
 {
-    virDomainCheckpointDefPtr def;
-
     if (virDomainCheckpointInitialize() < 0)
         return NULL;
 
-    def = virObjectNew(virDomainCheckpointDefClass);
-    return def;
+    return virObjectNew(virDomainCheckpointDefClass);
 }
 
 static void
@@ -100,7 +95,7 @@ virDomainCheckpointDiskDefParseXML(xmlNodePtr node,
                                    xmlXPathContextPtr ctxt,
                                    virDomainCheckpointDiskDefPtr def)
 {
-    VIR_AUTOFREE(char *) checkpoint = NULL;
+    g_autofree char *checkpoint = NULL;
     VIR_XPATH_NODE_AUTORESTORE(ctxt);
 
     ctxt->node = node;
@@ -120,22 +115,20 @@ virDomainCheckpointDiskDefParseXML(xmlNodePtr node,
     return 0;
 }
 
-/* flags is bitwise-or of virDomainCheckpointParseFlags.  If flags
- * does not include VIR_DOMAIN_CHECKPOINT_PARSE_REDEFINE, then caps
- * is ignored.
+/* flags is bitwise-or of virDomainCheckpointParseFlags.
  */
 static virDomainCheckpointDefPtr
 virDomainCheckpointDefParse(xmlXPathContextPtr ctxt,
-                            virCapsPtr caps,
                             virDomainXMLOptionPtr xmlopt,
+                            void *parseOpaque,
                             unsigned int flags)
 {
     virDomainCheckpointDefPtr ret = NULL;
     size_t i;
     int n;
     char *tmp;
-    VIR_AUTOFREE(xmlNodePtr *) nodes = NULL;
-    VIR_AUTOUNREF(virDomainCheckpointDefPtr) def = NULL;
+    g_autofree xmlNodePtr *nodes = NULL;
+    g_autoptr(virDomainCheckpointDef) def = NULL;
 
     if (!(def = virDomainCheckpointDefNew()))
         return NULL;
@@ -174,7 +167,7 @@ virDomainCheckpointDefParse(xmlXPathContextPtr ctxt,
                 return NULL;
             }
             def->parent.dom = virDomainDefParseNode(ctxt->node->doc, domainNode,
-                                                    caps, xmlopt, NULL,
+                                                    xmlopt, parseOpaque,
                                                     domainflags);
             if (!def->parent.dom)
                 return NULL;
@@ -198,24 +191,23 @@ virDomainCheckpointDefParse(xmlXPathContextPtr ctxt,
             return NULL;
     }
 
-    VIR_STEAL_PTR(ret, def);
+    ret = g_steal_pointer(&def);
     return ret;
 }
 
 static virDomainCheckpointDefPtr
 virDomainCheckpointDefParseNode(xmlDocPtr xml,
                                 xmlNodePtr root,
-                                virCapsPtr caps,
                                 virDomainXMLOptionPtr xmlopt,
+                                void *parseOpaque,
                                 unsigned int flags)
 {
-    xmlXPathContextPtr ctxt = NULL;
-    virDomainCheckpointDefPtr def = NULL;
-    VIR_AUTOFREE(char *) schema = NULL;
+    g_autoptr(xmlXPathContext) ctxt = NULL;
+    g_autofree char *schema = NULL;
 
     if (!virXMLNodeNameEqual(root, "domaincheckpoint")) {
         virReportError(VIR_ERR_XML_ERROR, "%s", _("domaincheckpoint"));
-        goto cleanup;
+        return NULL;
     }
 
     /* This is a new enough API to make schema validation unconditional */
@@ -227,23 +219,17 @@ virDomainCheckpointDefParseNode(xmlDocPtr xml,
     if (virXMLValidateAgainstSchema(schema, xml) < 0)
         return NULL;
 
-    ctxt = xmlXPathNewContext(xml);
-    if (ctxt == NULL) {
-        virReportOOMError();
-        goto cleanup;
-    }
+    if (!(ctxt = virXMLXPathContextNew(xml)))
+        return NULL;
 
     ctxt->node = root;
-    def = virDomainCheckpointDefParse(ctxt, caps, xmlopt, flags);
- cleanup:
-    xmlXPathFreeContext(ctxt);
-    return def;
+    return virDomainCheckpointDefParse(ctxt, xmlopt, parseOpaque, flags);
 }
 
 virDomainCheckpointDefPtr
 virDomainCheckpointDefParseString(const char *xmlStr,
-                                  virCapsPtr caps,
                                   virDomainXMLOptionPtr xmlopt,
+                                  void *parseOpaque,
                                   unsigned int flags)
 {
     virDomainCheckpointDefPtr ret = NULL;
@@ -253,7 +239,7 @@ virDomainCheckpointDefParseString(const char *xmlStr,
     if ((xml = virXMLParse(NULL, xmlStr, _("(domain_checkpoint)")))) {
         xmlKeepBlanksDefault(keepBlanksDefault);
         ret = virDomainCheckpointDefParseNode(xml, xmlDocGetRootElement(xml),
-                                              caps, xmlopt, flags);
+                                              xmlopt, parseOpaque, flags);
         xmlFreeDoc(xml);
     }
     xmlKeepBlanksDefault(keepBlanksDefault);
@@ -281,8 +267,7 @@ virDomainCheckpointDefAssignBitmapNames(virDomainCheckpointDefPtr def)
             disk->bitmap)
             continue;
 
-        if (VIR_STRDUP(disk->bitmap, def->parent.name) < 0)
-            return -1;
+        disk->bitmap = g_strdup(def->parent.name);
     }
 
     return 0;
@@ -371,8 +356,7 @@ virDomainCheckpointAlignDisks(virDomainCheckpointDefPtr def)
 
         if (STRNEQ(disk->name, def->parent.dom->disks[idx]->dst)) {
             VIR_FREE(disk->name);
-            if (VIR_STRDUP(disk->name, def->parent.dom->disks[idx]->dst) < 0)
-                goto cleanup;
+            disk->name = g_strdup(def->parent.dom->disks[idx]->dst);
         }
     }
 
@@ -388,8 +372,7 @@ virDomainCheckpointAlignDisks(virDomainCheckpointDefPtr def)
         if (virBitmapIsBitSet(map, i))
             continue;
         disk = &def->disks[ndisks++];
-        if (VIR_STRDUP(disk->name, def->parent.dom->disks[i]->dst) < 0)
-            goto cleanup;
+        disk->name = g_strdup(def->parent.dom->disks[i]->dst);
         disk->idx = i;
 
         /* Don't checkpoint empty or readonly drives */
@@ -458,7 +441,6 @@ virDomainCheckpointDiskDefFormat(virBufferPtr buf,
 static int
 virDomainCheckpointDefFormatInternal(virBufferPtr buf,
                                      virDomainCheckpointDefPtr def,
-                                     virCapsPtr caps,
                                      virDomainXMLOptionPtr xmlopt,
                                      unsigned int flags)
 {
@@ -501,15 +483,12 @@ virDomainCheckpointDefFormatInternal(virBufferPtr buf,
     }
 
     if (!(flags & VIR_DOMAIN_CHECKPOINT_FORMAT_NO_DOMAIN) &&
-        virDomainDefFormatInternal(def->parent.dom, caps, domainflags, buf,
-                                   xmlopt) < 0)
+        virDomainDefFormatInternal(def->parent.dom, xmlopt,
+                                   buf, domainflags) < 0)
         goto error;
 
     virBufferAdjustIndent(buf, -2);
     virBufferAddLit(buf, "</domaincheckpoint>\n");
-
-    if (virBufferCheckError(buf) < 0)
-        goto error;
 
     return 0;
 
@@ -520,7 +499,6 @@ virDomainCheckpointDefFormatInternal(virBufferPtr buf,
 
 char *
 virDomainCheckpointDefFormat(virDomainCheckpointDefPtr def,
-                             virCapsPtr caps,
                              virDomainXMLOptionPtr xmlopt,
                              unsigned int flags)
 {
@@ -529,7 +507,7 @@ virDomainCheckpointDefFormat(virDomainCheckpointDefPtr def,
     virCheckFlags(VIR_DOMAIN_CHECKPOINT_FORMAT_SECURE |
                   VIR_DOMAIN_CHECKPOINT_FORMAT_NO_DOMAIN |
                   VIR_DOMAIN_CHECKPOINT_FORMAT_SIZE, NULL);
-    if (virDomainCheckpointDefFormatInternal(&buf, def, caps, xmlopt,
+    if (virDomainCheckpointDefFormatInternal(&buf, def, xmlopt,
                                              flags) < 0)
         return NULL;
 
@@ -538,8 +516,7 @@ virDomainCheckpointDefFormat(virDomainCheckpointDefPtr def,
 
 
 int
-virDomainCheckpointRedefinePrep(virDomainPtr domain,
-                                virDomainObjPtr vm,
+virDomainCheckpointRedefinePrep(virDomainObjPtr vm,
                                 virDomainCheckpointDefPtr *defptr,
                                 virDomainMomentObjPtr *chk,
                                 virDomainXMLOptionPtr xmlopt,
@@ -547,16 +524,17 @@ virDomainCheckpointRedefinePrep(virDomainPtr domain,
 {
     virDomainCheckpointDefPtr def = *defptr;
     char uuidstr[VIR_UUID_STRING_BUFLEN];
+    virDomainMomentObjPtr parent = NULL;
     virDomainMomentObjPtr other = NULL;
     virDomainCheckpointDefPtr otherdef = NULL;
 
-    virUUIDFormat(domain->uuid, uuidstr);
+    virUUIDFormat(vm->def->uuid, uuidstr);
 
     if (virDomainCheckpointCheckCycles(vm->checkpoints, def, vm->def->name) < 0)
         return -1;
 
     if (!def->parent.dom ||
-        memcmp(def->parent.dom->uuid, domain->uuid, VIR_UUID_BUFLEN)) {
+        memcmp(def->parent.dom->uuid, vm->def->uuid, VIR_UUID_BUFLEN)) {
         virReportError(VIR_ERR_INVALID_ARG,
                        _("definition for checkpoint %s must use uuid %s"),
                        def->parent.name, uuidstr);
@@ -565,12 +543,11 @@ virDomainCheckpointRedefinePrep(virDomainPtr domain,
     if (virDomainCheckpointAlignDisks(def) < 0)
         return -1;
 
-    if (def->parent.parent_name)
-        other = virDomainCheckpointFindByName(vm->checkpoints,
-                                              def->parent.parent_name);
-    if (other == virDomainCheckpointGetCurrent(vm->checkpoints)) {
-        *update_current = true;
-        virDomainCheckpointSetCurrent(vm->checkpoints, NULL);
+    if (def->parent.parent_name &&
+         (parent = virDomainCheckpointFindByName(vm->checkpoints,
+                                                 def->parent.parent_name))) {
+        if (parent == virDomainCheckpointGetCurrent(vm->checkpoints))
+            *update_current = true;
     }
 
     other = virDomainCheckpointFindByName(vm->checkpoints, def->parent.name);
@@ -579,11 +556,6 @@ virDomainCheckpointRedefinePrep(virDomainPtr domain,
         if (!virDomainDefCheckABIStability(otherdef->parent.dom,
                                            def->parent.dom, xmlopt))
             return -1;
-
-        if (other == virDomainCheckpointGetCurrent(vm->checkpoints)) {
-            *update_current = true;
-            virDomainCheckpointSetCurrent(vm->checkpoints, NULL);
-        }
 
         /* Drop and rebuild the parent relationship, but keep all
          * child relations by reusing chk.  */

@@ -47,8 +47,7 @@ static int lxcProcGetattr(const char *path, struct stat *stbuf)
     virDomainDefPtr def = (virDomainDefPtr)context->private_data;
 
     memset(stbuf, 0, sizeof(struct stat));
-    if (virAsprintf(&mempath, "/proc/%s", path) < 0)
-        return -errno;
+    mempath = g_strdup_printf("/proc/%s", path);
 
     res = 0;
 
@@ -82,8 +81,8 @@ static int lxcProcGetattr(const char *path, struct stat *stbuf)
 
 static int lxcProcReaddir(const char *path, void *buf,
                           fuse_fill_dir_t filler,
-                          off_t offset ATTRIBUTE_UNUSED,
-                          struct fuse_file_info *fi ATTRIBUTE_UNUSED)
+                          off_t offset G_GNUC_UNUSED,
+                          struct fuse_file_info *fi G_GNUC_UNUSED)
 {
     if (STRNEQ(path, "/"))
         return -ENOENT;
@@ -95,8 +94,8 @@ static int lxcProcReaddir(const char *path, void *buf,
     return 0;
 }
 
-static int lxcProcOpen(const char *path ATTRIBUTE_UNUSED,
-                       struct fuse_file_info *fi ATTRIBUTE_UNUSED)
+static int lxcProcOpen(const char *path G_GNUC_UNUSED,
+                       struct fuse_file_info *fi G_GNUC_UNUSED)
 {
     if (STRNEQ(path, fuse_meminfo_path))
         return -ENOENT;
@@ -223,10 +222,6 @@ static int lxcProcReadMeminfo(char *hostpath, virDomainDefPtr def,
             virBufferAdd(new_meminfo, line, -1);
         }
 
-        if (virBufferCheckError(new_meminfo) < 0) {
-            res = -errno;
-            goto cleanup;
-        }
     }
     res = strlen(virBufferCurrentContent(new_meminfo));
     if (res > size)
@@ -240,19 +235,18 @@ static int lxcProcReadMeminfo(char *hostpath, virDomainDefPtr def,
     return res;
 }
 
-static int lxcProcRead(const char *path ATTRIBUTE_UNUSED,
-                       char *buf ATTRIBUTE_UNUSED,
-                       size_t size ATTRIBUTE_UNUSED,
-                       off_t offset ATTRIBUTE_UNUSED,
-                       struct fuse_file_info *fi ATTRIBUTE_UNUSED)
+static int lxcProcRead(const char *path G_GNUC_UNUSED,
+                       char *buf G_GNUC_UNUSED,
+                       size_t size G_GNUC_UNUSED,
+                       off_t offset G_GNUC_UNUSED,
+                       struct fuse_file_info *fi G_GNUC_UNUSED)
 {
     int res = -ENOENT;
     char *hostpath = NULL;
     struct fuse_context *context = NULL;
     virDomainDefPtr def = NULL;
 
-    if (virAsprintf(&hostpath, "/proc/%s", path) < 0)
-        return -errno;
+    hostpath = g_strdup_printf("/proc/%s", path);
 
     context = fuse_get_context();
     def = (virDomainDefPtr)context->private_data;
@@ -307,9 +301,7 @@ int lxcSetupFuse(virLXCFusePtr *f, virDomainDefPtr def)
     if (virMutexInit(&fuse->lock) < 0)
         goto cleanup2;
 
-    if (virAsprintf(&fuse->mountpoint, "%s/%s.fuse/", LXC_STATE_DIR,
-                    def->name) < 0)
-        goto cleanup1;
+    fuse->mountpoint = g_strdup_printf("%s/%s.fuse/", LXC_STATE_DIR, def->name);
 
     if (virFileMakePath(fuse->mountpoint) < 0) {
         virReportSystemError(errno, _("Cannot create %s"),
@@ -376,18 +368,18 @@ void lxcFreeFuse(virLXCFusePtr *f)
     }
 }
 #else
-int lxcSetupFuse(virLXCFusePtr *f ATTRIBUTE_UNUSED,
-                  virDomainDefPtr def ATTRIBUTE_UNUSED)
+int lxcSetupFuse(virLXCFusePtr *f G_GNUC_UNUSED,
+                  virDomainDefPtr def G_GNUC_UNUSED)
 {
     return 0;
 }
 
-int lxcStartFuse(virLXCFusePtr f ATTRIBUTE_UNUSED)
+int lxcStartFuse(virLXCFusePtr f G_GNUC_UNUSED)
 {
     return 0;
 }
 
-void lxcFreeFuse(virLXCFusePtr *f ATTRIBUTE_UNUSED)
+void lxcFreeFuse(virLXCFusePtr *f G_GNUC_UNUSED)
 {
 }
 #endif

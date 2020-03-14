@@ -41,8 +41,8 @@ VIR_LOG_INIT("storage.storage_backend_fs");
 
 #if WITH_STORAGE_FS
 
-# include <libxml/xpathInternals.h>
 # include <mntent.h>
+# include <paths.h>
 
 struct _virNetfsDiscoverState {
     const char *host;
@@ -58,37 +58,33 @@ virStorageBackendFileSystemNetFindPoolSourcesFunc(char **const groups,
     virNetfsDiscoverState *state = data;
     const char *name, *path;
     virStoragePoolSource *src = NULL;
-    int ret = -1;
 
     path = groups[0];
 
     if (!(name = strrchr(path, '/'))) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("invalid netfs path (no /): %s"), path);
-        goto cleanup;
+        return -1;
     }
     name += 1;
     if (*name == '\0') {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("invalid netfs path (ends in /): %s"), path);
-        goto cleanup;
+        return -1;
     }
 
     if (!(src = virStoragePoolSourceListNewSource(&state->list)))
-        goto cleanup;
+        return -1;
 
     if (VIR_ALLOC_N(src->hosts, 1) < 0)
-        goto cleanup;
+        return -1;
     src->nhost = 1;
 
-    if (VIR_STRDUP(src->hosts[0].name, state->host) < 0 ||
-        VIR_STRDUP(src->dir, path) < 0)
-        goto cleanup;
+    src->hosts[0].name = g_strdup(state->host);
+    src->dir = g_strdup(path);
     src->format = VIR_STORAGE_POOL_NETFS_NFS;
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -110,7 +106,7 @@ virStorageBackendFileSystemNetFindNFSPoolSources(virNetfsDiscoverState *state)
         1
     };
 
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     cmd = virCommandNewArgList(SHOWMOUNT,
                                "--no-headers",
@@ -140,7 +136,7 @@ virStorageBackendFileSystemNetFindPoolSources(const char *srcSpec,
     size_t i;
     int retNFS = -1;
     int retGluster = 0;
-    VIR_AUTOPTR(virStoragePoolSource) source = NULL;
+    g_autoptr(virStoragePoolSource) source = NULL;
 
     virCheckFlags(0, NULL);
 
@@ -250,7 +246,7 @@ virStorageBackendFileSystemIsMounted(virStoragePoolObjPtr pool)
     struct mntent ent;
     char buf[1024];
     int rc1, rc2;
-    VIR_AUTOFREE(char *) src = NULL;
+    g_autofree char *src = NULL;
 
     if ((mtab = fopen(_PATH_MOUNTED, "r")) == NULL) {
         virReportSystemError(errno,
@@ -259,10 +255,10 @@ virStorageBackendFileSystemIsMounted(virStoragePoolObjPtr pool)
         goto cleanup;
     }
 
-    while ((getmntent_r(mtab, &ent, buf, sizeof(buf))) != NULL) {
-        if (!(src = virStorageBackendFileSystemGetPoolSource(pool)))
-            goto cleanup;
+    if ((src = virStorageBackendFileSystemGetPoolSource(pool)) == NULL)
+        goto cleanup;
 
+    while ((getmntent_r(mtab, &ent, buf, sizeof(buf))) != NULL) {
         /* compare both mount destinations and sources to be sure the mounted
          * FS pool is really the one we're looking for
          */
@@ -274,8 +270,6 @@ virStorageBackendFileSystemIsMounted(virStoragePoolObjPtr pool)
             ret = 1;
             goto cleanup;
         }
-
-        VIR_FREE(src);
     }
 
     ret = 0;
@@ -299,8 +293,8 @@ virStorageBackendFileSystemMount(virStoragePoolObjPtr pool)
 {
     virStoragePoolDefPtr def = virStoragePoolObjGetDef(pool);
     int rc;
-    VIR_AUTOFREE(char *) src = NULL;
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autofree char *src = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     if (virStorageBackendFileSystemIsValid(pool) < 0)
         return -1;
@@ -318,7 +312,14 @@ virStorageBackendFileSystemMount(virStoragePoolObjPtr pool)
         return -1;
 
     cmd = virStorageBackendFileSystemMountCmd(MOUNT, def, src);
-    return virCommandRun(cmd, NULL);
+
+    /* Mounting a shared FS might take a long time. Don't hold
+     * the pool locked meanwhile. */
+    virObjectUnlock(pool);
+    rc = virCommandRun(cmd, NULL);
+    virObjectLock(pool);
+
+    return rc;
 }
 
 
@@ -359,7 +360,7 @@ virStorageBackendFileSystemStop(virStoragePoolObjPtr pool)
 {
     virStoragePoolDefPtr def = virStoragePoolObjGetDef(pool);
     int rc;
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     if (virStorageBackendFileSystemIsValid(pool) < 0)
         return -1;
@@ -407,7 +408,7 @@ static int
 virStorageBackendExecuteMKFS(const char *device,
                              const char *format)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     cmd = virCommandNewArgList(MKFS, "-t", format, NULL);
 
@@ -432,8 +433,8 @@ virStorageBackendExecuteMKFS(const char *device,
 }
 #else /* #ifdef MKFS */
 static int
-virStorageBackendExecuteMKFS(const char *device ATTRIBUTE_UNUSED,
-                             const char *format ATTRIBUTE_UNUSED)
+virStorageBackendExecuteMKFS(const char *device G_GNUC_UNUSED,
+                             const char *format G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    _("mkfs is not supported on this platform: "
@@ -457,13 +458,14 @@ virStorageBackendMakeFileSystem(virStoragePoolObjPtr pool,
         virReportError(VIR_ERR_OPERATION_INVALID,
                        _("No source device specified when formatting pool '%s'"),
                        def->name);
-        goto error;
+        return -1;
     }
 
     device = def->source.devices[0].path;
     format = virStoragePoolFormatFileSystemTypeToString(def->source.format);
     VIR_DEBUG("source device: '%s' format: '%s'", device, format);
 
+    virObjectUnlock(pool);
     if (!virFileExists(device)) {
         virReportError(VIR_ERR_OPERATION_INVALID,
                        _("Source device does not exist when formatting pool '%s'"),
@@ -482,6 +484,7 @@ virStorageBackendMakeFileSystem(virStoragePoolObjPtr pool,
         ret = virStorageBackendExecuteMKFS(device, format);
 
  error:
+    virObjectLock(pool);
     return ret;
 }
 
@@ -529,7 +532,6 @@ virStorageBackendFileSystemBuild(virStoragePoolObjPtr pool,
 
 #if WITH_STORAGE_FS
 
-# define STORAGE_POOL_FS_NAMESPACE_HREF "http://libvirt.org/schemas/storagepool/fs/1.0"
 
 /* Backend XML Namespace handling for fs or netfs specific mount options to
  * be added to the mount -o {options_list} command line that are not otherwise
@@ -569,15 +571,7 @@ virStoragePoolDefFSNamespaceParse(xmlXPathContextPtr ctxt,
     int nnodes;
     size_t i;
     int ret = -1;
-    VIR_AUTOFREE(xmlNodePtr *)nodes = NULL;
-
-    if (xmlXPathRegisterNs(ctxt, BAD_CAST "fs",
-                           BAD_CAST STORAGE_POOL_FS_NAMESPACE_HREF) < 0) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("Failed to register xml namespace '%s'"),
-                       STORAGE_POOL_FS_NAMESPACE_HREF);
-        return -1;
-    }
+    g_autofree xmlNodePtr *nodes = NULL;
 
     nnodes = virXPathNodeSet("./fs:mount_opts/fs:option", ctxt, &nodes);
     if (nnodes < 0)
@@ -600,7 +594,7 @@ virStoragePoolDefFSNamespaceParse(xmlXPathContextPtr ctxt,
         cmdopts->noptions++;
     }
 
-    VIR_STEAL_PTR(*data, cmdopts);
+    *data = g_steal_pointer(&cmdopts);
     ret = 0;
 
  cleanup:
@@ -632,12 +626,6 @@ virStoragePoolDefFSNamespaceFormatXML(virBufferPtr buf,
     return 0;
 }
 
-
-static const char *
-virStoragePoolDefFSNamespaceHref(void)
-{
-    return "xmlns:fs='" STORAGE_POOL_FS_NAMESPACE_HREF "'";
-}
 
 #endif /* WITH_STORAGE_FS */
 
@@ -701,11 +689,12 @@ virStorageBackend virStorageBackendNetFileSystem = {
     .wipeVol = virStorageBackendVolWipeLocal,
 };
 
-static virStoragePoolXMLNamespace virStoragePoolFSXMLNamespace = {
+static virXMLNamespace virStoragePoolFSXMLNamespace = {
     .parse = virStoragePoolDefFSNamespaceParse,
     .free = virStoragePoolDefFSNamespaceFree,
     .format = virStoragePoolDefFSNamespaceFormatXML,
-    .href = virStoragePoolDefFSNamespaceHref,
+    .prefix = "fs",
+    .uri = "http://libvirt.org/schemas/storagepool/fs/1.0",
 };
 #endif /* WITH_STORAGE_FS */
 

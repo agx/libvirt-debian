@@ -23,7 +23,6 @@
 
 #include <config.h>
 #include <libutil.h>
-#include <getopt_int.h>
 
 #include "bhyve_capabilities.h"
 #include "bhyve_command.h"
@@ -32,7 +31,6 @@
 #include "virlog.h"
 #include "virstring.h"
 #include "virutil.h"
-#include "c-ctype.h"
 
 #define VIR_FROM_THIS VIR_FROM_BHYVE
 
@@ -151,8 +149,10 @@ bhyveCommandLineToArgv(const char *nativeConfig,
         start = curr;
         next = strchr(curr, '\n');
 
-        if (VIR_STRNDUP(line, curr, next ? next - curr : -1) < 0)
-            goto error;
+        if (next)
+            line = g_strndup(curr, next - curr);
+        else
+            line = g_strdup(curr);
 
         if (VIR_RESIZE_N(lines, lines_alloc, line_count, 2) < 0) {
             VIR_FREE(line);
@@ -195,8 +195,10 @@ bhyveCommandLineToArgv(const char *nativeConfig,
                 next = strchr(start, ' ');
             }
 
-            if (VIR_STRNDUP(arg, curr, next ? next - curr : -1) < 0)
-                goto error;
+            if (next)
+                arg = g_strndup(curr, next - curr);
+            else
+                arg = g_strdup(curr);
 
             if (next && (*next == '\'' || *next == '"'))
                 next++;
@@ -209,7 +211,7 @@ bhyveCommandLineToArgv(const char *nativeConfig,
             arglist[args_count++] = arg;
             arglist[args_count] = NULL;
 
-            while (next && c_isspace(*next))
+            while (next && g_ascii_isspace(*next))
                 next++;
 
             curr = next;
@@ -264,7 +266,7 @@ bhyveCommandLineToArgv(const char *nativeConfig,
 
 static int
 bhyveParseBhyveLPCArg(virDomainDefPtr def,
-                      unsigned caps ATTRIBUTE_UNUSED,
+                      unsigned caps G_GNUC_UNUSED,
                       const char *arg)
 {
     /* -l emulation[,config] */
@@ -280,8 +282,7 @@ bhyveParseBhyveLPCArg(virDomainDefPtr def,
     if (!separator)
         goto error;
 
-    if (VIR_STRNDUP(type, arg, separator - arg) < 0)
-        goto error;
+    type = g_strndup(arg, separator - arg);
 
     /* Only support com%d */
     if (STRPREFIX(type, "com") && type[4] == 0) {
@@ -300,16 +301,8 @@ bhyveParseBhyveLPCArg(virDomainDefPtr def,
                 goto error;
         }
 
-        if (VIR_STRDUP(chr->source->data.nmdm.master, param) < 0) {
-            virDomainChrDefFree(chr);
-            goto error;
-        }
-
-        if (VIR_STRDUP(chr->source->data.nmdm.slave, chr->source->data.file.path)
-            < 0) {
-            virDomainChrDefFree(chr);
-            goto error;
-        }
+        chr->source->data.nmdm.master = g_strdup(param);
+        chr->source->data.nmdm.slave = g_strdup(chr->source->data.file.path);
 
         /* If the last character of the master is 'A', the slave will be 'B'
          * and vice versa */
@@ -375,11 +368,13 @@ bhyveParsePCISlot(const char *slotdef,
 
        next = strchr(curr, ':');
 
-       if (VIR_STRNDUP(val, curr, next? next - curr : -1) < 0)
-           goto error;
+       if (next)
+           val = g_strndup(curr, next - curr);
+       else
+           val = g_strdup(curr);
 
        if (virStrToLong_ui(val, NULL, 10, &values[i]) < 0)
-           goto error;
+           return -1;
 
        VIR_FREE(val);
 
@@ -409,13 +404,11 @@ bhyveParsePCISlot(const char *slotdef,
     }
 
     return 0;
- error:
-    return -1;
 }
 
 static int
 bhyveParsePCIDisk(virDomainDefPtr def,
-                  unsigned caps ATTRIBUTE_UNUSED,
+                  unsigned caps G_GNUC_UNUSED,
                   unsigned pcislot,
                   unsigned pcibus,
                   unsigned function,
@@ -431,7 +424,7 @@ bhyveParsePCIDisk(virDomainDefPtr def,
     virDomainDiskDefPtr disk = NULL;
 
     if (!(disk = virDomainDiskDefNew(NULL)))
-        goto cleanup;
+        return 0;
 
     disk->bus = bus;
     disk->device = device;
@@ -450,20 +443,19 @@ bhyveParsePCIDisk(virDomainDefPtr def,
         goto error;
 
     separator = strchr(config, ',');
-    if (VIR_STRNDUP(disk->src->path, config,
-                    separator? separator - config : -1) < 0)
-        goto error;
+    if (separator)
+        disk->src->path = g_strndup(config, separator - config);
+    else
+        disk->src->path = g_strdup(config);
 
     if (bus == VIR_DOMAIN_DISK_BUS_VIRTIO) {
         idx = *nvirtiodisk;
         *nvirtiodisk += 1;
-        if (VIR_STRDUP(disk->dst, "vda") < 0)
-            goto error;
+        disk->dst = g_strdup("vda");
     } else if (bus == VIR_DOMAIN_DISK_BUS_SATA) {
         idx = *nahcidisk;
         *nahcidisk += 1;
-        if (VIR_STRDUP(disk->dst, "sda") < 0)
-            goto error;
+        disk->dst = g_strdup("sda");
     }
 
     if (idx > 'z' - 'a') {
@@ -477,7 +469,6 @@ bhyveParsePCIDisk(virDomainDefPtr def,
     if (VIR_APPEND_ELEMENT(def->disks, def->ndisks, disk) < 0)
         goto error;
 
- cleanup:
     return 0;
 
  error:
@@ -488,7 +479,7 @@ bhyveParsePCIDisk(virDomainDefPtr def,
 static int
 bhyveParsePCINet(virDomainDefPtr def,
                  virDomainXMLOptionPtr xmlopt,
-                 unsigned caps ATTRIBUTE_UNUSED,
+                 unsigned caps G_GNUC_UNUSED,
                  unsigned pcislot,
                  unsigned pcibus,
                  unsigned function,
@@ -501,15 +492,14 @@ bhyveParsePCINet(virDomainDefPtr def,
     const char *separator = NULL;
     const char *mac = NULL;
 
-    if (VIR_ALLOC(net) < 0)
+    if (!(net = virDomainNetDefNew(xmlopt)))
         goto cleanup;
 
     /* As we only support interface type='bridge' and cannot
      * guess the actual bridge name from the command line,
      * try to come up with some reasonable defaults */
     net->type = VIR_DOMAIN_NET_TYPE_BRIDGE;
-    if (VIR_STRDUP(net->data.bridge.brname, "virbr0") < 0)
-        goto error;
+    net->data.bridge.brname = g_strdup("virbr0");
 
     net->model = model;
     net->info.type = VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI;
@@ -527,9 +517,10 @@ bhyveParsePCINet(virDomainDefPtr def,
     }
 
     separator = strchr(config, ',');
-    if (VIR_STRNDUP(net->ifname, config,
-                    separator? separator - config : -1) < 0)
-        goto error;
+    if (separator)
+        net->ifname = g_strndup(config, separator - config);
+    else
+        net->ifname = g_strdup(config);
 
     if (!separator)
         goto cleanup;
@@ -583,15 +574,15 @@ bhyveParseBhyvePCIArg(virDomainDefPtr def,
     else
         separator++; /* Skip comma */
 
-    if (VIR_STRNDUP(slotdef, arg, separator - arg - 1) < 0)
-        goto error;
+    slotdef = g_strndup(arg, separator - arg - 1);
 
     conf = strchr(separator+1, ',');
-    if (conf)
+    if (conf) {
         conf++; /* Skip initial comma */
-
-    if (VIR_STRNDUP(emulation, separator, conf? conf - separator - 1 : -1) < 0)
-        goto error;
+        emulation = g_strndup(separator, conf - separator - 1);
+    } else {
+        emulation = g_strdup(separator);
+    }
 
     if (bhyveParsePCISlot(slotdef, &pcislot, &bus, &function) < 0)
         goto error;
@@ -633,6 +624,14 @@ bhyveParseBhyvePCIArg(virDomainDefPtr def,
     return -1;
 }
 
+#define CONSUME_ARG(var) \
+    if ((opti + 1) == argc) { \
+        virReportError(VIR_ERR_INVALID_ARG, _("Missing argument for '%s'"), \
+                       argv[opti]); \
+        return -1; \
+    } \
+    var = argv[++opti]
+
 /*
  * Parse the /usr/sbin/bhyve command line.
  */
@@ -642,60 +641,59 @@ bhyveParseBhyveCommandLine(virDomainDefPtr def,
                            unsigned caps,
                            int argc, char **argv)
 {
-    int c;
-    const char optstr[] = "abehuwxACHIPSWYp:g:c:s:m:l:U:";
     int vcpus = 1;
     size_t memory = 0;
     unsigned nahcidisks = 0;
     unsigned nvirtiodisks = 0;
-    struct _getopt_data *parser;
+    size_t opti;
+    const char *arg;
 
-    if (!argv)
-        goto error;
+    for (opti = 1; opti < argc; opti++) {
+        if (argv[opti][0] != '-')
+            break;
 
-    if (VIR_ALLOC(parser) < 0)
-        goto error;
-
-    while ((c = _getopt_internal_r(argc, argv, optstr,
-            NULL, NULL, 0, parser, 0)) != -1) {
-        switch (c) {
+        switch (argv[opti][1]) {
         case 'A':
             def->features[VIR_DOMAIN_FEATURE_ACPI] = VIR_TRISTATE_SWITCH_ON;
             break;
         case 'c':
-            if (virStrToLong_i(parser->optarg, NULL, 10, &vcpus) < 0) {
+            CONSUME_ARG(arg);
+            if (virStrToLong_i(arg, NULL, 10, &vcpus) < 0) {
                 virReportError(VIR_ERR_OPERATION_FAILED, "%s",
                                _("Failed to parse number of vCPUs"));
-                goto error;
+                return -1;
             }
             if (virDomainDefSetVcpusMax(def, vcpus, xmlopt) < 0)
-                goto error;
+                return -1;
             if (virDomainDefSetVcpus(def, vcpus) < 0)
-                goto error;
+                return -1;
             break;
         case 'l':
-            if (bhyveParseBhyveLPCArg(def, caps, parser->optarg))
-                goto error;
+            CONSUME_ARG(arg);
+            if (bhyveParseBhyveLPCArg(def, caps, arg))
+                return -1;
             break;
         case 's':
+            CONSUME_ARG(arg);
             if (bhyveParseBhyvePCIArg(def,
                                       xmlopt,
                                       caps,
                                       &nahcidisks,
                                       &nvirtiodisks,
-                                      parser->optarg))
-                goto error;
+                                      arg))
+                return -1;
             break;
         case 'm':
-            if (bhyveParseMemsize(parser->optarg, &memory)) {
+            CONSUME_ARG(arg);
+            if (bhyveParseMemsize(arg, &memory)) {
                 virReportError(VIR_ERR_OPERATION_FAILED, "%s",
                                _("Failed to parse memory"));
-                goto error;
+                return -1;
             }
             if (def->mem.cur_balloon != 0 && def->mem.cur_balloon != memory) {
                 virReportError(VIR_ERR_OPERATION_FAILED, "%s",
                            _("Failed to parse memory: size mismatch"));
-                goto error;
+                return -1;
             }
             def->mem.cur_balloon = memory;
             virDomainDefSetMemoryTotal(def, memory);
@@ -709,41 +707,39 @@ bhyveParseBhyveCommandLine(virDomainDefPtr def,
             def->clock.offset = VIR_DOMAIN_CLOCK_OFFSET_UTC;
             break;
         case 'U':
-            if (virUUIDParse(parser->optarg, def->uuid) < 0) {
+            CONSUME_ARG(arg);
+            if (virUUIDParse(arg, def->uuid) < 0) {
                 virReportError(VIR_ERR_INTERNAL_ERROR,
-                               _("Cannot parse UUID '%s'"), parser->optarg);
-                goto error;
+                               _("Cannot parse UUID '%s'"), arg);
+                return -1;
             }
             break;
         case 'S':
             def->mem.locked = true;
             break;
+        case 'p':
+        case 'g':
+            CONSUME_ARG(arg);
         }
     }
 
-    if (argc != parser->optind) {
+    if (argc != opti) {
         virReportError(VIR_ERR_OPERATION_FAILED, "%s",
                        _("Failed to parse arguments for bhyve command"));
-        goto error;
+        return -1;
     }
 
     if (def->name == NULL) {
-        if (VIR_STRDUP(def->name, argv[argc]) < 0)
-            goto error;
+        def->name = g_strdup(argv[argc]);
     } else if (STRNEQ(def->name, argv[argc])) {
         /* the vm name of the loader and the bhyverun command differ, throw an
          * error here */
         virReportError(VIR_ERR_OPERATION_FAILED, "%s",
                        _("Failed to parse arguments: VM name mismatch"));
-        goto error;
+        return -1;
     }
 
-    VIR_FREE(parser);
     return 0;
-
- error:
-    VIR_FREE(parser);
-    return -1;
 }
 
 /*
@@ -753,50 +749,45 @@ static int
 bhyveParseBhyveLoadCommandLine(virDomainDefPtr def,
                                int argc, char **argv)
 {
-    int c;
     /* bhyveload called with default arguments when only -m and -d are given.
      * Store this in a bit field and check if only those two options are given
      * later */
     unsigned arguments = 0;
     size_t memory = 0;
-    struct _getopt_data *parser;
     size_t i = 0;
-    int ret = -1;
+    size_t opti;
+    const char *arg;
 
-    const char optstr[] = "CSc:d:e:h:l:m:";
+    for (opti = 1; opti < argc; opti++) {
+        if (argv[opti][0] != '-')
+            break;
 
-    if (!argv)
-        goto error;
-
-    if (VIR_ALLOC(parser) < 0)
-        goto error;
-
-    while ((c = _getopt_internal_r(argc, argv, optstr,
-            NULL, NULL, 0, parser, 0)) != -1) {
-        switch (c) {
+        switch (argv[opti][1]) {
         case 'd':
+            CONSUME_ARG(arg);
             arguments |= 1;
             /* Iterate over the disks of the domain trying to match up the
              * source */
             for (i = 0; i < def->ndisks; i++) {
                 if (STREQ(virDomainDiskGetSource(def->disks[i]),
-                          parser->optarg)) {
+                          arg)) {
                     def->disks[i]->info.bootIndex = i;
                     break;
                 }
             }
             break;
         case 'm':
+            CONSUME_ARG(arg);
             arguments |= 2;
-            if (bhyveParseMemsize(parser->optarg, &memory)) {
+            if (bhyveParseMemsize(arg, &memory)) {
                 virReportError(VIR_ERR_OPERATION_FAILED, "%s",
                                _("Failed to parse memory"));
-                goto error;
+                return -1;
             }
             if (def->mem.cur_balloon != 0 && def->mem.cur_balloon != memory) {
                 virReportError(VIR_ERR_OPERATION_FAILED, "%s",
                                _("Failed to parse memory: size mismatch"));
-                goto error;
+                return -1;
             }
             def->mem.cur_balloon = memory;
             virDomainDefSetMemoryTotal(def, memory);
@@ -806,54 +797,46 @@ bhyveParseBhyveLoadCommandLine(virDomainDefPtr def,
         }
     }
 
+    if (argc != opti) {
+        virReportError(VIR_ERR_OPERATION_FAILED, "%s",
+                       _("Failed to parse arguments for bhyve command"));
+        return -1;
+    }
+
     if (arguments != 3) {
         /* Set os.bootloader since virDomainDefFormatInternal will only format
          * the bootloader arguments if os->bootloader is set. */
-        if (VIR_STRDUP(def->os.bootloader, argv[0]) < 0)
-           goto error;
-
+        def->os.bootloader = g_strdup(argv[0]);
         def->os.bootloaderArgs = virStringListJoin((const char**) &argv[1], " ");
     }
 
-    if (argc != parser->optind) {
-        virReportError(VIR_ERR_OPERATION_FAILED, "%s",
-                       _("Failed to parse arguments for bhyveload command"));
-        goto error;
-    }
-
     if (def->name == NULL) {
-        if (VIR_STRDUP(def->name, argv[argc]) < 0)
-            goto error;
+        def->name = g_strdup(argv[argc]);
     } else if (STRNEQ(def->name, argv[argc])) {
         /* the vm name of the loader and the bhyverun command differ, throw an
          * error here */
         virReportError(VIR_ERR_OPERATION_FAILED, "%s",
                        _("Failed to parse arguments: VM name mismatch"));
-        goto error;
+        return -1;
     }
 
-    ret = 0;
- error:
-    VIR_FREE(parser);
-    return ret;
+    return 0;
 }
+
+#undef CONSUME_ARG
 
 static int
 bhyveParseCustomLoaderCommandLine(virDomainDefPtr def,
-                                  int argc ATTRIBUTE_UNUSED,
+                                  int argc G_GNUC_UNUSED,
                                   char **argv)
 {
     if (!argv)
-        goto error;
+        return -1;
 
-    if (VIR_STRDUP(def->os.bootloader, argv[0]) < 0)
-       goto error;
-
+    def->os.bootloader = g_strdup(argv[0]);
     def->os.bootloaderArgs = virStringListJoin((const char**) &argv[1], " ");
 
     return 0;
- error:
-    return -1;
 }
 
 virDomainDefPtr

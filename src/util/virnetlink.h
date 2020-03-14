@@ -21,22 +21,13 @@
 
 #include "internal.h"
 #include "virmacaddr.h"
-#include "virautoclean.h"
 
 #if defined(__linux__) && defined(HAVE_LIBNL)
 
-/* Work around a bug where older libnl-1 headers expected older gcc
- * semantics of 'extern inline' that conflict with C99 semantics.  */
-# ifdef HAVE_LIBNL1
-#  define inline
-# endif
 # include <netlink/msg.h>
-# ifdef HAVE_LIBNL1
-#  undef inline
-# endif
 
 typedef struct nl_msg virNetlinkMsg;
-VIR_DEFINE_AUTOPTR_FUNC(virNetlinkMsg, nlmsg_free);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virNetlinkMsg, nlmsg_free);
 
 #else
 
@@ -109,7 +100,7 @@ int virNetlinkGetErrorCode(struct nlmsghdr *resp, unsigned int recvbuflen);
 int virNetlinkDumpLink(const char *ifname, int ifindex,
                        void **nlData, struct nlattr **tb,
                        uint32_t src_pid, uint32_t dst_pid)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int
 virNetlinkGetNeighbor(void **nlData, uint32_t src_pid, uint32_t dst_pid);
 

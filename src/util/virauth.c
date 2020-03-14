@@ -42,8 +42,8 @@ virAuthGetConfigFilePathURI(virURIPtr uri,
                             char **path)
 {
     size_t i;
-    const char *authenv = virGetEnvBlockSUID("LIBVIRT_AUTH_FILE");
-    VIR_AUTOFREE(char *) userdir = NULL;
+    const char *authenv = getenv("LIBVIRT_AUTH_FILE");
+    g_autofree char *userdir = NULL;
 
     *path = NULL;
 
@@ -51,8 +51,7 @@ virAuthGetConfigFilePathURI(virURIPtr uri,
 
     if (authenv) {
         VIR_DEBUG("Using path from env '%s'", authenv);
-        if (VIR_STRDUP(*path, authenv) < 0)
-            return -1;
+        *path = g_strdup(authenv);
         return 0;
     }
 
@@ -61,18 +60,15 @@ virAuthGetConfigFilePathURI(virURIPtr uri,
             if (STREQ_NULLABLE(uri->params[i].name, "authfile") &&
                 uri->params[i].value) {
                 VIR_DEBUG("Using path from URI '%s'", uri->params[i].value);
-                if (VIR_STRDUP(*path, uri->params[i].value) < 0)
-                    return -1;
+                *path = g_strdup(uri->params[i].value);
                 return 0;
             }
         }
     }
 
-    if (!(userdir = virGetUserConfigDirectory()))
-        return -1;
+    userdir = virGetUserConfigDirectory();
 
-    if (virAsprintf(path, "%s/auth.conf", userdir) < 0)
-        return -1;
+    *path = g_strdup_printf("%s/auth.conf", userdir);
 
     VIR_DEBUG("Checking for readability of '%s'", *path);
     if (access(*path, R_OK) == 0)
@@ -80,8 +76,7 @@ virAuthGetConfigFilePathURI(virURIPtr uri,
 
     VIR_FREE(*path);
 
-    if (VIR_STRDUP(*path, SYSCONFDIR "/libvirt/auth.conf") < 0)
-        return -1;
+    *path = g_strdup(SYSCONFDIR "/libvirt/auth.conf");
 
     VIR_DEBUG("Checking for readability of '%s'", *path);
     if (access(*path, R_OK) == 0)
@@ -111,7 +106,7 @@ virAuthGetCredential(const char *servicename,
                      const char *path,
                      char **value)
 {
-    VIR_AUTOPTR(virAuthConfig) config = NULL;
+    g_autoptr(virAuthConfig) config = NULL;
     const char *tmp;
 
     *value = NULL;
@@ -129,8 +124,7 @@ virAuthGetCredential(const char *servicename,
                             &tmp) < 0)
         return -1;
 
-    if (VIR_STRDUP(*value, tmp) < 0)
-        return -1;
+    *value = g_strdup(tmp);
 
     return 0;
 }
@@ -145,7 +139,7 @@ virAuthGetUsernamePath(const char *path,
 {
     unsigned int ncred;
     virConnectCredential cred;
-    VIR_AUTOFREE(char *) prompt = NULL;
+    g_autofree char *prompt = NULL;
     char *ret = NULL;
 
     if (virAuthGetCredential(servicename, hostname, "username", path, &ret) < 0)
@@ -162,13 +156,10 @@ virAuthGetUsernamePath(const char *path,
     memset(&cred, 0, sizeof(virConnectCredential));
 
     if (defaultUsername != NULL) {
-        if (virAsprintf(&prompt, _("Enter username for %s [%s]"), hostname,
-                        defaultUsername) < 0) {
-            return NULL;
-        }
+        prompt = g_strdup_printf(_("Enter username for %s [%s]"), hostname,
+                                 defaultUsername);
     } else {
-        if (virAsprintf(&prompt, _("Enter username for %s"), hostname) < 0)
-            return NULL;
+        prompt = g_strdup_printf(_("Enter username for %s"), hostname);
     }
 
     for (ncred = 0; ncred < auth->ncredtype; ncred++) {
@@ -210,7 +201,7 @@ virAuthGetUsername(virConnectPtr conn,
                    const char *defaultUsername,
                    const char *hostname)
 {
-    VIR_AUTOFREE(char *) path = NULL;
+    g_autofree char *path = NULL;
 
     if (virAuthGetConfigFilePath(conn, &path) < 0)
         return NULL;
@@ -229,7 +220,7 @@ virAuthGetPasswordPath(const char *path,
 {
     unsigned int ncred;
     virConnectCredential cred;
-    VIR_AUTOFREE(char *) prompt = NULL;
+    g_autofree char *prompt = NULL;
     char *ret = NULL;
 
     if (virAuthGetCredential(servicename, hostname, "password", path, &ret) < 0)
@@ -245,10 +236,7 @@ virAuthGetPasswordPath(const char *path,
 
     memset(&cred, 0, sizeof(virConnectCredential));
 
-    if (virAsprintf(&prompt, _("Enter %s's password for %s"), username,
-                    hostname) < 0) {
-        return NULL;
-    }
+    prompt = g_strdup_printf(_("Enter %s's password for %s"), username, hostname);
 
     for (ncred = 0; ncred < auth->ncredtype; ncred++) {
         if (auth->credtype[ncred] != VIR_CRED_PASSPHRASE &&
@@ -292,7 +280,7 @@ virAuthGetPassword(virConnectPtr conn,
                    const char *username,
                    const char *hostname)
 {
-    VIR_AUTOFREE(char *) path = NULL;
+    g_autofree char *path = NULL;
 
     if (virAuthGetConfigFilePath(conn, &path) < 0)
         return NULL;

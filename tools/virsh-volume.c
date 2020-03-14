@@ -341,10 +341,6 @@ cmdVolCreateAs(vshControl *ctl, const vshCmd *cmd)
     virBufferAdjustIndent(&buf, -2);
     virBufferAddLit(&buf, "</volume>\n");
 
-    if (virBufferError(&buf)) {
-        vshError(ctl, "%s", _("Failed to allocate XML buffer"));
-        goto cleanup;
-    }
     xml = virBufferContentAndReset(&buf);
 
     if (printXML) {
@@ -1376,7 +1372,7 @@ static const vshCmdOptDef opts_vol_list[] = {
 };
 
 static bool
-cmdVolList(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
+cmdVolList(vshControl *ctl, const vshCmd *cmd G_GNUC_UNUSED)
 {
     virStorageVolInfo volumeInfo;
     virStoragePoolPtr pool;
@@ -1413,32 +1409,28 @@ cmdVolList(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
         /* Retrieve the volume path */
         if ((volInfoTexts[i].path = virStorageVolGetPath(vol)) == NULL) {
             /* Something went wrong retrieving a volume path, cope with it */
-            volInfoTexts[i].path = vshStrdup(ctl, _("unknown"));
+            volInfoTexts[i].path = g_strdup(_("unknown"));
         }
 
         /* If requested, retrieve volume type and sizing information */
         if (details) {
             if (virStorageVolGetInfo(vol, &volumeInfo) != 0) {
                 /* Something went wrong retrieving volume info, cope with it */
-                volInfoTexts[i].allocation = vshStrdup(ctl, _("unknown"));
-                volInfoTexts[i].capacity = vshStrdup(ctl, _("unknown"));
-                volInfoTexts[i].type = vshStrdup(ctl, _("unknown"));
+                volInfoTexts[i].allocation = g_strdup(_("unknown"));
+                volInfoTexts[i].capacity = g_strdup(_("unknown"));
+                volInfoTexts[i].type = g_strdup(_("unknown"));
             } else {
                 /* Convert the returned volume info into output strings */
 
                 /* Volume type */
-                volInfoTexts[i].type = vshStrdup(ctl,
-                                                 virshVolumeTypeToString(volumeInfo.type));
+                volInfoTexts[i].type = g_strdup(virshVolumeTypeToString(volumeInfo.type));
 
                 val = vshPrettyCapacity(volumeInfo.capacity, &unit);
-                if (virAsprintf(&volInfoTexts[i].capacity,
-                                "%.2lf %s", val, unit) < 0)
-                    goto cleanup;
+                volInfoTexts[i].capacity = g_strdup_printf("%.2lf %s", val, unit);
 
                 val = vshPrettyCapacity(volumeInfo.allocation, &unit);
-                if (virAsprintf(&volInfoTexts[i].allocation,
-                                "%.2lf %s", val, unit) < 0)
-                    goto cleanup;
+                volInfoTexts[i].allocation = g_strdup_printf("%.2lf %s", val,
+                                                             unit);
             }
         }
     }

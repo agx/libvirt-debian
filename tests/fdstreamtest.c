@@ -62,8 +62,7 @@ static int testFDStreamReadCommon(const char *scratchdir, bool blocking)
     for (i = 0; i < PATTERN_LEN; i++)
         pattern[i] = i;
 
-    if (virAsprintf(&file, "%s/input.data", scratchdir) < 0)
-        goto cleanup;
+    file = g_strdup_printf("%s/input.data", scratchdir);
 
     if ((fd = open(file, O_CREAT|O_WRONLY|O_EXCL, 0600)) < 0)
         goto cleanup;
@@ -101,7 +100,7 @@ static int testFDStreamReadCommon(const char *scratchdir, bool blocking)
             got = st->driver->streamRecv(st, buf + offset, want);
             if (got < 0) {
                 if (got == -2 && !blocking) {
-                    usleep(20 * 1000);
+                    g_usleep(20 * 1000);
                     goto reread;
                 }
                 virFilePrintf(stderr, "Failed to read stream: %s\n",
@@ -194,8 +193,7 @@ static int testFDStreamWriteCommon(const char *scratchdir, bool blocking)
     for (i = 0; i < PATTERN_LEN; i++)
         pattern[i] = i;
 
-    if (virAsprintf(&file, "%s/input.data", scratchdir) < 0)
-        goto cleanup;
+    file = g_strdup_printf("%s/input.data", scratchdir);
 
     if (!(st = virStreamNew(conn, flags)))
         goto cleanup;
@@ -222,7 +220,7 @@ static int testFDStreamWriteCommon(const char *scratchdir, bool blocking)
             got = st->driver->streamSend(st, pattern + offset, want);
             if (got < 0) {
                 if (got == -2 && !blocking) {
-                    usleep(20 * 1000);
+                    g_usleep(20 * 1000);
                     goto rewrite;
                 }
                 if (i == 9 &&
@@ -321,7 +319,7 @@ mymain(void)
     char scratchdir[] = SCRATCHDIRTEMPLATE;
     int ret = 0;
 
-    if (!mkdtemp(scratchdir)) {
+    if (!g_mkdtemp(scratchdir)) {
         virFilePrintf(stderr, "Cannot create fdstreamdir");
         abort();
     }

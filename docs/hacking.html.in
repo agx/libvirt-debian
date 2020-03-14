@@ -29,11 +29,11 @@
         file from zanata.</p>
       </li>
 
-      <li><p>Post patches using <code>git send-email</code>, with git
-        rename detection enabled.  You need a one-time setup of:</p>
-<pre>
-  git config diff.renames true
-</pre>
+      <li><p>The simplest way to send patches is to use the
+        <a href="https://github.com/stefanha/git-publish"><code>git-publish</code></a>
+        tool. All libvirt-related repositories contain a config file that
+        tells git-publish to use the correct mailing list and subject prefix.</p>
+        <p>Alternatively, you may send patches using <code>git send-email</code>.</p>
         <p>Also, for code motion patches, you may find that <code>git
         diff --patience</code> provides an easier-to-read patch.
         However, the usual workflow of libvirt developer is:</p>
@@ -72,8 +72,8 @@
 </pre>
         <p>As a rule, patches should be sent to the mailing list only: all
         developers are subscribed to libvir-list and read it regularly, so
-        please don't CC individual developers unless they've explicitly
-        asked you to.</p>
+        <strong>please don't CC individual developers</strong> unless
+        they've explicitly asked you to.</p>
         <p>Avoid using mail clients for sending patches, as most of them
         will mangle the messages in some way, making them unusable for our
         purposes.  Gmail and other Web-based mail clients are particularly
@@ -81,9 +81,11 @@
         <p>If everything went well, your patch should show up on the
         <a href="https://www.redhat.com/archives/libvir-list/">libvir-list
         archives</a> in a matter of minutes; if you still can't find it on
-        there after an hour or so, you should double-check your setup.  Note
-        that your very first post to the mailing list will be subject to
-        moderation, and it's not uncommon for that to take around a day.</p>
+        there after an hour or so, you should double-check your setup.
+        <strong>Note that, if you are not already a subscriber, your very
+        first post to the mailing list will be
+        subject to moderation</strong>, and it's not uncommon for that to
+        take around a day.</p>
         <p>Please follow this as close as you can, especially the rebase and
         <code>git send-email</code> part, as it makes life easier for other
         developers to review your patch set.</p>
@@ -139,14 +141,7 @@
       </li>
 
       <li><p>Run the automated tests on your code before submitting any changes.
-          In particular, configure with compile warnings set to
-          -Werror.  This is done automatically for a git checkout; from a
-          tarball, use:</p>
-<pre>
-  ./configure --enable-werror
-</pre>
-        <p>
-          and run the tests:
+          That is:
         </p>
 <pre>
   make check
@@ -184,12 +179,13 @@
 
         <p>
           When debugging failures during development, it is possible
-          to focus in on just the failing subtests by using TESTS and
-          VIR_TEST_RANGE:
+          to focus in on just the failing subtests by using
+          VIR_TEST_RANGE. I.e. to run all tests from 3 to 20 with the
+          exception of tests 6 and 16, use:
         </p>
 
 <pre>
-  make check VIR_TEST_DEBUG=1 VIR_TEST_RANGE=3-5 TESTS=qemuxml2argvtest
+  VIR_TEST_DEBUG=1 VIR_TEST_RANGE=3-5,7-20,^16 ./run tests/qemuxml2argvtest
 </pre>
 
         <p>
@@ -342,6 +338,36 @@
       <a href="http://people.redhat.com/rjones/how-to-supply-code-to-open-source-projects/">
         Richard Jones' guide to working with open source projects</a>.
     </p>
+
+    <h2><a id="lang">Language Usage</a></h2>
+
+    <p>
+      The libvirt repository makes use of a large number of programming
+      languages. It is anticipated that in the future libvirt will adopt
+      use of other new languages. To reduce the overall burden on developers,
+      there is thus a general desire to phase out usage of some of the
+      existing languages.
+    </p>
+
+    <p>
+      The preferred languages at this time are:
+    </p>
+
+    <ul>
+      <li>C - for the main libvirt codebase. Dialect supported by
+        GCC/CLang only.</li>
+      <li>Python - for supporting build scripts / tools. Code must
+        run with both version 2.7 and 3.x at this time.</li>
+    </ul>
+
+    <p>
+      Languages that should not be used for any new contributions:
+    </p>
+
+    <ul>
+      <li>Perl - build scripts must be written in Python instead.</li>
+      <li>Shell - build scripts must be written in Python instead.</li>
+    </ul>
 
     <h2><a id="tooling">Tooling</a></h2>
 
@@ -959,99 +985,151 @@ BAD:
       it points to, or it is aliased to another pointer that is.
     </p>
 
-    <h2><a id="memalloc">Low level memory management</a></h2>
-
+    <h2><a id="attribute_annotations">Attribute annotations</a></h2>
     <p>
-      Use of the malloc/free/realloc/calloc APIs is deprecated in the libvirt
-      codebase, because they encourage a number of serious coding bugs and do
-      not enable compile time verification of checks for NULL. Instead of these
-      routines, use the macros from viralloc.h.
+      Use the following annotations to help the compiler and/or static
+      analysis tools understand the code better:
     </p>
 
-    <ul>
-      <li><p>To allocate a single object:</p>
+    <table class="top_table">
+        <tr><th>Macro</th><th>Meaning</th></tr>
+        <tr><td><code>ATTRIBUTE_NONNULL</code></td><td>passing NULL for this parameter is not allowed</td></tr>
+        <tr><td><code>ATTRIBUTE_PACKED</code></td><td>force a structure to be packed</td></tr>
+        <tr><td><code>G_GNUC_FALLTHROUGH</code></td><td>allow code reuse by multiple switch cases</td></tr>
+        <tr><td><code>G_GNUC_NO_INLINE</code></td><td>the function is mocked in the test suite</td></tr>
+        <tr><td><code>G_GNUC_NORETURN</code></td><td>the function never returns</td></tr>
+        <tr><td><code>G_GNUC_NULL_TERMINATED</code></td><td>last parameter must be NULL</td></tr>
+        <tr><td><code>G_GNUC_PRINTF</code></td><td>validate that the formatting string matches parameters</td></tr>
+        <tr><td><code>G_GNUC_UNUSED</code></td><td>parameter is unused in this implementation of the function</td></tr>
+        <tr><td><code>G_GNUC_WARN_UNUSED_RESULT</code></td><td>the return value must be checked</td></tr>
+    </table>
 
-<pre>
-  virDomainPtr domain;
+    <h2><a id="glib">Adoption of GLib APIs</a></h2>
 
-  if (VIR_ALLOC(domain) &lt; 0)
-      return NULL;
-</pre>
-      </li>
+    <p>
+      Libvirt has adopted use of the
+      <a href="https://developer.gnome.org/glib/stable/">GLib library</a>.
+      Due to libvirt's long history of development, there are many APIs
+      in libvirt, for which GLib provides an alternative solution. The
+      general rule to follow is that the standard GLib solution will be
+      preferred over historical libvirt APIs. Existing code will be
+      ported over to use GLib APIs over time, but new code should use
+      the GLib APIs straight away where possible.
+    </p>
 
-      <li><p>To allocate an array of objects:</p>
-<pre>
-  virDomainPtr domains;
-  size_t ndomains = 10;
+    <p>
+      The following is a list of libvirt APIs that should no longer be
+      used in new code, and their suggested GLib replacements:
+    </p>
 
-  if (VIR_ALLOC_N(domains, ndomains) &lt; 0)
-      return NULL;
-</pre>
-      </li>
+    <dl>
+      <dt><code>VIR_ALLOC</code>, <code>VIR_REALLOC</code>,
+        <code>VIR_RESIZE_N</code>, <code>VIR_EXPAND_N</code>,
+        <code>VIR_SHRINK_N</code>, <code>VIR_FREE</code>,
+        <code>VIR_APPEND_ELEMENT</code>, <code>VIR_INSERT_ELEMENT</code>,
+        <code>VIR_DELETE_ELEMENT</code></dt>
+    <dd>Prefer the GLib APIs <code>g_new0</code>/<code>g_renew</code>/
+        <code>g_free</code> in most cases. There should rarely be a need
+        to use <code>g_malloc</code>/<code>g_realloc</code>.
+        Instead of using plain C arrays, it is preferrable to use
+        one of the GLib types, <code>GArray</code>, <code>GPtrArray</code>
+        or <code>GByteArray</code>. These
+        all use a struct to track the array memory and size together
+        and efficiently resize. <strong>NEVER MIX</strong> use of the
+        classic libvirt memory allocation APIs and GLib APIs within
+        a single method. Keep the style consistent, converting existing
+        code to GLib style in a separate, prior commit.</dd>
 
-      <li><p>To allocate an array of object pointers:</p>
-<pre>
-  virDomainPtr *domains;
-  size_t ndomains = 10;
+      <dt><code>virStrerror</code></dt>
+      <dd>The GLib <code>g_strerror()</code> function should be used instead,
+        which has a simpler calling convention as an added benefit.</dd>
 
-  if (VIR_ALLOC_N(domains, ndomains) &lt; 0)
-      return NULL;
-</pre>
-      </li>
+    <table class="top_table">
+        <tr><th>deprecated version</th><th>GLib version</th><th>Notes</th></tr>
+        <tr><td><code>VIR_ALLOC(var)</code></td><td><code>g_new0(var_t, 1)</code></td>
+            <td>the type needs to be passed explicitly</td></tr>
+        <tr><td><code>VIR_ALLOC_N</code></td><td><code>g_new0(var_t, n)</code></td><td></td></tr>
+        <tr><td><code>VIR_REALLOC_N</code></td><td><code>g_renew(var_t, ptr, n)</code></td>
+            <td>the newly added memory is not zeroed</td></tr>
+        <tr><td><code>VIR_EXPAND_N</code></td><td><code>g_renew(var_t, ptr, n)</code></td>
+            <td>zero the new memory manually or use an array type</td></tr>
+        <tr><td><code>VIR_SHRINK_N</code></td><td><code>g_renew(var_t, ptr, n)</code></td>
+            <td></td></tr>
+        <tr><td><code>VIR_APPEND_ELEMENT</code></td><td><code>g_array_append_val</code></td>
+            <td><code>g_ptr_array_add</code> or <code>g_byte_array_append</code></td></tr>
+        <tr><td><code>VIR_INSERT_ELEMENT</code></td><td><code>g_array_insert_val</code></td>
+            <td><code>g_ptr_array_insert</code></td></tr>
+        <tr><td><code>VIR_DELETE_ELEMENT</code></td><td><code>g_array_remove_index</code></td>
+            <td><code>g_ptr_array_remove_index</code> or <code>g_byte_array_remove_index</code></td></tr>
+        <tr><td><code>VIR_FREE</code></td><td><code>g_free</code></td>
+            <td><code>g_free</code> does not zero the pointer</td></tr>
+    </table>
 
-      <li><p>To re-allocate the array of domains to be 1 element
-      longer (however, note that repeatedly expanding an array by 1
-      scales quadratically, so this is recommended only for smaller
-      arrays):</p>
-<pre>
-  virDomainPtr domains;
-  size_t ndomains = 0;
+    <p>String allocation macros and functions:</p>
+    <table class="top_table">
+        <tr><th>deprecated version</th><th>GLib version</th><th>Notes</th></tr>
+        <tr><td><code>virAsprintf</code></td><td><code>g_strdup_printf</code></td><td></td></tr>
+        <tr><td><code>virVasprintf</code></td><td><code>g_strdup_vprint</code></td>
+            <td>use <code>g_vasprintf</code> if you really need to know the returned length</td></tr>
+        <tr><td><code>virStrerror</code></td><td><code>g_strerror</code></td>
+            <td>the error strings are cached globally so no need to free it</td></tr>
+    </table>
+    </dl>
 
-  if (VIR_EXPAND_N(domains, ndomains, 1) &lt; 0)
-      return NULL;
-  domains[ndomains - 1] = domain;
-</pre></li>
+    <p>
+      The following libvirt APIs have been deleted already:
+    </p>
+    <dl>
+      <dt><code>VIR_AUTOPTR</code>, <code>VIR_AUTOCLEAN</code>, <code>VIR_AUTOFREE</code></dt>
+      <dd>The GLib macros <code>g_autoptr</code>, <code>g_auto</code> and
+        <code>g_autofree</code> must be used
+        instead in all new code. In existing code, the GLib macros must
+        never be mixed with libvirt macros within a method, nor should
+        they be mixed with <code>VIR_FREE</code>. If introducing GLib macros to an
+        existing method, any use of libvirt macros must be converted
+        in an independent commit.
+      </dd>
 
-      <li><p>To ensure an array has room to hold at least one more
-      element (this approach scales better, but requires tracking
-      allocation separately from usage)</p>
+      <dt><code>VIR_DEFINE_AUTOPTR_FUNC</code>, <code>VIR_DEFINE_AUTOCLEAN_FUNC</code></dt>
+      <dd>The GLib macros <code>G_DEFINE_AUTOPTR_CLEANUP_FUNC</code> and
+        <code>G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC</code> must be used in all
+        new code. Existing code should be converted to the
+        new macros where relevant. It is permissible to use
+        <code>g_autoptr</code>, <code>g_auto</code> on an object whose cleanup function
+        is declared with the libvirt macros and vice-versa.
+      </dd>
 
-<pre>
-  virDomainPtr domains;
-  size_t ndomains = 0;
-  size_t ndomains_max = 0;
+      <dt><code>VIR_AUTOUNREF</code></dt>
+      <dd>The GLib macros <code>g_autoptr</code> and <code>G_DEFINE_AUTOPTR_CLEANUP_FUNC</code>
+        should be used to manage autoclean of virObject classes.
+        This matches usage with GObject classes.</dd>
 
-  if (VIR_RESIZE_N(domains, ndomains_max, ndomains, 1) &lt; 0)
-      return NULL;
-  domains[ndomains++] = domain;
-</pre>
-      </li>
+      <dt><code>VIR_STRDUP</code>, <code>VIR_STRNDUP</code></dt>
+      <dd>Prefer the GLib APIs <code>g_strdup</code> and <code>g_strndup</code>.</dd>
+    </dl>
+    <table class="top_table">
+        <tr><th>deleted version</th><th>GLib version</th><th>Notes</th></tr>
+        <tr><td><code>VIR_AUTOPTR</code></td><td><code>g_autoptr</code></td><td></td></tr>
+        <tr><td><code>VIR_AUTOCLEAN</code></td><td><code>g_auto</code></td><td></td></tr>
+        <tr><td><code>VIR_AUTOFREE</code></td><td><code>g_autofree</code></td><td>The GLib version does not use parentheses</td></tr>
+        <tr><td><code>VIR_AUTOUNREF</code></td><td><code>g_autoptr</code></td><td>The cleanup function needs to be defined</td></tr>
+        <tr><td><code>VIR_DEFINE_AUTOPTR_FUNC</code></td><td><code>G_DEFINE_AUTOPTR_CLEANUP_FUNC</code></td><td></td></tr>
+        <tr><td><code>VIR_DEFINE_AUTOCLEAN_FUNC</code></td><td><code>G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC</code></td><td></td></tr>
+        <tr><td><code>VIR_STEAL_PTR</code></td><td><code>g_steal_pointer</code></td>
+            <td><code>a = f(&amp;b)</code> instead of <code>f(a, b)</code></td></tr>
+        <tr><td><code>VIR_RETURN_PTR</code></td><td><code>return g_steal_pointer</code></td><td></td></tr>
+        <tr><td><code>ARRAY_CARDINALITY</code></td><td><code>G_N_ELEMENTS</code></td><td></td></tr>
+        <tr><td><code>ATTRIBUTE_FALLTHROUGH</code></td><td><code>G_GNUC_FALLTHROUGH</code></td><td></td></tr>
+        <tr><td><code>ATTRIBUTE_FMT_PRINTF</code></td><td><code>G_GNUC_PRINTF</code></td><td></td></tr>
+        <tr><td><code>ATTRIBUTE_NOINLINE</code></td><td><code>G_GNUC_NO_INLINE</code></td><td></td></tr>
+        <tr><td><code>ATTRIBUTE_NORETURN</code></td><td><code>G_GNUC_NORETURN</code></td><td></td></tr>
+        <tr><td><code>ATTRIBUTE_RETURN_CHECK</code></td><td><code>G_GNUC_WARN_UNUSED_RESULT</code></td><td></td></tr>
+        <tr><td><code>ATTRIBUTE_SENTINEL</code></td><td><code>G_GNUC_NULL_TERMINATED</code></td><td></td></tr>
+        <tr><td><code>ATTRIBUTE_UNUSED</code></td><td><code>G_GNUC_UNUSED</code></td><td></td></tr>
+        <tr><td><code>VIR_STRDUP</code></td><td><code>g_strdup</code></td><td></td></tr>
+        <tr><td><code>VIR_STRNDUP</code></td><td><code>g_strndup</code></td><td></td></tr>
+    </table>
 
-      <li><p>To trim an array of domains from its allocated size down
-      to the actual used size:</p>
-
-<pre>
-  virDomainPtr domains;
-  size_t ndomains = x;
-  size_t ndomains_max = y;
-
-  VIR_SHRINK_N(domains, ndomains_max, ndomains_max - ndomains);
-</pre></li>
-
-      <li><p>To free an array of domains:</p>
-<pre>
-  virDomainPtr domains;
-  size_t ndomains = x;
-  size_t ndomains_max = y;
-  size_t i;
-
-  for (i = 0; i &lt; ndomains; i++)
-      VIR_FREE(domains[i]);
-  VIR_FREE(domains);
-  ndomains_max = ndomains = 0;
-</pre>
-      </li>
-    </ul>
 
     <h2><a id="file_handling">File handling</a></h2>
 
@@ -1192,18 +1270,14 @@ BAD:
     </p>
 
 <pre>
-  VIR_STRDUP(char *dst, const char *src);
-  VIR_STRNDUP(char *dst, const char *src, size_t n);
+    dst = g_strdup(src);
+    dst = g_strndup(src, n);
 </pre>
     <p>
-      You should avoid using strdup or strndup directly as they do not report
-      out-of-memory error, and do not allow a NULL source. Use
-      VIR_STRDUP or VIR_STRNDUP macros instead, which return 0 for
-      NULL source, 1 for successful copy, and -1 for allocation
-      failure with the error already reported. In very
-      specific cases, when you don't want to report the out-of-memory error, you
-      can use VIR_STRDUP_QUIET or VIR_STRNDUP_QUIET, but such usage is very rare
-      and usually considered a flaw.
+      You should avoid using strdup or strndup directly as they do not handle
+      out-of-memory errors, and do not allow a NULL source.
+      Use <code>g_strdup</code> and <code>g_strndup</code> from GLib which
+      abort on OOM and handle NULL source by returning NULL.
     </p>
 
     <h2><a id="strbuf">Variable length string buffer</a></h2>
@@ -1211,7 +1285,11 @@ BAD:
     <p>
       If there is a need for complex string concatenations, avoid using
       the usual sequence of malloc/strcpy/strcat/snprintf functions and
-      make use of the virBuffer API described in virbuffer.h
+      make use of either the
+      <a href="https://developer.gnome.org/glib/stable/glib-Strings.html">GString</a>
+      type from GLib or the virBuffer API.
+      If formatting XML or QEMU command line is needed, use the virBuffer
+      API described in virbuffer.h, since it has helper functions for those.
     </p>
 
     <p>Typical usage is as follows:</p>
@@ -1220,12 +1298,14 @@ BAD:
   char *
   somefunction(...)
   {
-     virBuffer buf = VIR_BUFFER_INITIALIZER;
+     g_auto(virBuffer) buf = VIR_BUFFER_INITIALIZER;
 
      ...
 
      virBufferAddLit(&amp;buf, "&lt;domain&gt;\n");
      virBufferAsprintf(&amp;buf, "  &lt;memory&gt;%d&lt;/memory&gt;\n", memory);
+     if (some_error)
+         return NULL; /* g_auto will free the memory used so far */
      ...
      virBufferAddLit(&amp;buf, "&lt;/domain&gt;\n");
 
@@ -1294,12 +1374,12 @@ BAD:
       Whenever you add a new printf-style function, i.e., one with a format
       string argument and following "..." in its prototype, be sure to use
       gcc's printf attribute directive in the prototype.  For example, here's
-      the one for virAsprintf, in util.h:
+      the one for virCommandAddEnvFormat in vircommand.h:
     </p>
 
 <pre>
-  int virAsprintf(char **strp, const char *fmt, ...)
-      ATTRIBUTE_FORMAT(printf, 2, 3);
+  void virCommandAddEnvFormat(virCommandPtr cmd, const char *format, ...)
+      G_GNUC_PRINTF(2, 3);
 </pre>
 
     <p>
@@ -1309,12 +1389,10 @@ BAD:
     </p>
 
     <p>
-      When printing to a string, consider using virBuffer for
-      incremental allocations, virAsprintf for a one-shot allocation,
-      and snprintf for fixed-width buffers.  Do not use sprintf, even
-      if you can prove the buffer won't overflow, since gnulib does
-      not provide the same portability guarantees for sprintf as it
-      does for snprintf.
+      When printing to a string, consider using GString or virBuffer for
+      incremental allocations, g_strdup_printf for a one-shot allocation,
+      and g_snprintf for fixed-width buffers.  Only use g_sprintf,
+      if you can prove the buffer won't overflow.
     </p>
 
     <h2><a id="errors">Error message format</a></h2>
@@ -1364,11 +1442,16 @@ BAD:
       single label at the end of the function.  It's almost always ok
       to use this style.  In particular, if the cleanup code only
       involves free'ing memory, then having multiple labels is
-      overkill.  VIR_FREE() and every function named XXXFree() in
-      libvirt is required to handle NULL as its arg.  Thus you can
+      overkill.  g_free() and most of the functions named XXXFree() in
+      libvirt is required to handle NULL as its arg. This does not
+      apply to libvirt's public APIs. Thus you can
       safely call free on all the variables even if they were not yet
       allocated (yes they have to have been initialized to NULL).
       This is much simpler and clearer than having multiple labels.
+      Note that most of libvirt's type declarations can be marked with
+      either <code>g_autofree</code> or <code>g_autoptr</code> which uses
+      the compiler's <code>__attribute__((cleanup))</code> that calls
+      the appropriate free function when the variable goes out of scope.
     </p>
 
     <p>
@@ -1445,14 +1528,7 @@ int foo()
       how things work, it's better
       to wait for a more authoritative feedback though. Before committing, please
       also rebuild locally, run 'make check syntax-check', and make sure you
-      don't raise errors. Try to look for warnings too; for example,
-      configure with
-    </p>
-<pre>
-  --enable-compile-warnings=error
-</pre>
-    <p>
-      which adds -Werror to compile flags, so no warnings get missed
+      don't raise errors.
     </p>
 
     <p>
@@ -1472,35 +1548,10 @@ int foo()
         fixes for documentation and code comments can be managed
         in the same way, but still make sure they get reviewed if non-trivial.
       </li>
+      <li>(ir)regular pulls from other repositories or automated updates, such
+        as the .gnulib submodule updates, pulling in new translations or updating
+        the container images for the CI system
+      </li>
     </ul>
-    <h2><a id="coverage">Code coverage reports</a></h2>
-
-    <p>
-      Code coverage HTML reports can be generated with:
-    </p>
-
-<pre>
-  make coverage
-</pre>
-
-    <p>
-      Reports will be generated in the <code>cov/</code> directory. Point a
-      web browser at <code>cov/index.html</code> for the full report.
-    </p>
-
-    <p>
-      The <code>make coverage</code> target is provided by <code>gnulib</code>.
-      It is a convenience helper for calling the following 3 targets in order.
-      It may be useful to occasionally call these directly.
-
-    <ul>
-      <li><code>make init-coverage</code>: run <code>make clean</code> and
-          remove all code coverage counter files (*.gcno, etc.)</li>
-      <li><code>make build-coverage</code>: run <code>make</code> and
-          <code>make check</code> with <code>CFLAGS</code> filled in with
-          necessary coverage flags</li>
-      <li><code>make gen-coverage</code>: generate the HTML report</li>
-    </ul>
-    </p>
   </body>
 </html>

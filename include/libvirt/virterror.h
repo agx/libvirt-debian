@@ -84,7 +84,7 @@ typedef enum {
     VIR_FROM_ONE = 27,          /* The OpenNebula driver no longer exists.
                                    Retained for ABI/API compat only */
     VIR_FROM_ESX = 28,          /* Error from ESX driver */
-    VIR_FROM_PHYP = 29,         /* Error from IBM power hypervisor */
+    VIR_FROM_PHYP = 29,         /* Error from the phyp driver, unused since 6.0.0 */
 
     VIR_FROM_SECRET = 30,       /* Error from secret storage */
     VIR_FROM_CPU = 31,          /* Error from CPU driver */
@@ -135,6 +135,7 @@ typedef enum {
     VIR_FROM_DOMAIN_CHECKPOINT = 69, /* Error from domain checkpoint */
 
     VIR_FROM_TPM = 70,          /* Error from TPM */
+    VIR_FROM_BPF = 71,          /* Error from BPF code */
 
 # ifdef VIR_ENUM_SENTINELS
     VIR_ERR_DOMAIN_LAST

@@ -16,7 +16,13 @@ dnl You should have received a copy of the GNU Lesser General Public
 dnl License along with this library.  If not, see
 dnl <http://www.gnu.org/licenses/>.
 
-AC_INIT([libvirt], [5.6.0], [libvir-list@redhat.com], [], [https://libvirt.org])
+AC_INIT([libvirt], [6.0.0], [libvir-list@redhat.com], [], [https://libvirt.org])
+
+if test $srcdir = "."
+then
+  AC_MSG_ERROR([Build directory must be different from source directory])
+fi
+
 AC_CONFIG_SRCDIR([src/libvirt.c])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_HEADERS([config.h])
@@ -123,11 +129,28 @@ AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_CPP
 
-dnl Setting AB_VERSION makes the 'autobuild' lines of configure output
-dnl slightly more useful
-if test -d $srcdir/.git && git --version >/dev/null 2>&1 ; then
-  AB_VERSION=`cd $srcdir && git describe --match 'v[[0-9]]*' 2>/dev/null`
+dnl autoconf 2.70 adds a --runstatedir option so that downstreams
+dnl can point to /run instead of the historic /var/run, but
+dnl autoconf hasn't had a release since 2012.
+dnl
+dnl gnulib sets configmake.h to include runstatedir, but sets
+dnl it to $localstatedir/run if $runstatedir env var is not set
+dnl which is useless for apps that need to use /run without
+dnl waiting for autoconf 2.70
+dnl
+dnl we introduce --with-runstatedir and then overwrite the
+dnl value of $runstatedir so gnulib's configmake.h becomes useful
+AC_ARG_WITH(
+    [runstatedir],
+    [AS_HELP_STRING(
+        [--with-runstatedir],
+        [State directory for temporary sockets, pid files, etc])])
+
+if test -n "$with_runstatedir"
+then
+  runstatedir=$with_runstatedir
 fi
+
 
 gl_EARLY
 gl_INIT
@@ -212,6 +235,7 @@ fi
 
 AM_CONDITIONAL([WITH_LINUX], [test "$with_linux" = "yes"])
 AM_CONDITIONAL([WITH_FREEBSD], [test "$with_freebsd" = "yes"])
+AM_CONDITIONAL([WITH_MACOS], [test "$with_macos" = "yes"])
 
 # We don't support the daemon yet
 if test "$with_win" = "yes" ; then
@@ -293,6 +317,7 @@ LIBVIRT_CHECK_DLOPEN
 LIBVIRT_CHECK_FIREWALLD
 LIBVIRT_CHECK_FIREWALLD_ZONE
 LIBVIRT_CHECK_FUSE
+LIBVIRT_CHECK_GLIB
 LIBVIRT_CHECK_GLUSTER
 LIBVIRT_CHECK_GNUTLS
 LIBVIRT_CHECK_HAL
@@ -337,6 +362,7 @@ AC_CHECK_FUNCS_ONCE([\
   getpwuid_r \
   getrlimit \
   getuid \
+  getutxid \
   if_indextoname \
   mmap \
   newlocale \
@@ -430,8 +456,6 @@ dnl
 LIBVIRT_DRIVER_ARG_QEMU
 LIBVIRT_DRIVER_ARG_OPENVZ
 LIBVIRT_DRIVER_ARG_VMWARE
-LIBVIRT_DRIVER_ARG_PHYP
-LIBVIRT_DRIVER_ARG_XENAPI
 LIBVIRT_DRIVER_ARG_LIBXL
 LIBVIRT_DRIVER_ARG_VBOX
 LIBVIRT_DRIVER_ARG_LXC
@@ -448,8 +472,6 @@ LIBVIRT_DRIVER_ARG_INTERFACE
 LIBVIRT_DRIVER_CHECK_QEMU
 LIBVIRT_DRIVER_CHECK_OPENVZ
 LIBVIRT_DRIVER_CHECK_VMWARE
-LIBVIRT_DRIVER_CHECK_PHYP
-LIBVIRT_DRIVER_CHECK_XENAPI
 LIBVIRT_DRIVER_CHECK_LIBXL
 LIBVIRT_DRIVER_CHECK_VBOX
 LIBVIRT_DRIVER_CHECK_LXC
@@ -462,8 +484,6 @@ LIBVIRT_DRIVER_CHECK_REMOTE
 LIBVIRT_DRIVER_CHECK_LIBVIRTD
 LIBVIRT_DRIVER_CHECK_NETWORK
 LIBVIRT_DRIVER_CHECK_INTERFACE
-
-AM_CONDITIONAL([WITH_XENCONFIG], [test "$with_libxl" = "yes"])
 
 
 dnl
@@ -510,9 +530,6 @@ dnl
 dnl check for kvm headers
 dnl
 AC_CHECK_HEADERS([linux/kvm.h])
-
-
-AM_CONDITIONAL([WITH_SETUID_RPC_CLIENT], [test "$with_lxc$with_login_shell" != "nono"])
 
 
 dnl
@@ -682,10 +699,23 @@ if test "$with_linux" = "yes"; then
 fi
 
 dnl Allow perl/python overrides
-AC_PATH_PROGS([PYTHON], [python3 python2 python])
+AC_PATH_PROGS([PYTHON], [python3])
 if test -z "$PYTHON"; then
-    AC_MSG_ERROR(['python3', 'python2' or 'python' binary is required to build libvirt])
+    AC_MSG_ERROR(['python3' binary is required to build libvirt])
 fi
+AC_DEFINE_UNQUOTED([PYTHON], "$PYTHON", [path to python binary])
+AC_PATH_PROG([FLAKE8], [flake8])
+if test -z "$FLAKE8"; then
+    AC_MSG_WARN(['flake8' binary is required to check python code style])
+fi
+
+dnl Python3 < 3.7 treats the C locale as 7-bit only.
+dnl We must force env vars so it treats it as UTF-8
+dnl regardless of the user's locale.
+RUNUTF8="LC_ALL= LANG=C LC_CTYPE=en_US.UTF-8"
+AC_SUBST(RUNUTF8)
+
+
 AC_PATH_PROG([PERL], [perl])
 if test -z "$PERL"; then
          AC_MSG_ERROR(['perl' binary is required to build libvirt])
@@ -729,33 +759,22 @@ fi
 AC_SUBST([VIR_TEST_EXPENSIVE_DEFAULT])
 AM_CONDITIONAL([WITH_EXPENSIVE_TESTS], [test $VIR_TEST_EXPENSIVE_DEFAULT = 1])
 
-LIBVIRT_ARG_ENABLE([TEST_OOM], [memory allocation failure checking], [no])
-case "$enable_test_oom" in
+LIBVIRT_ARG_ENABLE([TEST_COVERAGE], [turn on code coverage instrumentation], [no])
+case "$enable_test_coverage" in
   yes|no) ;;
-  *) AC_MSG_ERROR([bad value ${enable_test_oom} for test-oom option]) ;;
+  *) AC_MSG_ERROR([bad value ${enable_test_coverga} for test-coverage option]) ;;
 esac
 
-if test "$enable_test_oom" = yes; then
-  have_trace=yes
-  AC_CHECK_HEADER([execinfo.h],[],[have_trace=no])
-  AC_CHECK_FUNC([backtrace],[],[have_trace=no])
-  if test "$have_trace" = "yes"; then
-    AC_DEFINE([TEST_OOM_TRACE], 1, [Whether backtrace() is available])
-  fi
-  AC_DEFINE([TEST_OOM], 1, [Whether malloc OOM checking is enabled])
+if test "$enable_test_coverage" = yes; then
+  save_WARN_CFLAGS=$WARN_CFLAGS
+  WARN_CFLAGS=
+  gl_WARN_ADD([-fprofile-arcs])
+  gl_WARN_ADD([-ftest-coverage])
+  COVERAGE_FLAGS=$WARN_CFLAGS
+  AC_SUBST([COVERAGE_CFLAGS], [$COVERAGE_FLAGS])
+  AC_SUBST([COVERAGE_LDFLAGS], [$COVERAGE_FLAGS])
+  WARN_CFLAGS=$save_WARN_CFLAGS
 fi
-
-LIBVIRT_ARG_ENABLE([TEST_LOCKING], [thread locking tests using CIL], [no])
-case "$enable_test_locking" in
-  yes|no) ;;
-  *) AC_MSG_ERROR([bad value ${enable_test_locking} for test-locking option]) ;;
-esac
-
-if test "$enable_test_locking" = "yes"; then
-  LOCK_CHECKING_CFLAGS="-save-temps"
-  AC_SUBST([LOCK_CHECKING_CFLAGS])
-fi
-AM_CONDITIONAL([WITH_CIL],[test "$enable_test_locking" = "yes"])
 
 dnl Cygwin, MinGW and MSVC checks
 LIBVIRT_WIN_CHECK_COMMON
@@ -861,6 +880,12 @@ AC_CHECK_DECLS([clock_serv_t, host_get_clock_service, clock_get_time],
                 #include <mach/mach.h>
                ])
 
+# Check if we have new enough kernel to support BPF devices for cgroups v2
+if test "$with_linux" = "yes"; then
+    AC_CHECK_DECLS([BPF_PROG_QUERY, BPF_CGROUP_DEVICE],
+                   [], [], [#include <linux/bpf.h>])
+fi
+
 # Check if we need to look for ifconfig
 if test "$want_ifconfig" = "yes"; then
      AC_PATH_PROG([IFCONFIG_PATH], [ifconfig])
@@ -885,10 +910,11 @@ test "x$lv_cv_static_analysis" = xyes && t=1
 AC_DEFINE_UNQUOTED([STATIC_ANALYSIS], [$t],
   [Define to 1 when performing static analysis.])
 
-# Some GNULIB base64 symbols clash with a kerberos library
-AC_DEFINE_UNQUOTED([isbase64],[libvirt_gl_isbase64],[Hack to avoid symbol clash])
-AC_DEFINE_UNQUOTED([base64_encode],[libvirt_gl_base64_encode],[Hack to avoid symbol clash])
-AC_DEFINE_UNQUOTED([base64_encode_alloc],[libvirt_gl_base64_encode_alloc],[Hack to avoid symbol clash])
+GNUmakefile=GNUmakefile
+m4_if(m4_version_compare([2.61a.100],
+        m4_defn([m4_PACKAGE_VERSION])), [1], [],
+      [AC_CONFIG_LINKS([$GNUmakefile:$GNUmakefile], [],
+        [GNUmakefile=$GNUmakefile])])
 
 AC_CONFIG_FILES([run],
                 [chmod +x,-w run])
@@ -923,10 +949,8 @@ LIBVIRT_DRIVER_RESULT_QEMU
 LIBVIRT_DRIVER_RESULT_OPENVZ
 LIBVIRT_DRIVER_RESULT_VMWARE
 LIBVIRT_DRIVER_RESULT_VBOX
-LIBVIRT_DRIVER_RESULT_XENAPI
 LIBVIRT_DRIVER_RESULT_LIBXL
 LIBVIRT_DRIVER_RESULT_LXC
-LIBVIRT_DRIVER_RESULT_PHYP
 LIBVIRT_DRIVER_RESULT_ESX
 LIBVIRT_DRIVER_RESULT_HYPERV
 LIBVIRT_DRIVER_RESULT_VZ
@@ -977,6 +1001,7 @@ LIBVIRT_RESULT_DLOPEN
 LIBVIRT_RESULT_FIREWALLD
 LIBVIRT_RESULT_FIREWALLD_ZONE
 LIBVIRT_RESULT_FUSE
+LIBVIRT_RESULT_GLIB
 LIBVIRT_RESULT_GLUSTER
 LIBVIRT_RESULT_GNUTLS
 LIBVIRT_RESULT_HAL
@@ -1004,7 +1029,6 @@ LIBVIRT_RESULT_SSH2
 LIBVIRT_RESULT_UDEV
 LIBVIRT_RESULT_VIRTUALPORT
 LIBVIRT_RESULT_XDR
-LIBVIRT_RESULT_XENAPI
 LIBVIRT_RESULT_YAJL
 AC_MSG_NOTICE([])
 AC_MSG_NOTICE([Windows])
@@ -1014,13 +1038,13 @@ LIBVIRT_WIN_RESULT_WINDRES
 AC_MSG_NOTICE([])
 AC_MSG_NOTICE([Test suite])
 AC_MSG_NOTICE([])
-AC_MSG_NOTICE([        Alloc OOM: $enable_test_oom])
+LIBVIRT_RESULT([Coverage], [$enable_test_coverage])
 AC_MSG_NOTICE([])
 AC_MSG_NOTICE([Miscellaneous])
 AC_MSG_NOTICE([])
 LIBVIRT_RESULT_DEBUG
-AC_MSG_NOTICE([       Use -Werror: $enable_werror])
-AC_MSG_NOTICE([     Warning Flags: $WARN_CFLAGS])
+LIBVIRT_RESULT([Use -Werror], [$enable_werror])
+LIBVIRT_RESULT([Warning Flags], [$WARN_CFLAGS])
 LIBVIRT_RESULT_DTRACE
 LIBVIRT_RESULT_NUMAD
 LIBVIRT_RESULT_INIT_SCRIPT

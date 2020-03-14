@@ -21,7 +21,6 @@
 #pragma once
 
 #include "internal.h"
-#include "virautoclean.h"
 
 typedef struct _virAuthConfig virAuthConfig;
 typedef virAuthConfig *virAuthConfigPtr;
@@ -40,4 +39,4 @@ int virAuthConfigLookup(virAuthConfigPtr auth,
                         const char *credname,
                         const char **value);
 
-VIR_DEFINE_AUTOPTR_FUNC(virAuthConfig, virAuthConfigFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virAuthConfig, virAuthConfigFree);

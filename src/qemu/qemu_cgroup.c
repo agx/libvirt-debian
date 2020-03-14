@@ -25,7 +25,7 @@
 #include "qemu_domain.h"
 #include "qemu_process.h"
 #include "qemu_extdevice.h"
-#include "vircgroup.h"
+#include "qemu_hostdev.h"
 #include "virlog.h"
 #include "viralloc.h"
 #include "virerror.h"
@@ -118,10 +118,29 @@ qemuSetupImageCgroupInternal(virDomainObjPtr vm,
                              virStorageSourcePtr src,
                              bool forceReadonly)
 {
-    if (!src->path || !virStorageSourceIsLocalStorage(src)) {
-        VIR_DEBUG("Not updating cgroups for disk path '%s', type: %s",
-                  NULLSTR(src->path), virStorageTypeToString(src->type));
-        return 0;
+    g_autofree char *path = NULL;
+    bool readonly = src->readonly || forceReadonly;
+
+    if (src->type == VIR_STORAGE_TYPE_NVME) {
+        /* Even though disk is R/O we can't make it so in
+         * CGroups. QEMU will try to do some ioctl()-s over the
+         * device and such operations are considered R/W by the
+         * kernel */
+        readonly = false;
+
+        if (!(path = virPCIDeviceAddressGetIOMMUGroupDev(&src->nvme->pciAddr)))
+            return -1;
+
+        if (qemuSetupImagePathCgroup(vm, QEMU_DEV_VFIO, false) < 0)
+            return -1;
+    } else {
+        if (!src->path || !virStorageSourceIsLocalStorage(src)) {
+            VIR_DEBUG("Not updating cgroups for disk path '%s', type: %s",
+                      NULLSTR(src->path), virStorageTypeToString(src->type));
+            return 0;
+        }
+
+        path = g_strdup(src->path);
     }
 
     if (virStoragePRDefIsManaged(src->pr) &&
@@ -129,7 +148,7 @@ qemuSetupImageCgroupInternal(virDomainObjPtr vm,
         qemuSetupImagePathCgroup(vm, QEMU_DEVICE_MAPPER_CONTROL_PATH, false) < 0)
         return -1;
 
-    return qemuSetupImagePathCgroup(vm, src->path, src->readonly || forceReadonly);
+    return qemuSetupImagePathCgroup(vm, path, readonly);
 }
 
 
@@ -146,7 +165,10 @@ qemuTeardownImageCgroup(virDomainObjPtr vm,
                         virStorageSourcePtr src)
 {
     qemuDomainObjPrivatePtr priv = vm->privateData;
+    g_autofree char *path = NULL;
     int perms = VIR_CGROUP_DEVICE_RWM;
+    bool hasPR = false;
+    bool hasNVMe = false;
     size_t i;
     int ret;
 
@@ -154,41 +176,60 @@ qemuTeardownImageCgroup(virDomainObjPtr vm,
                                 VIR_CGROUP_CONTROLLER_DEVICES))
         return 0;
 
-    if (!src->path || !virStorageSourceIsLocalStorage(src)) {
-        VIR_DEBUG("Not updating cgroups for disk path '%s', type: %s",
-                  NULLSTR(src->path), virStorageTypeToString(src->type));
-        return 0;
+    for (i = 0; i < vm->def->ndisks; i++) {
+        virStorageSourcePtr diskSrc = vm->def->disks[i]->src;
+
+        if (src == diskSrc)
+            continue;
+
+        if (virStoragePRDefIsManaged(diskSrc->pr))
+            hasPR = true;
+
+        if (virStorageSourceChainHasNVMe(diskSrc))
+            hasNVMe = true;
     }
 
-    if (virFileExists(QEMU_DEVICE_MAPPER_CONTROL_PATH)) {
-        for (i = 0; i < vm->def->ndisks; i++) {
-            virStorageSourcePtr diskSrc = vm->def->disks[i]->src;
+    if (src->type == VIR_STORAGE_TYPE_NVME) {
+        if (!(path = virPCIDeviceAddressGetIOMMUGroupDev(&src->nvme->pciAddr)))
+            return -1;
 
-            if (src == diskSrc)
-                continue;
-
-            if (virStoragePRDefIsManaged(diskSrc->pr))
-                break;
-        }
-
-        if (i == vm->def->ndisks) {
-            VIR_DEBUG("Disabling device mapper control");
-            ret = virCgroupDenyDevicePath(priv->cgroup,
-                                          QEMU_DEVICE_MAPPER_CONTROL_PATH,
-                                          perms, true);
+        if (!hasNVMe &&
+            !qemuDomainNeedsVFIO(vm->def)) {
+            ret = virCgroupDenyDevicePath(priv->cgroup, QEMU_DEV_VFIO, perms, true);
             virDomainAuditCgroupPath(vm, priv->cgroup, "deny",
-                                     QEMU_DEVICE_MAPPER_CONTROL_PATH,
+                                     QEMU_DEV_VFIO,
                                      virCgroupGetDevicePermsString(perms), ret);
             if (ret < 0)
-                return ret;
+                return -1;
         }
+    } else {
+        if (!src->path || !virStorageSourceIsLocalStorage(src)) {
+            VIR_DEBUG("Not updating cgroups for disk path '%s', type: %s",
+                      NULLSTR(src->path), virStorageTypeToString(src->type));
+            return 0;
+        }
+
+        path = g_strdup(src->path);
     }
 
-    VIR_DEBUG("Deny path %s", src->path);
+    if (!hasPR &&
+        virFileExists(QEMU_DEVICE_MAPPER_CONTROL_PATH)) {
+        VIR_DEBUG("Disabling device mapper control");
+        ret = virCgroupDenyDevicePath(priv->cgroup,
+                                      QEMU_DEVICE_MAPPER_CONTROL_PATH,
+                                      perms, true);
+        virDomainAuditCgroupPath(vm, priv->cgroup, "deny",
+                                 QEMU_DEVICE_MAPPER_CONTROL_PATH,
+                                 virCgroupGetDevicePermsString(perms), ret);
+        if (ret < 0)
+            return ret;
+    }
 
-    ret = virCgroupDenyDevicePath(priv->cgroup, src->path, perms, true);
+    VIR_DEBUG("Deny path %s", path);
 
-    virDomainAuditCgroupPath(vm, priv->cgroup, "deny", src->path,
+    ret = virCgroupDenyDevicePath(priv->cgroup, path, perms, true);
+
+    virDomainAuditCgroupPath(vm, priv->cgroup, "deny", path,
                              virCgroupGetDevicePermsString(perms), ret);
 
     /* If you're looking for a counter part to
@@ -285,7 +326,7 @@ qemuTeardownChrSourceCgroup(virDomainObjPtr vm,
 
 
 static int
-qemuSetupChardevCgroupCB(virDomainDefPtr def ATTRIBUTE_UNUSED,
+qemuSetupChardevCgroupCB(virDomainDefPtr def G_GNUC_UNUSED,
                          virDomainChrDefPtr dev,
                          void *opaque)
 {
@@ -360,82 +401,102 @@ qemuTeardownInputCgroup(virDomainObjPtr vm,
 }
 
 
+/**
+ * qemuSetupHostdevCgroup:
+ * vm: domain object
+ * @dev: device to allow
+ *
+ * For given host device @dev allow access to in Cgroups.
+ *
+ * Returns: 0 on success,
+ *         -1 otherwise.
+ */
 int
 qemuSetupHostdevCgroup(virDomainObjPtr vm,
                        virDomainHostdevDefPtr dev)
 {
     qemuDomainObjPrivatePtr priv = vm->privateData;
-    char **path = NULL;
-    int *perms = NULL;
-    size_t i, npaths = 0;
-    int rv, ret = -1;
+    g_autofree char *path = NULL;
+    int perms;
+    int rv;
 
     if (!virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_DEVICES))
         return 0;
 
-    if (qemuDomainGetHostdevPath(NULL, dev, false, &npaths, &path, &perms) < 0)
-        goto cleanup;
+    if (qemuDomainGetHostdevPath(dev, &path, &perms) < 0)
+        return -1;
 
-    for (i = 0; i < npaths; i++) {
-        VIR_DEBUG("Cgroup allow %s perms=%d", path[i], perms[i]);
-        rv = virCgroupAllowDevicePath(priv->cgroup, path[i], perms[i], false);
-        virDomainAuditCgroupPath(vm, priv->cgroup, "allow", path[i],
-                                 virCgroupGetDevicePermsString(perms[i]),
+    if (path) {
+        VIR_DEBUG("Cgroup allow %s perms=%d", path, perms);
+        rv = virCgroupAllowDevicePath(priv->cgroup, path, perms, false);
+        virDomainAuditCgroupPath(vm, priv->cgroup, "allow", path,
+                                 virCgroupGetDevicePermsString(perms),
                                  rv);
         if (rv < 0)
-            goto cleanup;
+            return -1;
     }
 
-    ret = 0;
+    if (qemuHostdevNeedsVFIO(dev)) {
+        VIR_DEBUG("Cgroup allow %s perms=%d", QEMU_DEV_VFIO, VIR_CGROUP_DEVICE_RW);
+        rv = virCgroupAllowDevicePath(priv->cgroup, QEMU_DEV_VFIO,
+                                      VIR_CGROUP_DEVICE_RW, false);
+        virDomainAuditCgroupPath(vm, priv->cgroup, "allow",
+                                 QEMU_DEV_VFIO, "rw", rv);
+        if (rv < 0)
+            return -1;
+    }
 
- cleanup:
-    for (i = 0; i < npaths; i++)
-        VIR_FREE(path[i]);
-    VIR_FREE(path);
-    VIR_FREE(perms);
-    return ret;
+    return 0;
 }
 
+
+/**
+ * qemuTeardownHostdevCgroup:
+ * @vm: doamin object
+ * @dev: device to tear down
+ *
+ * For given host device @dev deny access to it in CGroups.
+ * Note, @dev must not be in @vm's definition.
+ *
+ * Returns: 0 on success,
+ *         -1 otherwise.
+ */
 int
 qemuTeardownHostdevCgroup(virDomainObjPtr vm,
-                       virDomainHostdevDefPtr dev)
+                          virDomainHostdevDefPtr dev)
 {
     qemuDomainObjPrivatePtr priv = vm->privateData;
-    char **path = NULL;
-    size_t i, npaths = 0;
-    int rv, ret = -1;
-
-    /* currently this only does something for PCI devices using vfio
-     * for device assignment, but it is called for *all* hostdev
-     * devices.
-     */
+    g_autofree char *path = NULL;
+    int rv;
 
     if (!virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_DEVICES))
         return 0;
 
-    if (dev->mode == VIR_DOMAIN_HOSTDEV_MODE_SUBSYS &&
-        dev->source.subsys.type == VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_PCI &&
-        dev->source.subsys.u.pci.backend == VIR_DOMAIN_HOSTDEV_PCI_BACKEND_VFIO &&
-        qemuDomainGetHostdevPath(vm->def, dev, true,
-                                 &npaths, &path, NULL) < 0)
-        goto cleanup;
+    if (qemuDomainGetHostdevPath(dev, &path, NULL) < 0)
+        return -1;
 
-    for (i = 0; i < npaths; i++) {
-        VIR_DEBUG("Cgroup deny %s", path[i]);
-        rv = virCgroupDenyDevicePath(priv->cgroup, path[i],
+    if (path) {
+        VIR_DEBUG("Cgroup deny %s", path);
+        rv = virCgroupDenyDevicePath(priv->cgroup, path,
                                      VIR_CGROUP_DEVICE_RWM, false);
         virDomainAuditCgroupPath(vm, priv->cgroup,
-                                 "deny", path[i], "rwm", rv);
+                                 "deny", path, "rwm", rv);
         if (rv < 0)
-            goto cleanup;
+            return -1;
     }
 
-    ret = 0;
- cleanup:
-    for (i = 0; i < npaths; i++)
-        VIR_FREE(path[i]);
-    VIR_FREE(path);
-    return ret;
+    if (qemuHostdevNeedsVFIO(dev) &&
+        !qemuDomainNeedsVFIO(vm->def)) {
+        VIR_DEBUG("Cgroup deny " QEMU_DEV_VFIO);
+        rv = virCgroupDenyDevicePath(priv->cgroup, QEMU_DEV_VFIO,
+                                     VIR_CGROUP_DEVICE_RWM, false);
+        virDomainAuditCgroupPath(vm, priv->cgroup, "deny",
+                                 QEMU_DEV_VFIO, "rwm", rv);
+        if (rv < 0)
+            return -1;
+    }
+
+    return 0;
 }
 
 
@@ -498,6 +559,29 @@ qemuSetupGraphicsCgroup(virDomainObjPtr vm,
     ret = virCgroupAllowDevicePath(priv->cgroup, rendernode,
                                    VIR_CGROUP_DEVICE_RW, false);
     virDomainAuditCgroupPath(vm, priv->cgroup, "allow", rendernode,
+                             "rw", ret);
+    return ret;
+}
+
+
+static int
+qemuSetupVideoCgroup(virDomainObjPtr vm,
+                     virDomainVideoDefPtr def)
+{
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    virDomainVideoAccelDefPtr accel = def->accel;
+    int ret;
+
+    if (!accel)
+        return 0;
+
+    if (!accel->rendernode ||
+        !virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_DEVICES))
+        return 0;
+
+    ret = virCgroupAllowDevicePath(priv->cgroup, accel->rendernode,
+                                   VIR_CGROUP_DEVICE_RW, false);
+    virDomainAuditCgroupPath(vm, priv->cgroup, "allow", accel->rendernode,
                              "rw", ret);
     return ret;
 }
@@ -789,6 +873,8 @@ qemuSetupDevicesCgroup(virDomainObjPtr vm)
         goto cleanup;
 
     for (i = 0; i < vm->def->nhostdevs; i++) {
+        /* This may allow /dev/vfio/vfio multiple times, but that
+         * is not a problem. Kernel will have only one record. */
         if (qemuSetupHostdevCgroup(vm, vm->def->hostdevs[i]) < 0)
             goto cleanup;
     }
@@ -800,6 +886,11 @@ qemuSetupDevicesCgroup(virDomainObjPtr vm)
 
     for (i = 0; i < vm->def->ngraphics; i++) {
         if (qemuSetupGraphicsCgroup(vm, vm->def->graphics[i]) < 0)
+            goto cleanup;
+    }
+
+    for (i = 0; i < vm->def->nvideos; i++) {
+        if (qemuSetupVideoCgroup(vm, vm->def->videos[i]) < 0)
             goto cleanup;
     }
 
@@ -905,10 +996,7 @@ qemuInitCgroup(virDomainObjPtr vm,
         if (VIR_ALLOC(res) < 0)
             goto cleanup;
 
-        if (VIR_STRDUP(res->partition, "/machine") < 0) {
-            VIR_FREE(res);
-            goto cleanup;
-        }
+        res->partition = g_strdup("/machine");
 
         vm->def->resource = res;
     }
@@ -1060,7 +1148,6 @@ qemuSetupCgroup(virDomainObjPtr vm,
                 int *nicindexes)
 {
     qemuDomainObjPrivatePtr priv = vm->privateData;
-    int ret = -1;
 
     if (!vm->pid) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
@@ -1075,23 +1162,21 @@ qemuSetupCgroup(virDomainObjPtr vm,
         return 0;
 
     if (qemuSetupDevicesCgroup(vm) < 0)
-        goto cleanup;
+        return -1;
 
     if (qemuSetupBlkioCgroup(vm) < 0)
-        goto cleanup;
+        return -1;
 
     if (qemuSetupMemoryCgroup(vm) < 0)
-        goto cleanup;
+        return -1;
 
     if (qemuSetupCpuCgroup(vm) < 0)
-        goto cleanup;
+        return -1;
 
     if (qemuSetupCpusetCgroup(vm) < 0)
-        goto cleanup;
+        return -1;
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 int
@@ -1121,12 +1206,11 @@ qemuSetupCgroupVcpuBW(virCgroupPtr cgroup,
 
  error:
     if (period) {
-        virErrorPtr saved = virSaveLastError();
+        virErrorPtr saved;
+
+        virErrorPreserveLast(&saved);
         ignore_value(virCgroupSetCpuCfsPeriod(cgroup, old_period));
-        if (saved) {
-            virSetError(saved);
-            virFreeError(saved);
-        }
+        virErrorRestore(&saved);
     }
 
     return -1;
@@ -1307,7 +1391,7 @@ qemuCgroupEmulatorAllNodesAllow(virCgroupPtr cgroup,
         virCgroupSetCpusetMems(data->emulatorCgroup, all_nodes_str) < 0)
         goto cleanup;
 
-    VIR_STEAL_PTR(*retData, data);
+    *retData = g_steal_pointer(&data);
     ret = 0;
 
  cleanup:
@@ -1334,10 +1418,9 @@ qemuCgroupEmulatorAllNodesRestore(qemuCgroupEmulatorAllNodesDataPtr data)
     if (!data)
         return;
 
-    err = virSaveLastError();
+    virErrorPreserveLast(&err);
     virCgroupSetCpusetMems(data->emulatorCgroup, data->emulatorMemMask);
-    virSetError(err);
-    virFreeError(err);
+    virErrorRestore(&err);
 
     qemuCgroupEmulatorAllNodesDataFree(data);
 }

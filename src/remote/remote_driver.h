@@ -31,10 +31,6 @@ unsigned long remoteVersion(void);
 #define LIBVIRTD_LISTEN_ADDR NULL
 #define LIBVIRTD_TLS_PORT "16514"
 #define LIBVIRTD_TCP_PORT "16509"
-#define LIBVIRTD_PRIV_UNIX_SOCKET LOCALSTATEDIR "/run/libvirt/libvirt-sock"
-#define LIBVIRTD_PRIV_UNIX_SOCKET_RO LOCALSTATEDIR "/run/libvirt/libvirt-sock-ro"
-#define LIBVIRTD_USER_UNIX_SOCKET "libvirt-sock"
-#define LIBVIRTD_CONFIGURATION_FILE SYSCONFDIR "/libvirt/libvirtd.conf"
 
 /* Defaults for PKI directory. */
 #define LIBVIRT_PKI_DIR SYSCONFDIR "/pki"

@@ -52,10 +52,8 @@ virVHBAPathExists(const char *sysfs_prefix,
     char *sysfs_path = NULL;
     bool ret = false;
 
-    if (virAsprintf(&sysfs_path, "%s/host%d",
-                    sysfs_prefix ? sysfs_prefix : SYSFS_FC_HOST_PATH,
-                    host) < 0)
-        return false;
+    sysfs_path = g_strdup_printf("%s/host%d",
+                                 sysfs_prefix ? sysfs_prefix : SYSFS_FC_HOST_PATH, host);
 
     if (virFileExists(sysfs_path))
         ret = true;
@@ -85,24 +83,17 @@ virVHBAIsVportCapable(const char *sysfs_prefix,
     char *fc_host_path = NULL;
     bool ret = false;
 
-    if (virAsprintf(&fc_host_path,
-                    "%s/host%d/%s",
-                    sysfs_prefix ? sysfs_prefix : SYSFS_FC_HOST_PATH,
-                    host,
-                    "vport_create") < 0)
-        return false;
+    fc_host_path = g_strdup_printf("%s/host%d/%s",
+                                   sysfs_prefix ? sysfs_prefix : SYSFS_FC_HOST_PATH, host,
+                                   "vport_create");
 
-    if (virAsprintf(&scsi_host_path,
-                    "%s/host%d/%s",
-                    sysfs_prefix ? sysfs_prefix : SYSFS_SCSI_HOST_PATH,
-                    host,
-                    "vport_create") < 0)
-        goto cleanup;
+    scsi_host_path = g_strdup_printf("%s/host%d/%s",
+                                     sysfs_prefix ? sysfs_prefix : SYSFS_SCSI_HOST_PATH, host,
+                                     "vport_create");
 
     if (virFileExists(fc_host_path) || virFileExists(scsi_host_path))
         ret = true;
 
- cleanup:
     VIR_FREE(fc_host_path);
     VIR_FREE(scsi_host_path);
     return ret;
@@ -129,10 +120,8 @@ virVHBAGetConfig(const char *sysfs_prefix,
     char *buf = NULL;
     char *result = NULL;
 
-    if (virAsprintf(&sysfs_path, "%s/host%d/%s",
-                    sysfs_prefix ? sysfs_prefix : SYSFS_FC_HOST_PATH,
-                    host, entry) < 0)
-        goto cleanup;
+    sysfs_path = g_strdup_printf("%s/host%d/%s",
+                                 sysfs_prefix ? sysfs_prefix : SYSFS_FC_HOST_PATH, host, entry);
 
     if (!virFileExists(sysfs_path))
         goto cleanup;
@@ -148,7 +137,7 @@ virVHBAGetConfig(const char *sysfs_prefix,
     else
         p = buf;
 
-    ignore_value(VIR_STRDUP(result, p));
+    result = g_strdup(p);
 
  cleanup:
     VIR_FREE(sysfs_path);
@@ -222,7 +211,7 @@ virVHBAFindVportHost(const char *sysfs_prefix)
         if ((strlen(max_vports) >= strlen(vports)) ||
             ((strlen(max_vports) == strlen(vports)) &&
              strcmp(max_vports, vports) > 0)) {
-            ignore_value(VIR_STRDUP(ret, entry->d_name));
+            ret = g_strdup(entry->d_name);
             goto cleanup;
         }
 
@@ -269,15 +258,13 @@ virVHBAManageVport(const int parent_host,
         goto cleanup;
     }
 
-    if (virAsprintf(&operation_path, "%s/host%d/%s",
-                    SYSFS_FC_HOST_PATH, parent_host, operation_file) < 0)
-        goto cleanup;
+    operation_path = g_strdup_printf("%s/host%d/%s", SYSFS_FC_HOST_PATH,
+                                     parent_host, operation_file);
 
     if (!virFileExists(operation_path)) {
         VIR_FREE(operation_path);
-        if (virAsprintf(&operation_path, "%s/host%d/%s",
-                        SYSFS_SCSI_HOST_PATH, parent_host, operation_file) < 0)
-            goto cleanup;
+        operation_path = g_strdup_printf("%s/host%d/%s", SYSFS_SCSI_HOST_PATH,
+                                         parent_host, operation_file);
 
         if (!virFileExists(operation_path)) {
             virReportError(VIR_ERR_OPERATION_INVALID,
@@ -294,8 +281,7 @@ virVHBAManageVport(const int parent_host,
      * in calling either the Add or Remove device functions. This translates
      * into either adding or removing a node device object and a node device
      * lifecycle event for applications to consume. */
-    if (virAsprintf(&vport_name, "%s:%s", wwpn, wwnn) < 0)
-        goto cleanup;
+    vport_name = g_strdup_printf("%s:%s", wwpn, wwnn);
 
     if (virFileWriteStr(operation_path, vport_name, 0) == 0)
         ret = 0;
@@ -335,8 +321,7 @@ vhbaReadCompareWWN(const char *prefix,
     char *p;
     int ret = -1;
 
-    if (virAsprintf(&path, "%s/%s/%s", prefix, d_name, f_name) < 0)
-        return -1;
+    path = g_strdup_printf("%s/%s/%s", prefix, d_name, f_name);
 
     if (!virFileExists(path)) {
         ret = 0;
@@ -403,7 +388,7 @@ virVHBAGetHostByWWN(const char *sysfs_prefix,
         if (rc == 0)
             continue;
 
-        ignore_value(VIR_STRDUP(ret, entry->d_name));
+        ret = g_strdup(entry->d_name);
         break;
     }
 
@@ -440,9 +425,8 @@ virVHBAGetHostByFabricWWN(const char *sysfs_prefix,
 
         /* Existing vHBA's will have the same fabric_name, but won't
          * have the vport_create file - so we check for both */
-        if (virAsprintf(&vport_create_path, "%s/%s/vport_create", prefix,
-                        entry->d_name) < 0)
-            goto cleanup;
+        vport_create_path = g_strdup_printf("%s/%s/vport_create", prefix,
+                                            entry->d_name);
 
         if (!virFileExists(vport_create_path))
             continue;
@@ -454,7 +438,7 @@ virVHBAGetHostByFabricWWN(const char *sysfs_prefix,
         if (rc == 0)
             continue;
 
-        ignore_value(VIR_STRDUP(ret, entry->d_name));
+        ret = g_strdup(entry->d_name);
         break;
     }
 
@@ -467,8 +451,8 @@ virVHBAGetHostByFabricWWN(const char *sysfs_prefix,
 #else
 
 bool
-virVHBAPathExists(const char *sysfs_prefix ATTRIBUTE_UNUSED,
-                  int host ATTRIBUTE_UNUSED)
+virVHBAPathExists(const char *sysfs_prefix G_GNUC_UNUSED,
+                  int host G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return false;
@@ -476,8 +460,8 @@ virVHBAPathExists(const char *sysfs_prefix ATTRIBUTE_UNUSED,
 
 
 bool
-virVHBAIsVportCapable(const char *sysfs_prefix ATTRIBUTE_UNUSED,
-                      int host ATTRIBUTE_UNUSED)
+virVHBAIsVportCapable(const char *sysfs_prefix G_GNUC_UNUSED,
+                      int host G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return false;
@@ -485,9 +469,9 @@ virVHBAIsVportCapable(const char *sysfs_prefix ATTRIBUTE_UNUSED,
 
 
 char *
-virVHBAGetConfig(const char *sysfs_prefix ATTRIBUTE_UNUSED,
-                 int host ATTRIBUTE_UNUSED,
-                 const char *entry ATTRIBUTE_UNUSED)
+virVHBAGetConfig(const char *sysfs_prefix G_GNUC_UNUSED,
+                 int host G_GNUC_UNUSED,
+                 const char *entry G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return NULL;
@@ -495,7 +479,7 @@ virVHBAGetConfig(const char *sysfs_prefix ATTRIBUTE_UNUSED,
 
 
 char *
-virVHBAFindVportHost(const char *sysfs_prefix ATTRIBUTE_UNUSED)
+virVHBAFindVportHost(const char *sysfs_prefix G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return NULL;
@@ -503,10 +487,10 @@ virVHBAFindVportHost(const char *sysfs_prefix ATTRIBUTE_UNUSED)
 
 
 int
-virVHBAManageVport(const int parent_host ATTRIBUTE_UNUSED,
-                   const char *wwpn ATTRIBUTE_UNUSED,
-                   const char *wwnn ATTRIBUTE_UNUSED,
-                   int operation ATTRIBUTE_UNUSED)
+virVHBAManageVport(const int parent_host G_GNUC_UNUSED,
+                   const char *wwpn G_GNUC_UNUSED,
+                   const char *wwnn G_GNUC_UNUSED,
+                   int operation G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return -1;
@@ -514,9 +498,9 @@ virVHBAManageVport(const int parent_host ATTRIBUTE_UNUSED,
 
 
 char *
-virVHBAGetHostByWWN(const char *sysfs_prefix ATTRIBUTE_UNUSED,
-                    const char *wwnn ATTRIBUTE_UNUSED,
-                    const char *wwpn ATTRIBUTE_UNUSED)
+virVHBAGetHostByWWN(const char *sysfs_prefix G_GNUC_UNUSED,
+                    const char *wwnn G_GNUC_UNUSED,
+                    const char *wwpn G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return NULL;
@@ -524,8 +508,8 @@ virVHBAGetHostByWWN(const char *sysfs_prefix ATTRIBUTE_UNUSED,
 
 
 char *
-virVHBAGetHostByFabricWWN(const char *sysfs_prefix ATTRIBUTE_UNUSED,
-                          const char *fabric_wwn ATTRIBUTE_UNUSED)
+virVHBAGetHostByFabricWWN(const char *sysfs_prefix G_GNUC_UNUSED,
+                          const char *fabric_wwn G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s", _("Not supported on this platform"));
     return NULL;

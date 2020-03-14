@@ -7,7 +7,7 @@ XDG_DATA_HOME=/tmp/lib/domain--1-QEMUGuest1/.local/share \
 XDG_CACHE_HOME=/tmp/lib/domain--1-QEMUGuest1/.cache \
 XDG_CONFIG_HOME=/tmp/lib/domain--1-QEMUGuest1/.config \
 QEMU_AUDIO_DRV=none \
-/usr/bin/qemu-system-i686 \
+/usr/bin/qemu-system-i386 \
 -name QEMUGuest1 \
 -S \
 -machine pc,accel=tcg,usb=off,dump-guest-core=off \
@@ -58,4 +58,11 @@ file.target=iqn.1992-01.com.example:server,file.lun=0,file.transport=tcp,\
 file.initiator-name=iqn.1992-01.com.example:client,format=raw,if=none,\
 id=drive-scsi0-0-0-1 \
 -device scsi-block,bus=scsi0.0,channel=0,scsi-id=0,lun=1,\
-drive=drive-scsi0-0-0-1,id=scsi0-0-0-1
+drive=drive-scsi0-0-0-1,id=scsi0-0-0-1 \
+-drive file.driver=iscsi,file.portal=example.org:3260,\
+file.target=iqn.1992-01.com.example:server,file.lun=0,file.transport=tcp,\
+file.user=myname,file.password-secret=AQCVn5hO6HzFAhAAq0NCv8jtJcIcE+HOBlMQ1A,\
+file.initiator-name=iqn.1992-01.com.example:client,format=raw,if=none,\
+id=drive-scsi0-0-0-2 \
+-device scsi-block,bus=scsi0.0,channel=0,scsi-id=0,lun=2,\
+drive=drive-scsi0-0-0-2,id=scsi0-0-0-2

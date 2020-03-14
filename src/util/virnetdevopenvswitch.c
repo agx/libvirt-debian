@@ -68,7 +68,7 @@ virNetDevOpenvswitchAddTimeout(virCommandPtr cmd)
  * Returns 0 in case of success or -1 in case of failure.
  */
 static int
-virNetDevOpenvswitchConstructVlans(virCommandPtr cmd, virNetDevVlanPtr virtVlan)
+virNetDevOpenvswitchConstructVlans(virCommandPtr cmd, const virNetDevVlan *virtVlan)
 {
     int ret = -1;
     size_t i = 0;
@@ -107,15 +107,12 @@ virNetDevOpenvswitchConstructVlans(virCommandPtr cmd, virNetDevVlanPtr virtVlan)
             virBufferAsprintf(&buf, "%d", virtVlan->tag[i]);
         }
 
-        if (virBufferCheckError(&buf) < 0)
-            goto cleanup;
         virCommandAddArg(cmd, virBufferCurrentContent(&buf));
     } else if (virtVlan->nTags) {
         virCommandAddArgFormat(cmd, "tag=%d", virtVlan->tag[0]);
     }
 
     ret = 0;
- cleanup:
     virBufferFreeAndReset(&buf);
     return ret;
 }
@@ -135,35 +132,29 @@ virNetDevOpenvswitchConstructVlans(virCommandPtr cmd, virNetDevVlanPtr virtVlan)
 int virNetDevOpenvswitchAddPort(const char *brname, const char *ifname,
                                 const virMacAddr *macaddr,
                                 const unsigned char *vmuuid,
-                                virNetDevVPortProfilePtr ovsport,
-                                virNetDevVlanPtr virtVlan)
+                                const virNetDevVPortProfile *ovsport,
+                                const virNetDevVlan *virtVlan)
 {
     char macaddrstr[VIR_MAC_STRING_BUFLEN];
     char ifuuidstr[VIR_UUID_STRING_BUFLEN];
     char vmuuidstr[VIR_UUID_STRING_BUFLEN];
-    VIR_AUTOPTR(virCommand) cmd = NULL;
-    VIR_AUTOFREE(char *) attachedmac_ex_id = NULL;
-    VIR_AUTOFREE(char *) ifaceid_ex_id = NULL;
-    VIR_AUTOFREE(char *) profile_ex_id = NULL;
-    VIR_AUTOFREE(char *) vmid_ex_id = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    g_autofree char *attachedmac_ex_id = NULL;
+    g_autofree char *ifaceid_ex_id = NULL;
+    g_autofree char *profile_ex_id = NULL;
+    g_autofree char *vmid_ex_id = NULL;
 
     virMacAddrFormat(macaddr, macaddrstr);
     virUUIDFormat(ovsport->interfaceID, ifuuidstr);
     virUUIDFormat(vmuuid, vmuuidstr);
 
-    if (virAsprintf(&attachedmac_ex_id, "external-ids:attached-mac=\"%s\"",
-                    macaddrstr) < 0)
-        return -1;
-    if (virAsprintf(&ifaceid_ex_id, "external-ids:iface-id=\"%s\"",
-                    ifuuidstr) < 0)
-        return -1;
-    if (virAsprintf(&vmid_ex_id, "external-ids:vm-id=\"%s\"",
-                    vmuuidstr) < 0)
-        return -1;
+    attachedmac_ex_id = g_strdup_printf("external-ids:attached-mac=\"%s\"",
+                                        macaddrstr);
+    ifaceid_ex_id = g_strdup_printf("external-ids:iface-id=\"%s\"", ifuuidstr);
+    vmid_ex_id = g_strdup_printf("external-ids:vm-id=\"%s\"", vmuuidstr);
     if (ovsport->profileID[0] != '\0') {
-        if (virAsprintf(&profile_ex_id, "external-ids:port-profile=\"%s\"",
-                        ovsport->profileID) < 0)
-            return -1;
+        profile_ex_id = g_strdup_printf("external-ids:port-profile=\"%s\"",
+                                        ovsport->profileID);
     }
 
     cmd = virCommandNew(OVSVSCTL);
@@ -211,9 +202,9 @@ int virNetDevOpenvswitchAddPort(const char *brname, const char *ifname,
  *
  * Returns 0 in case of success or -1 in case of failure.
  */
-int virNetDevOpenvswitchRemovePort(const char *brname ATTRIBUTE_UNUSED, const char *ifname)
+int virNetDevOpenvswitchRemovePort(const char *brname G_GNUC_UNUSED, const char *ifname)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     cmd = virCommandNew(OVSVSCTL);
     virNetDevOpenvswitchAddTimeout(cmd);
@@ -240,7 +231,7 @@ int virNetDevOpenvswitchRemovePort(const char *brname ATTRIBUTE_UNUSED, const ch
 int virNetDevOpenvswitchGetMigrateData(char **migrate, const char *ifname)
 {
     size_t len;
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     cmd = virCommandNew(OVSVSCTL);
     virNetDevOpenvswitchAddTimeout(cmd);
@@ -276,7 +267,7 @@ int virNetDevOpenvswitchGetMigrateData(char **migrate, const char *ifname)
  */
 int virNetDevOpenvswitchSetMigrateData(char *migrate, const char *ifname)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     if (!migrate) {
         VIR_DEBUG("No OVS port data for interface %s", ifname);
@@ -315,7 +306,7 @@ int
 virNetDevOpenvswitchInterfaceParseStats(const char *json,
                                         virDomainInterfaceStatsPtr stats)
 {
-    VIR_AUTOPTR(virJSONValue) jsonStats = NULL;
+    g_autoptr(virJSONValue) jsonStats = NULL;
     virJSONValuePtr jsonMap = NULL;
     size_t i;
 
@@ -386,8 +377,8 @@ int
 virNetDevOpenvswitchInterfaceStats(const char *ifname,
                                    virDomainInterfaceStatsPtr stats)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
-    VIR_AUTOFREE(char *) output = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    g_autofree char *output = NULL;
 
     cmd = virCommandNew(OVSVSCTL);
     virNetDevOpenvswitchAddTimeout(cmd);
@@ -504,7 +495,7 @@ virNetDevOpenvswitchGetVhostuserIfname(const char *path,
     size_t ntokens = 0;
     int status;
     int ret = -1;
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     /* Openvswitch vhostuser path are hardcoded to
      * /<runstatedir>/openvswitch/<ifname>
@@ -529,8 +520,7 @@ virNetDevOpenvswitchGetVhostuserIfname(const char *path,
         goto cleanup;
     }
 
-    if (VIR_STRDUP(*ifname, tmpIfname) < 0)
-        goto cleanup;
+    *ifname = g_strdup(tmpIfname);
     ret = 1;
 
  cleanup:
@@ -548,9 +538,9 @@ virNetDevOpenvswitchGetVhostuserIfname(const char *path,
  * Returns 0 in case of success or -1 in case of failure.
  */
 int virNetDevOpenvswitchUpdateVlan(const char *ifname,
-                                   virNetDevVlanPtr virtVlan)
+                                   const virNetDevVlan *virtVlan)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     cmd = virCommandNew(OVSVSCTL);
     virNetDevOpenvswitchAddTimeout(cmd);

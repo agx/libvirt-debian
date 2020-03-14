@@ -437,8 +437,7 @@ virObjectEventCallbackListAddID(virConnectPtr conn,
 
     if (key) {
         cb->key_filter = true;
-        if (VIR_STRDUP(cb->key, key) < 0)
-            goto cleanup;
+        cb->key = g_strdup(key);
     }
     cb->filter = filter;
     cb->filter_opaque = filter_opaque;
@@ -543,7 +542,7 @@ static void virObjectEventStateFlush(virObjectEventStatePtr state);
  * flush the callback queue.
  */
 static void
-virObjectEventTimer(int timer ATTRIBUTE_UNUSED, void *opaque)
+virObjectEventTimer(int timer G_GNUC_UNUSED, void *opaque)
 {
     virObjectEventStatePtr state = opaque;
 
@@ -623,11 +622,8 @@ virObjectEventNew(virClassPtr klass,
     event->eventID = eventID;
     event->remoteID = -1;
 
-    if (VIR_STRDUP(event->meta.name, name) < 0 ||
-        VIR_STRDUP(event->meta.key, key) < 0) {
-        virObjectUnref(event);
-        return NULL;
-    }
+    event->meta.name = g_strdup(name);
+    event->meta.key = g_strdup(key);
     event->meta.id = id;
     if (uuid)
         memcpy(event->meta.uuid, uuid, VIR_UUID_BUFLEN);
@@ -891,19 +887,20 @@ virObjectEventStateRegisterID(virConnectPtr conn,
     virObjectLock(state);
 
     if ((state->callbacks->count == 0) &&
-        (state->timer == -1) &&
-        (state->timer = virEventAddTimeout(-1,
-                                           virObjectEventTimer,
-                                           state,
-                                           virObjectFreeCallback)) < 0) {
-        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
-                       _("could not initialize domain event timer"));
-        goto cleanup;
-    }
+        (state->timer == -1)) {
+        if ((state->timer = virEventAddTimeout(-1,
+                                               virObjectEventTimer,
+                                               state,
+                                               virObjectFreeCallback)) < 0) {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                           _("could not initialize domain event timer"));
+            goto cleanup;
+        }
 
-    /* event loop has one reference, but we need one more for the
-     * timer's opaque argument */
-    virObjectRef(state);
+        /* event loop has one reference, but we need one more for the
+         * timer's opaque argument */
+        virObjectRef(state);
+    }
 
     ret = virObjectEventCallbackListAddID(conn, state->callbacks,
                                           key, filter, filter_opaque,

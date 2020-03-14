@@ -36,7 +36,7 @@ struct _virStoragePoolFSMountOptionsDef {
 
 int
 virStorageBackendNamespaceInit(int poolType,
-                               virStoragePoolXMLNamespacePtr xmlns);
+                               virXMLNamespacePtr xmlns);
 
 
 /* File creation/cloning functions used for cloning between backends */
@@ -147,7 +147,7 @@ enum {
 
 int virStorageBackendVolOpen(const char *path, struct stat *sb,
                              unsigned int flags)
-    ATTRIBUTE_RETURN_CHECK
+    G_GNUC_WARN_UNUSED_RESULT
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);
 
 #define VIR_STORAGE_DEFAULT_POOL_PERM_MODE 0711

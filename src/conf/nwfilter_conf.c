@@ -42,7 +42,6 @@
 #include "nwfilter_params.h"
 #include "nwfilter_conf.h"
 #include "domain_conf.h"
-#include "c-ctype.h"
 #include "virfile.h"
 #include "virstring.h"
 
@@ -401,8 +400,8 @@ virNWFilterRuleDefAddString(virNWFilterRuleDefPtr nwf,
 {
     char *tmp;
 
-    if (VIR_STRNDUP(tmp, string, maxstrlen) < 0 ||
-        VIR_APPEND_ELEMENT_COPY(nwf->strings, nwf->nstrings, tmp) < 0)
+    tmp = g_strndup(string, maxstrlen);
+    if (VIR_APPEND_ELEMENT_COPY(nwf->strings, nwf->nstrings, tmp) < 0)
         VIR_FREE(tmp);
 
     return tmp;
@@ -448,8 +447,8 @@ static const struct int_map macProtoMap[] = {
 static bool
 checkMacProtocolID(enum attrDatatype datatype,
                    union data *value,
-                   virNWFilterRuleDefPtr nwf ATTRIBUTE_UNUSED,
-                   nwItemDesc *item ATTRIBUTE_UNUSED)
+                   virNWFilterRuleDefPtr nwf G_GNUC_UNUSED,
+                   nwItemDesc *item G_GNUC_UNUSED)
 {
     int32_t res = -1;
 
@@ -477,7 +476,7 @@ checkMacProtocolID(enum attrDatatype datatype,
 static bool
 macProtocolIDFormatter(virBufferPtr buf,
                        virNWFilterRuleDefPtr nwf,
-                       nwItemDesc *item ATTRIBUTE_UNUSED)
+                       nwItemDesc *item G_GNUC_UNUSED)
 {
     const char *str = NULL;
     bool asHex = true;
@@ -500,7 +499,7 @@ static bool
 checkVlanVlanID(enum attrDatatype datatype,
                 union data *value,
                 virNWFilterRuleDefPtr nwf,
-                nwItemDesc *item ATTRIBUTE_UNUSED)
+                nwItemDesc *item G_GNUC_UNUSED)
 {
     int32_t res;
 
@@ -522,7 +521,7 @@ static bool
 checkVlanProtocolID(enum attrDatatype datatype,
                     union data *value,
                     virNWFilterRuleDefPtr nwf,
-                    nwItemDesc *item ATTRIBUTE_UNUSED)
+                    nwItemDesc *item G_GNUC_UNUSED)
 {
     int32_t res = -1;
 
@@ -550,7 +549,7 @@ checkVlanProtocolID(enum attrDatatype datatype,
 static bool
 vlanProtocolIDFormatter(virBufferPtr buf,
                         virNWFilterRuleDefPtr nwf,
-                        nwItemDesc *item ATTRIBUTE_UNUSED)
+                        nwItemDesc *item G_GNUC_UNUSED)
 {
     const char *str = NULL;
     bool asHex = true;
@@ -600,10 +599,10 @@ checkValidMask(unsigned char *data,
 
 
 static bool
-checkMACMask(enum attrDatatype datatype ATTRIBUTE_UNUSED,
+checkMACMask(enum attrDatatype datatype G_GNUC_UNUSED,
              union data *macMask,
-             virNWFilterRuleDefPtr nwf ATTRIBUTE_UNUSED,
-             nwItemDesc *item ATTRIBUTE_UNUSED)
+             virNWFilterRuleDefPtr nwf G_GNUC_UNUSED,
+             nwItemDesc *item G_GNUC_UNUSED)
 {
     return checkValidMask(macMask->uc, 6);
 }
@@ -630,7 +629,7 @@ static bool
 arpOpcodeValidator(enum attrDatatype datatype,
                    union data *value,
                    virNWFilterRuleDefPtr nwf,
-                   nwItemDesc *item ATTRIBUTE_UNUSED)
+                   nwItemDesc *item G_GNUC_UNUSED)
 {
     int32_t res = -1;
 
@@ -655,7 +654,7 @@ arpOpcodeValidator(enum attrDatatype datatype,
 static bool
 arpOpcodeFormatter(virBufferPtr buf,
                    virNWFilterRuleDefPtr nwf,
-                   nwItemDesc *item ATTRIBUTE_UNUSED)
+                   nwItemDesc *item G_GNUC_UNUSED)
 {
     const char *str = NULL;
 
@@ -692,7 +691,7 @@ static bool
 checkIPProtocolID(enum attrDatatype datatype,
                   union data *value,
                   virNWFilterRuleDefPtr nwf,
-                  nwItemDesc *item ATTRIBUTE_UNUSED)
+                  nwItemDesc *item G_GNUC_UNUSED)
 {
     int32_t res = -1;
 
@@ -717,7 +716,7 @@ checkIPProtocolID(enum attrDatatype datatype,
 static bool
 formatIPProtocolID(virBufferPtr buf,
                    virNWFilterRuleDefPtr nwf,
-                   nwItemDesc *item ATTRIBUTE_UNUSED)
+                   nwItemDesc *item G_GNUC_UNUSED)
 {
     const char *str = NULL;
     bool asHex = true;
@@ -740,7 +739,7 @@ static bool
 dscpValidator(enum attrDatatype datatype,
               union data *val,
               virNWFilterRuleDefPtr nwf,
-              nwItemDesc *item ATTRIBUTE_UNUSED)
+              nwItemDesc *item G_GNUC_UNUSED)
 {
     uint8_t dscp = val->ui;
     if (dscp > 63)
@@ -775,7 +774,7 @@ parseStringItems(const struct int_map *int_map,
     i = 0;
     while (input[i]) {
         found = false;
-        while (c_isspace(input[i]) || input[i] == sep)
+        while (g_ascii_isspace(input[i]) || input[i] == sep)
             i++;
         if (!input[i])
             break;
@@ -857,7 +856,7 @@ virNWFilterPrintStateMatchFlags(virBufferPtr buf,
 
 
 static bool
-stateValidator(enum attrDatatype datatype ATTRIBUTE_UNUSED,
+stateValidator(enum attrDatatype datatype G_GNUC_UNUSED,
                union data *val,
                virNWFilterRuleDefPtr nwf,
                nwItemDesc *item)
@@ -879,7 +878,7 @@ stateValidator(enum attrDatatype datatype ATTRIBUTE_UNUSED,
 
 static bool
 stateFormatter(virBufferPtr buf,
-               virNWFilterRuleDefPtr nwf ATTRIBUTE_UNUSED,
+               virNWFilterRuleDefPtr nwf G_GNUC_UNUSED,
                nwItemDesc *item)
 {
     virNWFilterPrintStateMatchFlags(buf, "", item->u.u16, true);
@@ -902,9 +901,9 @@ static const struct int_map tcpFlags[] = {
 
 
 static bool
-tcpFlagsValidator(enum attrDatatype datatype ATTRIBUTE_UNUSED,
+tcpFlagsValidator(enum attrDatatype datatype G_GNUC_UNUSED,
                   union data *val,
-                  virNWFilterRuleDefPtr nwf ATTRIBUTE_UNUSED,
+                  virNWFilterRuleDefPtr nwf G_GNUC_UNUSED,
                   nwItemDesc *item)
 {
     bool rc = false;
@@ -951,15 +950,13 @@ virNWFilterPrintTCPFlags(uint8_t flags)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     printTCPFlags(&buf, flags);
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
     return virBufferContentAndReset(&buf);
 }
 
 
 static bool
 tcpFlagsFormatter(virBufferPtr buf,
-                  virNWFilterRuleDefPtr nwf ATTRIBUTE_UNUSED,
+                  virNWFilterRuleDefPtr nwf G_GNUC_UNUSED,
                   nwItemDesc *item)
 {
     printTCPFlags(buf, item->u.tcpFlags.mask);
@@ -971,9 +968,9 @@ tcpFlagsFormatter(virBufferPtr buf,
 
 
 static bool
-ipsetValidator(enum attrDatatype datatype ATTRIBUTE_UNUSED,
+ipsetValidator(enum attrDatatype datatype G_GNUC_UNUSED,
                union data *val,
-               virNWFilterRuleDefPtr nwf ATTRIBUTE_UNUSED,
+               virNWFilterRuleDefPtr nwf G_GNUC_UNUSED,
                nwItemDesc *item)
 {
     const char *errmsg = NULL;
@@ -1000,7 +997,7 @@ ipsetValidator(enum attrDatatype datatype ATTRIBUTE_UNUSED,
 
 static bool
 ipsetFormatter(virBufferPtr buf,
-               virNWFilterRuleDefPtr nwf ATTRIBUTE_UNUSED,
+               virNWFilterRuleDefPtr nwf G_GNUC_UNUSED,
                nwItemDesc *item)
 {
     virBufferAdd(buf, item->u.ipset.setname, -1);
@@ -1010,9 +1007,9 @@ ipsetFormatter(virBufferPtr buf,
 
 
 static bool
-ipsetFlagsValidator(enum attrDatatype datatype ATTRIBUTE_UNUSED,
+ipsetFlagsValidator(enum attrDatatype datatype G_GNUC_UNUSED,
                     union data *val,
-                    virNWFilterRuleDefPtr nwf ATTRIBUTE_UNUSED,
+                    virNWFilterRuleDefPtr nwf G_GNUC_UNUSED,
                     nwItemDesc *item)
 {
     const char *errmsg = NULL;
@@ -1050,7 +1047,7 @@ ipsetFlagsValidator(enum attrDatatype datatype ATTRIBUTE_UNUSED,
 
 static bool
 ipsetFlagsFormatter(virBufferPtr buf,
-                    virNWFilterRuleDefPtr nwf ATTRIBUTE_UNUSED,
+                    virNWFilterRuleDefPtr nwf G_GNUC_UNUSED,
                     nwItemDesc *item)
 {
     uint8_t ctr;
@@ -1863,7 +1860,7 @@ virNWFilterRuleDetailsParse(xmlNodePtr node,
                     switch (datatype) {
                         case DATATYPE_UINT8_HEX:
                             base = 16;
-                            ATTRIBUTE_FALLTHROUGH;
+                            G_GNUC_FALLTHROUGH;
                         case DATATYPE_UINT8:
                             if (virStrToLong_ui(prop, NULL, base, &uint_val) >= 0) {
                                 if (uint_val <= 0xff) {
@@ -1880,7 +1877,7 @@ virNWFilterRuleDetailsParse(xmlNodePtr node,
 
                         case DATATYPE_UINT16_HEX:
                             base = 16;
-                            ATTRIBUTE_FALLTHROUGH;
+                            G_GNUC_FALLTHROUGH;
                         case DATATYPE_UINT16:
                             if (virStrToLong_ui(prop, NULL, base, &uint_val) >= 0) {
                                 if (uint_val <= 0xffff) {
@@ -1897,7 +1894,7 @@ virNWFilterRuleDetailsParse(xmlNodePtr node,
 
                         case DATATYPE_UINT32_HEX:
                             base = 16;
-                            ATTRIBUTE_FALLTHROUGH;
+                            G_GNUC_FALLTHROUGH;
                         case DATATYPE_UINT32:
                             if (virStrToLong_ui(prop, NULL, base, &uint_val) >= 0) {
                                 item->u.u32 = uint_val;
@@ -2087,13 +2084,11 @@ virNWFilterIncludeParse(xmlNodePtr cur)
     if (!ret->params)
         goto err_exit;
 
- cleanup:
     return ret;
 
  err_exit:
     virNWFilterIncludeDefFree(ret);
-    ret = NULL;
-    goto cleanup;
+    return NULL;
 }
 
 
@@ -2131,7 +2126,7 @@ virNWFilterRuleValidate(virNWFilterRuleDefPtr rule)
         portData = &rule->p.ipHdrFilter.portData;
         protocol = "IP";
         dataProtocolID = &rule->p.ipHdrFilter.ipHdr.dataProtocolID;
-        ATTRIBUTE_FALLTHROUGH;
+        G_GNUC_FALLTHROUGH;
     case VIR_NWFILTER_RULE_PROTOCOL_IPV6:
         if (portData == NULL) {
             portData = &rule->p.ipv6HdrFilter.portData;
@@ -2600,15 +2595,11 @@ virNWFilterIsAllowedChain(const char *chainname)
         printed = true;
     }
 
-    if (virBufferCheckError(&buf) < 0)
-        goto err_exit;
-
     msg = virBufferContentAndReset(&buf);
 
     virReportError(VIR_ERR_INVALID_ARG, "%s", msg);
     VIR_FREE(msg);
 
- err_exit:
     return NULL;
 }
 
@@ -2674,9 +2665,7 @@ virNWFilterDefParseXML(xmlXPathContextPtr ctxt)
         }
         chain = NULL;
     } else {
-        if (VIR_STRDUP(ret->chainsuffix,
-                       virNWFilterChainSuffixTypeToString(VIR_NWFILTER_CHAINSUFFIX_ROOT)) < 0)
-            goto cleanup;
+        ret->chainsuffix = g_strdup(virNWFilterChainSuffixTypeToString(VIR_NWFILTER_CHAINSUFFIX_ROOT));
     }
 
     uuid = virXPathString("string(./uuid)", ctxt);
@@ -2746,28 +2735,20 @@ virNWFilterDefPtr
 virNWFilterDefParseNode(xmlDocPtr xml,
                         xmlNodePtr root)
 {
-    xmlXPathContextPtr ctxt = NULL;
-    virNWFilterDefPtr def = NULL;
+    g_autoptr(xmlXPathContext) ctxt = NULL;
 
     if (STRNEQ((const char *)root->name, "filter")) {
         virReportError(VIR_ERR_XML_ERROR,
                        "%s",
                        _("unknown root element for nw filter"));
-        goto cleanup;
+        return NULL;
     }
 
-    ctxt = xmlXPathNewContext(xml);
-    if (ctxt == NULL) {
-        virReportOOMError();
-        goto cleanup;
-    }
+    if (!(ctxt = virXMLXPathContextNew(xml)))
+        return NULL;
 
     ctxt->node = root;
-    def = virNWFilterDefParseXML(ctxt);
-
- cleanup:
-    xmlXPathFreeContext(ctxt);
-    return def;
+    return virNWFilterDefParseXML(ctxt);
 }
 
 
@@ -2922,7 +2903,7 @@ virNWFilterRuleDefDetailsFormat(virBufferPtr buf,
                                  _("formatter for %s %s reported error"),
                                  type,
                                  att[i].name);
-                   goto err_exit;
+                   return;
                }
             } else if ((flags & NWFILTER_ENTRY_ITEM_FLAG_HAS_VAR)) {
                 virBufferAddChar(buf, '$');
@@ -2934,7 +2915,7 @@ virNWFilterRuleDefDetailsFormat(virBufferPtr buf,
 
                case DATATYPE_UINT8_HEX:
                    asHex = true;
-                   ATTRIBUTE_FALLTHROUGH;
+                   G_GNUC_FALLTHROUGH;
                case DATATYPE_IPMASK:
                case DATATYPE_IPV6MASK:
                    /* display all masks in CIDR format */
@@ -2945,7 +2926,7 @@ virNWFilterRuleDefDetailsFormat(virBufferPtr buf,
 
                case DATATYPE_UINT16_HEX:
                    asHex = true;
-                   ATTRIBUTE_FALLTHROUGH;
+                   G_GNUC_FALLTHROUGH;
                case DATATYPE_UINT16:
                    virBufferAsprintf(buf, asHex ? "0x%x" : "%d",
                                      item->u.u16);
@@ -2953,7 +2934,7 @@ virNWFilterRuleDefDetailsFormat(virBufferPtr buf,
 
                case DATATYPE_UINT32_HEX:
                    asHex = true;
-                   ATTRIBUTE_FALLTHROUGH;
+                   G_GNUC_FALLTHROUGH;
                case DATATYPE_UINT32:
                    virBufferAsprintf(buf, asHex ? "0x%x" : "%u",
                                      item->u.u32);
@@ -3005,7 +2986,6 @@ virNWFilterRuleDefDetailsFormat(virBufferPtr buf,
        virBufferAsprintf(buf,
                          "<%s/>\n", type);
 
- err_exit:
     return;
 }
 
@@ -3087,9 +3067,6 @@ virNWFilterDefFormat(const virNWFilterDef *def)
 
     virBufferAdjustIndent(&buf, -2);
     virBufferAddLit(&buf, "</filter>\n");
-
-    if (virBufferCheckError(&buf) < 0)
-        goto err_exit;
 
     return virBufferContentAndReset(&buf);
 

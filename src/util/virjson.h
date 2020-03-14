@@ -25,7 +25,6 @@
 #include "internal.h"
 #include "virbitmap.h"
 #include "virbuffer.h"
-#include "virautoclean.h"
 
 #include <stdarg.h>
 
@@ -43,16 +42,16 @@ typedef struct _virJSONValue virJSONValue;
 typedef virJSONValue *virJSONValuePtr;
 
 void virJSONValueFree(virJSONValuePtr value);
-void virJSONValueHashFree(void *opaque, const void *name);
+void virJSONValueHashFree(void *opaque);
 
 virJSONType virJSONValueGetType(const virJSONValue *value);
 
 int virJSONValueObjectCreate(virJSONValuePtr *obj, ...)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_SENTINEL;
+    ATTRIBUTE_NONNULL(1) G_GNUC_NULL_TERMINATED;
 int virJSONValueObjectCreateVArgs(virJSONValuePtr *obj, va_list args)
     ATTRIBUTE_NONNULL(1);
 int virJSONValueObjectAdd(virJSONValuePtr obj, ...)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_SENTINEL;
+    ATTRIBUTE_NONNULL(1) G_GNUC_NULL_TERMINATED;
 int virJSONValueObjectAddVArgs(virJSONValuePtr obj, va_list args)
     ATTRIBUTE_NONNULL(1);
 
@@ -147,7 +146,7 @@ char *virJSONValueToString(virJSONValuePtr object,
 int virJSONValueToBuffer(virJSONValuePtr object,
                          virBufferPtr buf,
                          bool pretty)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 
 typedef int (*virJSONValueObjectIteratorFunc)(const char *key,
                                               virJSONValuePtr value,
@@ -163,4 +162,4 @@ char *virJSONStringReformat(const char *jsonstr, bool pretty);
 
 virJSONValuePtr virJSONValueObjectDeflatten(virJSONValuePtr json);
 
-VIR_DEFINE_AUTOPTR_FUNC(virJSONValue, virJSONValueFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virJSONValue, virJSONValueFree);

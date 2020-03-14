@@ -90,7 +90,7 @@ static const char test11_xml[] =
 
 /* Test virIsVHBACapable */
 static int
-test1(const void *data ATTRIBUTE_UNUSED)
+test1(const void *data G_GNUC_UNUSED)
 {
     if (virVHBAPathExists(TEST_FC_HOST_PREFIX, TEST_FC_HOST_NUM) &&
         virVHBAPathExists(TEST_FC_HOST_PREFIX, TEST_FC_HOST_NUM_NO_FAB))
@@ -101,7 +101,7 @@ test1(const void *data ATTRIBUTE_UNUSED)
 
 /* Test virVHBAIsVportCapable */
 static int
-test2(const void *data ATTRIBUTE_UNUSED)
+test2(const void *data G_GNUC_UNUSED)
 {
     if (virVHBAIsVportCapable(TEST_FC_HOST_PREFIX, TEST_FC_HOST_NUM))
         return 0;
@@ -111,7 +111,7 @@ test2(const void *data ATTRIBUTE_UNUSED)
 
 /* Test virVHBAGetConfig */
 static int
-test3(const void *data ATTRIBUTE_UNUSED)
+test3(const void *data G_GNUC_UNUSED)
 {
     const char *expect_wwnn = "2001001b32a9da4e";
     const char *expect_wwpn = "2101001b32a9da4e";
@@ -165,7 +165,7 @@ test3(const void *data ATTRIBUTE_UNUSED)
 
 /* Test virVHBAGetHostByWWN */
 static int
-test4(const void *data ATTRIBUTE_UNUSED)
+test4(const void *data G_GNUC_UNUSED)
 {
     const char *expect_hostname = "host5";
     char *hostname = NULL;
@@ -190,7 +190,7 @@ test4(const void *data ATTRIBUTE_UNUSED)
  * NB: host4 is not Online, so it should not be found
  */
 static int
-test5(const void *data ATTRIBUTE_UNUSED)
+test5(const void *data G_GNUC_UNUSED)
 {
     const char *expect_hostname = "host5";
     char *hostname = NULL;
@@ -210,7 +210,7 @@ test5(const void *data ATTRIBUTE_UNUSED)
 
 /* Test virVHBAGetConfig fabric name optional */
 static int
-test6(const void *data ATTRIBUTE_UNUSED)
+test6(const void *data G_GNUC_UNUSED)
 {
     const char *expect_wwnn = "2002001b32a9da4e";
     const char *expect_wwpn = "2102001b32a9da4e";
@@ -343,11 +343,7 @@ mymain(void)
 {
     int ret = 0;
 
-    if (virAsprintf(&fchost_prefix, "%s/%s", abs_srcdir,
-                    "fchostdata/fc_host/") < 0) {
-        ret = -1;
-        goto cleanup;
-    }
+    fchost_prefix = g_strdup_printf("%s/%s", abs_srcdir, "fchostdata/fc_host/");
 
     if (virTestRun("virVHBAPathExists", test1, NULL) < 0)
         ret = -1;
@@ -377,9 +373,8 @@ mymain(void)
                    test11_xml) < 0)
         ret = -1;
 
- cleanup:
     VIR_FREE(fchost_prefix);
     return ret;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virrandommock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virrandom"))

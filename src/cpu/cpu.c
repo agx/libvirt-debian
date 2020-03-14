@@ -57,7 +57,7 @@ cpuGetSubDriver(virArch arch)
         return NULL;
     }
 
-    for (i = 0; i < ARRAY_CARDINALITY(drivers); i++) {
+    for (i = 0; i < G_N_ELEMENTS(drivers); i++) {
         for (j = 0; j < drivers[i]->narch; j++) {
             if (arch == drivers[i]->arch[j])
                 return drivers[i];
@@ -76,7 +76,7 @@ cpuGetSubDriverByName(const char *name)
 {
     size_t i;
 
-    for (i = 0; i < ARRAY_CARDINALITY(drivers); i++) {
+    for (i = 0; i < G_N_ELEMENTS(drivers); i++) {
         if (STREQ_NULLABLE(name, drivers[i]->name))
             return drivers[i];
     }
@@ -111,31 +111,19 @@ virCPUCompareXML(virArch arch,
                  const char *xml,
                  bool failIncompatible)
 {
-    xmlDocPtr doc = NULL;
-    xmlXPathContextPtr ctxt = NULL;
     virCPUDefPtr cpu = NULL;
     virCPUCompareResult ret = VIR_CPU_COMPARE_ERROR;
 
     VIR_DEBUG("arch=%s, host=%p, xml=%s",
               virArchToString(arch), host, NULLSTR(xml));
 
-    if (!xml) {
-        virReportError(VIR_ERR_INVALID_ARG, "%s", _("missing CPU definition"));
-        goto cleanup;
-    }
-
-    if (!(doc = virXMLParseStringCtxt(xml, _("(CPU_definition)"), &ctxt)))
-        goto cleanup;
-
-    if (virCPUDefParseXML(ctxt, NULL, VIR_CPU_TYPE_AUTO, &cpu) < 0)
+    if (virCPUDefParseXMLString(xml, VIR_CPU_TYPE_AUTO, &cpu) < 0)
         goto cleanup;
 
     ret = virCPUCompare(arch, host, cpu, failIncompatible);
 
  cleanup:
     virCPUDefFree(cpu);
-    xmlXPathFreeContext(ctxt);
-    xmlFreeDoc(doc);
 
     return ret;
 }
@@ -405,8 +393,7 @@ virCPUGetHost(virArch arch,
     if (!(driver = cpuGetSubDriver(arch)))
         return NULL;
 
-    if (VIR_ALLOC(cpu) < 0)
-        return NULL;
+    cpu = virCPUDefNew();
 
     switch (type) {
     case VIR_CPU_TYPE_HOST:

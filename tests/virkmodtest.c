@@ -36,7 +36,7 @@ struct testInfo {
 # define VIR_FROM_THIS VIR_FROM_NONE
 
 static int
-testKModConfig(const void *args ATTRIBUTE_UNUSED)
+testKModConfig(const void *args G_GNUC_UNUSED)
 {
     int ret = -1;
     char *outbuf = NULL;
@@ -69,11 +69,7 @@ checkOutput(virBufferPtr buf, const char *exp_cmd)
     char *actual_cmd = NULL;
 
     if (!(actual_cmd = virBufferContentAndReset(buf))) {
-        int err = virBufferError(buf);
-        if (err)
-            fprintf(stderr, "buffer's in error state: %d", err);
-        else
-            fprintf(stderr, "cannot compare buffer to exp: %s", exp_cmd);
+        fprintf(stderr, "cannot compare buffer to exp: %s", exp_cmd);
         goto cleanup;
     }
 

@@ -65,6 +65,12 @@ VIR_ONCE_GLOBAL_INIT(virAccessManager);
 
 virAccessManagerPtr virAccessManagerGetDefault(void)
 {
+    if (virAccessManagerDefault == NULL) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("No access manager registered"));
+        return NULL;
+    }
+
     return virObjectRef(virAccessManagerDefault);
 }
 
@@ -118,7 +124,7 @@ static virAccessDriverPtr accessDrivers[] = {
 static virAccessDriverPtr virAccessManagerFindDriver(const char *name)
 {
     size_t i;
-    for (i = 0; i < ARRAY_CARDINALITY(accessDrivers); i++) {
+    for (i = 0; i < G_N_ELEMENTS(accessDrivers); i++) {
         if (STREQ(name, accessDrivers[i]->name))
             return accessDrivers[i];
     }

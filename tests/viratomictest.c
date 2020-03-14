@@ -29,7 +29,7 @@
 #include "virthread.h"
 
 static int
-testTypes(const void *data ATTRIBUTE_UNUSED)
+testTypes(const void *data G_GNUC_UNUSED)
 {
     unsigned int u, u2;
     int s, s2;
@@ -131,7 +131,7 @@ thread_func(void *data)
 }
 
 static int
-testThreads(const void *data ATTRIBUTE_UNUSED)
+testThreads(const void *data G_GNUC_UNUSED)
 {
     int sum;
     size_t i;
@@ -163,9 +163,6 @@ static int
 mymain(void)
 {
     int ret = 0;
-
-    if (virThreadInitialize() < 0)
-        return -1;
 
     if (virTestRun("types", testTypes, NULL) < 0)
         ret = -1;

@@ -66,6 +66,9 @@ typedef virCapsHostMemBW *virCapsHostMemBWPtr;
 typedef struct _virCapsHostMemBWNode virCapsHostMemBWNode;
 typedef virCapsHostMemBWNode *virCapsHostMemBWNodePtr;
 
+typedef struct _virCapsHostNUMA virCapsHostNUMA;
+typedef virCapsHostNUMA *virCapsHostNUMAPtr;
+
 typedef struct _virCapsHostNUMACell virCapsHostNUMACell;
 typedef virCapsHostNUMACell *virCapsHostNUMACellPtr;
 
@@ -92,6 +95,9 @@ typedef virDomainABIStability *virDomainABIStabilityPtr;
 
 typedef struct _virDomainActualNetDef virDomainActualNetDef;
 typedef virDomainActualNetDef *virDomainActualNetDefPtr;
+
+typedef struct _virDomainBackupDef virDomainBackupDef;
+typedef virDomainBackupDef *virDomainBackupDefPtr;
 
 typedef struct _virDomainBIOSDef virDomainBIOSDef;
 typedef virDomainBIOSDef *virDomainBIOSDefPtr;
@@ -324,6 +330,9 @@ typedef virDomainVcpuDef *virDomainVcpuDefPtr;
 typedef struct _virDomainVideoAccelDef virDomainVideoAccelDef;
 typedef virDomainVideoAccelDef *virDomainVideoAccelDefPtr;
 
+typedef struct _virDomainVideoResolutionDef virDomainVideoResolutionDef;
+typedef virDomainVideoResolutionDef *virDomainVideoResolutionDefPtr;
+
 typedef struct _virDomainVideoDef virDomainVideoDef;
 typedef virDomainVideoDef *virDomainVideoDefPtr;
 
@@ -341,9 +350,6 @@ typedef virDomainVsockDef *virDomainVsockDefPtr;
 
 typedef struct _virDomainWatchdogDef virDomainWatchdogDef;
 typedef virDomainWatchdogDef *virDomainWatchdogDefPtr;
-
-typedef struct _virDomainXMLNamespace virDomainXMLNamespace;
-typedef virDomainXMLNamespace *virDomainXMLNamespacePtr;
 
 typedef struct _virDomainXMLOption virDomainXMLOption;
 typedef virDomainXMLOption *virDomainXMLOptionPtr;

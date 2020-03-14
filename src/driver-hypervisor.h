@@ -37,6 +37,12 @@ typedef int
 (*virDrvConnectClose)(virConnectPtr conn);
 
 typedef int
+(*virDrvConnectSetIdentity)(virConnectPtr conn,
+                            virTypedParameterPtr params,
+                            int nparams,
+                            unsigned int flags);
+
+typedef int
 (*virDrvConnectSupportsFeature)(virConnectPtr conn,
                                 int feature);
 
@@ -1359,6 +1365,28 @@ typedef int
 (*virDrvDomainCheckpointDelete)(virDomainCheckpointPtr checkpoint,
                                 unsigned int flags);
 
+typedef int
+(*virDrvDomainGetGuestInfo)(virDomainPtr domain,
+                            unsigned int types,
+                            virTypedParameterPtr *params,
+                            int *nparams,
+                            unsigned int flags);
+
+typedef int
+(*virDrvDomainAgentSetResponseTimeout)(virDomainPtr domain,
+                                       int timeout,
+                                       unsigned int flags);
+
+typedef int
+(*virDrvDomainBackupBegin)(virDomainPtr domain,
+                           const char *backupXML,
+                           const char *checkpointXML,
+                           unsigned int flags);
+
+typedef char *
+(*virDrvDomainBackupGetXMLDesc)(virDomainPtr domain,
+                                unsigned int flags);
+
 typedef struct _virHypervisorDriver virHypervisorDriver;
 typedef virHypervisorDriver *virHypervisorDriverPtr;
 
@@ -1378,6 +1406,7 @@ struct _virHypervisorDriver {
     virDrvConnectURIProbe connectURIProbe;
     virDrvConnectOpen connectOpen;
     virDrvConnectClose connectClose;
+    virDrvConnectSetIdentity connectSetIdentity;
     virDrvConnectSupportsFeature connectSupportsFeature;
     virDrvConnectGetType connectGetType;
     virDrvConnectGetVersion connectGetVersion;
@@ -1617,4 +1646,8 @@ struct _virHypervisorDriver {
     virDrvDomainCheckpointLookupByName domainCheckpointLookupByName;
     virDrvDomainCheckpointGetParent domainCheckpointGetParent;
     virDrvDomainCheckpointDelete domainCheckpointDelete;
+    virDrvDomainGetGuestInfo domainGetGuestInfo;
+    virDrvDomainAgentSetResponseTimeout domainAgentSetResponseTimeout;
+    virDrvDomainBackupBegin domainBackupBegin;
+    virDrvDomainBackupGetXMLDesc domainBackupGetXMLDesc;
 };

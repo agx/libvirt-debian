@@ -67,9 +67,9 @@ static char *virLockSpaceGetResourcePath(virLockSpacePtr lockspace,
 {
     char *ret;
     if (lockspace->dir)
-        ignore_value(virAsprintf(&ret, "%s/%s", lockspace->dir, resname));
+        ret = g_strdup_printf("%s/%s", lockspace->dir, resname);
     else
-        ignore_value(VIR_STRDUP(ret, resname));
+        ret = g_strdup(resname);
     return ret;
 }
 
@@ -127,8 +127,7 @@ virLockSpaceResourceNew(virLockSpacePtr lockspace,
     res->fd = -1;
     res->flags = flags;
 
-    if (VIR_STRDUP(res->name, resname) < 0)
-        goto error;
+    res->name = g_strdup(resname);
 
     if (!(res->path = virLockSpaceGetResourcePath(lockspace, resname)))
         goto error;
@@ -174,7 +173,7 @@ virLockSpaceResourceNew(virLockSpacePtr lockspace,
              * one that now exists on the filesystem
              */
             if (stat(res->path, &a) < 0) {
-                char ebuf[1024] ATTRIBUTE_UNUSED;
+                char ebuf[1024] G_GNUC_UNUSED;
                 VIR_DEBUG("Resource '%s' disappeared: %s",
                           res->path, virStrerror(errno, ebuf, sizeof(ebuf)));
                 VIR_FORCE_CLOSE(res->fd);
@@ -232,7 +231,7 @@ virLockSpaceResourceNew(virLockSpacePtr lockspace,
 }
 
 
-static void virLockSpaceResourceDataFree(void *opaque, const void *name ATTRIBUTE_UNUSED)
+static void virLockSpaceResourceDataFree(void *opaque)
 {
     virLockSpaceResourcePtr res = opaque;
     virLockSpaceResourceFree(res);
@@ -255,8 +254,7 @@ virLockSpacePtr virLockSpaceNew(const char *directory)
         return NULL;
     }
 
-    if (VIR_STRDUP(lockspace->dir, directory) < 0)
-        goto error;
+    lockspace->dir = g_strdup(directory);
 
     if (!(lockspace->resources = virHashCreate(VIR_LOCKSPACE_TABLE_SIZE,
                                                virLockSpaceResourceDataFree)))
@@ -313,8 +311,7 @@ virLockSpacePtr virLockSpaceNewPostExecRestart(virJSONValuePtr object)
 
     if (virJSONValueObjectHasKey(object, "directory")) {
         const char *dir = virJSONValueObjectGetString(object, "directory");
-        if (VIR_STRDUP(lockspace->dir, dir) < 0)
-            goto error;
+        lockspace->dir = g_strdup(dir);
     }
 
     if (!(resources = virJSONValueObjectGet(object, "resources"))) {
@@ -347,10 +344,7 @@ virLockSpacePtr virLockSpaceNewPostExecRestart(virJSONValuePtr object)
             virLockSpaceResourceFree(res);
             goto error;
         }
-        if (VIR_STRDUP(res->name, tmp) < 0) {
-            virLockSpaceResourceFree(res);
-            goto error;
-        }
+        res->name = g_strdup(tmp);
 
         if (!(tmp = virJSONValueObjectGetString(child, "path"))) {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
@@ -358,10 +352,7 @@ virLockSpacePtr virLockSpaceNewPostExecRestart(virJSONValuePtr object)
             virLockSpaceResourceFree(res);
             goto error;
         }
-        if (VIR_STRDUP(res->path, tmp) < 0) {
-            virLockSpaceResourceFree(res);
-            goto error;
-        }
+        res->path = g_strdup(tmp);
         if (virJSONValueObjectGetNumberInt(child, "fd", &res->fd) < 0) {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                            _("Missing resource fd in JSON document"));
@@ -712,7 +703,7 @@ struct virLockSpaceRemoveData {
 
 static int
 virLockSpaceRemoveResourcesForOwner(const void *payload,
-                                    const void *name ATTRIBUTE_UNUSED,
+                                    const void *name G_GNUC_UNUSED,
                                     const void *opaque)
 {
     virLockSpaceResourcePtr res = (virLockSpaceResourcePtr)payload;

@@ -1,4 +1,5 @@
 usr/bin/*
+usr/lib/libvirt/virt-login-shell-helper
 usr/share/man/man1/*
 etc/libvirt/libvirt.conf
 etc/libvirt/libvirt-admin.conf

@@ -44,17 +44,17 @@
 # endif
 
 static void
-testCommandDryRun(const char *const*args ATTRIBUTE_UNUSED,
-                  const char *const*env ATTRIBUTE_UNUSED,
-                  const char *input ATTRIBUTE_UNUSED,
+testCommandDryRun(const char *const*args G_GNUC_UNUSED,
+                  const char *const*env G_GNUC_UNUSED,
+                  const char *input G_GNUC_UNUSED,
                   char **output,
                   char **error,
                   int *status,
-                  void *opaque ATTRIBUTE_UNUSED)
+                  void *opaque G_GNUC_UNUSED)
 {
     *status = 0;
-    ignore_value(VIR_STRDUP_QUIET(*output, ""));
-    ignore_value(VIR_STRDUP_QUIET(*error, ""));
+    *output = g_strdup("");
+    *error = g_strdup("");
 }
 
 static int testCompareXMLToArgvFiles(const char *xml,
@@ -74,9 +74,6 @@ static int testCompareXMLToArgvFiles(const char *xml,
         goto cleanup;
 
     if (networkAddFirewallRules(def) < 0)
-        goto cleanup;
-
-    if (virBufferError(&buf))
         goto cleanup;
 
     actual = actualargv = virBufferContentAndReset(&buf);
@@ -117,15 +114,13 @@ testCompareXMLToIPTablesHelper(const void *data)
     char *xml = NULL;
     char *args = NULL;
 
-    if (virAsprintf(&xml, "%s/networkxml2firewalldata/%s.xml",
-                    abs_srcdir, info->name) < 0 ||
-        virAsprintf(&args, "%s/networkxml2firewalldata/%s-%s.args",
-                    abs_srcdir, info->name, RULESTYPE) < 0)
-        goto cleanup;
+    xml = g_strdup_printf("%s/networkxml2firewalldata/%s.xml",
+                          abs_srcdir, info->name);
+    args = g_strdup_printf("%s/networkxml2firewalldata/%s-%s.args",
+                           abs_srcdir, info->name, RULESTYPE);
 
     result = testCompareXMLToArgvFiles(xml, args, info->baseargs);
 
- cleanup:
     VIR_FREE(xml);
     VIR_FREE(args);
     return result;
@@ -144,8 +139,8 @@ static int
 mymain(void)
 {
     int ret = 0;
-    VIR_AUTOFREE(char *)basefile = NULL;
-    VIR_AUTOFREE(char *)baseargs = NULL;
+    g_autofree char *basefile = NULL;
+    g_autofree char *baseargs = NULL;
 
 # define DO_TEST(name) \
     do { \
@@ -165,20 +160,13 @@ mymain(void)
             return EXIT_AM_SKIP;
         }
 
-        ret = -1;
-        goto cleanup;
+        return EXIT_FAILURE;
     }
 
-    if (virAsprintf(&basefile, "%s/networkxml2firewalldata/base.args",
-                    abs_srcdir) < 0) {
-        ret = -1;
-        goto cleanup;
-    }
+    basefile = g_strdup_printf("%s/networkxml2firewalldata/base.args", abs_srcdir);
 
-    if (virTestLoadFile(basefile, &baseargs) < 0) {
-        ret = -1;
-        goto cleanup;
-    }
+    if (virTestLoadFile(basefile, &baseargs) < 0)
+        return EXIT_FAILURE;
 
     DO_TEST("nat-default");
     DO_TEST("nat-tftp");
@@ -187,7 +175,6 @@ mymain(void)
     DO_TEST("nat-ipv6");
     DO_TEST("route-default");
 
- cleanup:
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

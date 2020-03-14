@@ -143,9 +143,8 @@ esxParseVMXFileName(const char *fileName, void *opaque)
 
     if (!strchr(fileName, '/') && !strchr(fileName, '\\')) {
         /* Plain file name, use same directory as for the .vmx file */
-        if (virAsprintf(&result, "%s/%s",
-                        data->datastorePathWithoutFileName, fileName) < 0)
-            goto cleanup;
+        result = g_strdup_printf("%s/%s", data->datastorePathWithoutFileName,
+                                 fileName);
     } else {
         if (esxVI_String_AppendValueToList(&propertyNameList,
                                            "summary.name") < 0 ||
@@ -177,8 +176,7 @@ esxParseVMXFileName(const char *fileName, void *opaque)
             while (*tmp == '/' || *tmp == '\\')
                 ++tmp;
 
-            if (VIR_STRDUP(strippedFileName, tmp) < 0)
-                goto cleanup;
+            strippedFileName = g_strdup(tmp);
 
             tmp = strippedFileName;
 
@@ -190,17 +188,14 @@ esxParseVMXFileName(const char *fileName, void *opaque)
                 ++tmp;
             }
 
-            if (virAsprintf(&result, "[%s] %s", datastoreName,
-                            strippedFileName) < 0)
-                goto cleanup;
+            result = g_strdup_printf("[%s] %s", datastoreName, strippedFileName);
 
             break;
         }
 
         /* Fallback to direct datastore name match */
         if (!result && STRPREFIX(fileName, "/vmfs/volumes/")) {
-            if (VIR_STRDUP(copyOfFileName, fileName) < 0)
-                goto cleanup;
+            copyOfFileName = g_strdup(fileName);
 
             /* Expected format: '/vmfs/volumes/<datastore>/<path>' */
             if (!(tmp = STRSKIP(copyOfFileName, "/vmfs/volumes/")) ||
@@ -227,16 +222,14 @@ esxParseVMXFileName(const char *fileName, void *opaque)
                 goto cleanup;
             }
 
-            if (virAsprintf(&result, "[%s] %s", datastoreName,
-                            directoryAndFileName) < 0)
-                goto cleanup;
+            result = g_strdup_printf("[%s] %s", datastoreName,
+                                     directoryAndFileName);
         }
 
         /* If it's an absolute path outside of a datastore just use it as is */
         if (!result && *fileName == '/') {
             /* FIXME: need to deal with Windows paths here too */
-            if (VIR_STRDUP(result, fileName) < 0)
-                goto cleanup;
+            result = g_strdup(fileName);
         }
 
         if (!result) {
@@ -328,14 +321,10 @@ esxFormatVMXFileName(const char *fileName, void *opaque)
         virBufferAddChar(&buffer, separator);
         virBufferAdd(&buffer, directoryAndFileName, -1);
 
-        if (virBufferCheckError(&buffer) < 0)
-            goto cleanup;
-
         result = virBufferContentAndReset(&buffer);
     } else if (*fileName == '/') {
         /* FIXME: need to deal with Windows paths here too */
-        if (VIR_STRDUP(result, fileName) < 0)
-            goto cleanup;
+        result = g_strdup(fileName);
     } else {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("Could not handle file name '%s'"), fileName);
@@ -632,8 +621,7 @@ esxConnectToHost(esxPrivate *priv,
         return -1;
 
     if (conn->uri->user) {
-        if (VIR_STRDUP(username, conn->uri->user) < 0)
-            goto cleanup;
+        username = g_strdup(conn->uri->user);
     } else {
         if (!(username = virAuthGetUsername(conn, auth, "esx", "root",
                                             conn->uri->server)))
@@ -644,9 +632,8 @@ esxConnectToHost(esxPrivate *priv,
                                         conn->uri->server)))
         goto cleanup;
 
-    if (virAsprintf(&url, "%s://%s:%d/sdk", priv->parsedUri->transport,
-                    conn->uri->server, conn->uri->port) < 0)
-        goto cleanup;
+    url = g_strdup_printf("%s://%s:%d/sdk", priv->parsedUri->transport,
+                          conn->uri->server, conn->uri->port);
 
     if (esxVI_Context_Alloc(&priv->host) < 0 ||
         esxVI_Context_Connect(priv->host, url, ipAddress, username, password,
@@ -683,8 +670,7 @@ esxConnectToHost(esxPrivate *priv,
     if (inMaintenanceMode == esxVI_Boolean_True)
         VIR_WARN("The server is in maintenance mode");
 
-    if (VIR_STRDUP(*vCenterIPAddress, *vCenterIPAddress) < 0)
-        goto cleanup;
+    *vCenterIPAddress = g_strdup(*vCenterIPAddress);
 
     result = 0;
 
@@ -724,8 +710,7 @@ esxConnectToVCenter(esxPrivate *priv,
         return -1;
 
     if (conn->uri->user) {
-        if (VIR_STRDUP(username, conn->uri->user) < 0)
-            goto cleanup;
+        username = g_strdup(conn->uri->user);
     } else {
         if (!(username = virAuthGetUsername(conn, auth, "esx", "administrator",
                                             hostname)))
@@ -735,9 +720,8 @@ esxConnectToVCenter(esxPrivate *priv,
     if (!(password = virAuthGetPassword(conn, auth, "esx", username, hostname)))
         goto cleanup;
 
-    if (virAsprintf(&url, "%s://%s:%d/sdk", priv->parsedUri->transport,
-                    hostname, conn->uri->port) < 0)
-        goto cleanup;
+    url = g_strdup_printf("%s://%s:%d/sdk", priv->parsedUri->transport, hostname,
+                          conn->uri->port);
 
     if (esxVI_Context_Alloc(&priv->vCenter) < 0 ||
         esxVI_Context_Connect(priv->vCenter, url, ipAddress, username,
@@ -825,7 +809,7 @@ esxConnectToVCenter(esxPrivate *priv,
  */
 static virDrvOpenStatus
 esxConnectOpen(virConnectPtr conn, virConnectAuthPtr auth,
-               virConfPtr conf ATTRIBUTE_UNUSED,
+               virConfPtr conf G_GNUC_UNUSED,
                unsigned int flags)
 {
     virDrvOpenStatus result = VIR_DRV_OPEN_ERROR;
@@ -944,7 +928,7 @@ esxConnectOpen(virConnectPtr conn, virConnectAuthPtr auth,
     if (!priv->caps)
         goto cleanup;
 
-    if (!(priv->xmlopt = virVMXDomainXMLConfInit()))
+    if (!(priv->xmlopt = virVMXDomainXMLConfInit(priv->caps)))
         goto cleanup;
 
     conn->privateData = priv;
@@ -1097,7 +1081,7 @@ esxConnectSupportsFeature(virConnectPtr conn, int feature)
 
 
 static const char *
-esxConnectGetType(virConnectPtr conn ATTRIBUTE_UNUSED)
+esxConnectGetType(virConnectPtr conn G_GNUC_UNUSED)
 {
     return "ESX";
 }
@@ -1169,19 +1153,12 @@ esxConnectGetHostname(virConnectPtr conn)
     }
 
     if (!domainName || strlen(domainName) < 1) {
-        if (VIR_STRDUP(complete, hostName) < 0)
-            goto cleanup;
+        complete = g_strdup(hostName);
     } else {
-        if (virAsprintf(&complete, "%s.%s", hostName, domainName) < 0)
-            goto cleanup;
+        complete = g_strdup_printf("%s.%s", hostName, domainName);
     }
 
  cleanup:
-    /*
-     * If we goto cleanup in case of an error then complete is still NULL,
-     * either VIR_STRDUP returned -1 or virAsprintf failed. When virAsprintf
-     * fails it guarantees setting complete to NULL
-     */
     esxVI_String_Free(&propertyNameList);
     esxVI_ObjectContent_Free(&hostSystem);
 
@@ -1852,11 +1829,11 @@ esxDomainDestroy(virDomainPtr dom)
 
 
 static char *
-esxDomainGetOSType(virDomainPtr domain ATTRIBUTE_UNUSED)
+esxDomainGetOSType(virDomainPtr domain G_GNUC_UNUSED)
 {
     char *osType;
 
-    ignore_value(VIR_STRDUP(osType, "hvm"));
+    osType = g_strdup("hvm");
     return osType;
 }
 
@@ -2426,13 +2403,9 @@ esxDomainScreenshot(virDomainPtr domain, virStreamPtr stream,
                       domain->conn->uri->server, domain->conn->uri->port);
     virBufferURIEncodeString(&buffer, virtualMachine->obj->value);
 
-    if (virBufferCheckError(&buffer))
-        goto cleanup;
-
     url = virBufferContentAndReset(&buffer);
 
-    if (VIR_STRDUP(mimeType, "image/png") < 0)
-        goto cleanup;
+    mimeType = g_strdup("image/png");
 
     if (esxStreamOpenDownload(stream, priv, url, 0, 0) < 0) {
         VIR_FREE(mimeType);
@@ -2648,9 +2621,6 @@ esxDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
     virBufferAddLit(&buffer, "&dsName=");
     virBufferURIEncodeString(&buffer, datastoreName);
 
-    if (virBufferCheckError(&buffer) < 0)
-        goto cleanup;
-
     url = virBufferContentAndReset(&buffer);
 
     if (esxVI_CURL_Download(priv->primary->curl, url, &vmx, 0, NULL) < 0)
@@ -2659,13 +2629,10 @@ esxDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
     data.ctx = priv->primary;
 
     if (!directoryName) {
-        if (virAsprintf(&data.datastorePathWithoutFileName, "[%s]",
-                        datastoreName) < 0)
-            goto cleanup;
+        data.datastorePathWithoutFileName = g_strdup_printf("[%s]", datastoreName);
     } else {
-        if (virAsprintf(&data.datastorePathWithoutFileName, "[%s] %s",
-                        datastoreName, directoryName) < 0)
-            goto cleanup;
+        data.datastorePathWithoutFileName = g_strdup_printf("[%s] %s",
+                                                            datastoreName, directoryName);
     }
 
     ctx.opaque = &data;
@@ -2681,7 +2648,7 @@ esxDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
         if (powerState != esxVI_VirtualMachinePowerState_PoweredOff)
             def->id = id;
 
-        xml = virDomainDefFormat(def, priv->caps,
+        xml = virDomainDefFormat(def, priv->xmlopt,
                                  virDomainDefFormatConvertXMLFlags(flags));
     }
 
@@ -2739,7 +2706,7 @@ esxConnectDomainXMLFromNative(virConnectPtr conn, const char *nativeFormat,
     def = virVMXParseConfig(&ctx, priv->xmlopt, priv->caps, nativeConfig);
 
     if (def)
-        xml = virDomainDefFormat(def, priv->caps,
+        xml = virDomainDefFormat(def, priv->xmlopt,
                                  VIR_DOMAIN_DEF_FORMAT_INACTIVE);
 
     virDomainDefFree(def);
@@ -2777,7 +2744,7 @@ esxConnectDomainXMLToNative(virConnectPtr conn, const char *nativeFormat,
     if (virtualHW_version < 0)
         return NULL;
 
-    def = virDomainDefParseString(domainXml, priv->caps, priv->xmlopt,
+    def = virDomainDefParseString(domainXml, priv->xmlopt,
                                   NULL, VIR_DOMAIN_DEF_PARSE_INACTIVE);
 
     if (!def)
@@ -2993,7 +2960,7 @@ esxDomainDefineXMLFlags(virConnectPtr conn, const char *xml, unsigned int flags)
         return NULL;
 
     /* Parse domain XML */
-    def = virDomainDefParseString(xml, priv->caps, priv->xmlopt,
+    def = virDomainDefParseString(xml, priv->xmlopt,
                                   NULL, parse_flags);
 
     if (!def)
@@ -3114,9 +3081,6 @@ esxDomainDefineXMLFlags(virConnectPtr conn, const char *xml, unsigned int flags)
     virBufferAddLit(&buffer, "&dsName=");
     virBufferURIEncodeString(&buffer, datastoreName);
 
-    if (virBufferCheckError(&buffer) < 0)
-        goto cleanup;
-
     url = virBufferContentAndReset(&buffer);
 
     /* Check, if VMX file already exists */
@@ -3130,13 +3094,11 @@ esxDomainDefineXMLFlags(virConnectPtr conn, const char *xml, unsigned int flags)
 
     /* Register the domain */
     if (directoryName) {
-        if (virAsprintf(&datastoreRelatedPath, "[%s] %s/%s.vmx", datastoreName,
-                        directoryName, escapedName) < 0)
-            goto cleanup;
+        datastoreRelatedPath = g_strdup_printf("[%s] %s/%s.vmx", datastoreName,
+                                               directoryName, escapedName);
     } else {
-        if (virAsprintf(&datastoreRelatedPath, "[%s] %s.vmx", datastoreName,
-                        escapedName) < 0)
-            goto cleanup;
+        datastoreRelatedPath = g_strdup_printf("[%s] %s.vmx", datastoreName,
+                                               escapedName);
     }
 
     if (esxVI_RegisterVM_Task(priv->primary, priv->primary->datacenter->vmFolder,
@@ -3450,12 +3412,11 @@ esxDomainSetAutostart(virDomainPtr domain, int autostart)
  *   SharesLevel 'low', 'normal' and 'high'.
  */
 static char *
-esxDomainGetSchedulerType(virDomainPtr domain ATTRIBUTE_UNUSED, int *nparams)
+esxDomainGetSchedulerType(virDomainPtr domain G_GNUC_UNUSED, int *nparams)
 {
     char *type;
 
-    if (VIR_STRDUP(type, "allocation") < 0)
-        return NULL;
+    type = g_strdup("allocation");
 
     if (nparams)
         *nparams = 3; /* reservation, limit, shares */
@@ -3736,24 +3697,22 @@ esxDomainSetSchedulerParameters(virDomainPtr domain,
 
 static int
 esxDomainMigratePrepare(virConnectPtr dconn,
-                        char **cookie ATTRIBUTE_UNUSED,
-                        int *cookielen ATTRIBUTE_UNUSED,
-                        const char *uri_in ATTRIBUTE_UNUSED,
+                        char **cookie G_GNUC_UNUSED,
+                        int *cookielen G_GNUC_UNUSED,
+                        const char *uri_in G_GNUC_UNUSED,
                         char **uri_out,
                         unsigned long flags,
-                        const char *dname ATTRIBUTE_UNUSED,
-                        unsigned long resource ATTRIBUTE_UNUSED)
+                        const char *dname G_GNUC_UNUSED,
+                        unsigned long resource G_GNUC_UNUSED)
 {
     esxPrivate *priv = dconn->privateData;
 
     virCheckFlags(ESX_MIGRATION_FLAGS, -1);
 
     if (!uri_in) {
-        if (virAsprintf(uri_out, "vpxmigr://%s/%s/%s",
-                        priv->vCenter->ipAddress,
-                        priv->vCenter->computeResource->resourcePool->value,
-                        priv->vCenter->hostSystem->_reference->value) < 0)
-            return -1;
+        *uri_out = g_strdup_printf("vpxmigr://%s/%s/%s", priv->vCenter->ipAddress,
+                                   priv->vCenter->computeResource->resourcePool->value,
+                                   priv->vCenter->hostSystem->_reference->value);
     }
 
     return 0;
@@ -3763,12 +3722,12 @@ esxDomainMigratePrepare(virConnectPtr dconn,
 
 static int
 esxDomainMigratePerform(virDomainPtr domain,
-                        const char *cookie ATTRIBUTE_UNUSED,
-                        int cookielen ATTRIBUTE_UNUSED,
+                        const char *cookie G_GNUC_UNUSED,
+                        int cookielen G_GNUC_UNUSED,
                         const char *uri,
                         unsigned long flags,
                         const char *dname,
-                        unsigned long bandwidth ATTRIBUTE_UNUSED)
+                        unsigned long bandwidth G_GNUC_UNUSED)
 {
     int result = -1;
     esxPrivate *priv = domain->conn->privateData;
@@ -3906,9 +3865,9 @@ esxDomainMigratePerform(virDomainPtr domain,
 
 static virDomainPtr
 esxDomainMigrateFinish(virConnectPtr dconn, const char *dname,
-                       const char *cookie ATTRIBUTE_UNUSED,
-                       int cookielen ATTRIBUTE_UNUSED,
-                       const char *uri ATTRIBUTE_UNUSED,
+                       const char *cookie G_GNUC_UNUSED,
+                       int cookielen G_GNUC_UNUSED,
+                       const char *uri G_GNUC_UNUSED,
                        unsigned long flags)
 {
     virCheckFlags(ESX_MIGRATION_FLAGS, NULL);
@@ -4060,7 +4019,7 @@ esxDomainIsPersistent(virDomainPtr domain)
 
 
 static int
-esxDomainIsUpdated(virDomainPtr domain ATTRIBUTE_UNUSED)
+esxDomainIsUpdated(virDomainPtr domain G_GNUC_UNUSED)
 {
     /* ESX domains never have a persistent state that differs from
      * current state.  However, we do want to check for existence.  */
@@ -4100,7 +4059,7 @@ esxDomainSnapshotCreateXML(virDomainPtr domain, const char *xmlDesc,
     virDomainSnapshotPtr snapshot = NULL;
     bool diskOnly = (flags & VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY) != 0;
     bool quiesce = (flags & VIR_DOMAIN_SNAPSHOT_CREATE_QUIESCE) != 0;
-    VIR_AUTOUNREF(virDomainSnapshotDefPtr) def = NULL;
+    g_autoptr(virDomainSnapshotDef) def = NULL;
     unsigned int parse_flags = 0;
 
     /* ESX supports disk-only and quiesced snapshots; libvirt tracks no
@@ -4116,8 +4075,8 @@ esxDomainSnapshotCreateXML(virDomainPtr domain, const char *xmlDesc,
     if (esxVI_EnsureSession(priv->primary) < 0)
         return NULL;
 
-    def = virDomainSnapshotDefParseString(xmlDesc, priv->caps,
-                                          priv->xmlopt, NULL, parse_flags);
+    def = virDomainSnapshotDefParseString(xmlDesc,
+                                          priv->xmlopt, NULL, NULL, parse_flags);
 
     if (!def)
         return NULL;
@@ -4217,7 +4176,7 @@ esxDomainSnapshotGetXMLDesc(virDomainSnapshotPtr snapshot,
 
     virUUIDFormat(snapshot->domain->uuid, uuid_string);
 
-    xml = virDomainSnapshotDefFormat(uuid_string, &def, priv->caps, priv->xmlopt,
+    xml = virDomainSnapshotDefFormat(uuid_string, &def, priv->xmlopt,
                                      0);
 
  cleanup:

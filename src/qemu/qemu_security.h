@@ -26,7 +26,8 @@
 
 int qemuSecuritySetAllLabel(virQEMUDriverPtr driver,
                             virDomainObjPtr vm,
-                            const char *stdin_path);
+                            const char *stdin_path,
+                            bool migrated);
 
 void qemuSecurityRestoreAllLabel(virQEMUDriverPtr driver,
                                  virDomainObjPtr vm,
@@ -77,6 +78,12 @@ int qemuSecurityRestoreChardevLabel(virQEMUDriverPtr driver,
                                     virDomainObjPtr vm,
                                     virDomainChrDefPtr chr);
 
+int qemuSecurityStartVhostUserGPU(virQEMUDriverPtr driver,
+                                  virDomainObjPtr vm,
+                                  virCommandPtr cmd,
+                                  int *exitstatus,
+                                  int *cmdret);
+
 int qemuSecurityStartTPMEmulator(virQEMUDriverPtr driver,
                                  virDomainObjPtr vm,
                                  virCommandPtr cmd,
@@ -100,6 +107,14 @@ int qemuSecuritySetSavedStateLabel(virQEMUDriverPtr driver,
 int qemuSecurityRestoreSavedStateLabel(virQEMUDriverPtr driver,
                                        virDomainObjPtr vm,
                                        const char *savefile);
+
+int qemuSecurityCommandRun(virQEMUDriverPtr driver,
+                           virDomainObjPtr vm,
+                           virCommandPtr cmd,
+                           uid_t uid,
+                           gid_t gid,
+                           int *exitstatus,
+                           int *cmdret);
 
 /* Please note that for these APIs there is no wrapper yet. Do NOT blindly add
  * new APIs here. If an API can touch a file add a proper wrapper instead.

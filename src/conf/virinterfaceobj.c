@@ -161,7 +161,7 @@ struct _virInterfaceObjFindMACData {
 
 static int
 virInterfaceObjListFindByMACStringCb(void *payload,
-                                     const void *name ATTRIBUTE_UNUSED,
+                                     const void *name G_GNUC_UNUSED,
                                      void *opaque)
 {
     virInterfaceObjPtr obj = payload;
@@ -176,14 +176,10 @@ virInterfaceObjListFindByMACStringCb(void *payload,
     virObjectLock(obj);
 
     if (STRCASEEQ(obj->def->mac, data->matchStr)) {
-        if (VIR_STRDUP(data->names[data->nnames], obj->def->name) < 0) {
-            data->error = true;
-            goto cleanup;
-        }
+        data->names[data->nnames] = g_strdup(obj->def->name);
         data->nnames++;
     }
 
- cleanup:
     virObjectUnlock(obj);
     return 0;
 }
@@ -273,7 +269,7 @@ struct _virInterfaceObjListExportData {
 
 static int
 virInterfaceObjListExportCallback(void *payload,
-                                  const void *name ATTRIBUTE_UNUSED,
+                                  const void *name G_GNUC_UNUSED,
                                   void *opaque)
 {
     virInterfaceObjListExportDataPtr data = opaque;
@@ -366,7 +362,7 @@ struct _virInterfaceObjListCloneData {
 
 static int
 virInterfaceObjListCloneCb(void *payload,
-                           const void *name ATTRIBUTE_UNUSED,
+                           const void *name G_GNUC_UNUSED,
                            void *opaque)
 {
     virInterfaceObjPtr srcObj = payload;
@@ -485,7 +481,7 @@ struct _virInterfaceObjNumOfInterfacesData {
 
 static int
 virInterfaceObjListNumOfInterfacesCb(void *payload,
-                                     const void *name ATTRIBUTE_UNUSED,
+                                     const void *name G_GNUC_UNUSED,
                                      void *opaque)
 {
     virInterfaceObjPtr obj = payload;
@@ -527,7 +523,7 @@ struct _virInterfaceObjGetNamesData {
 
 static int
 virInterfaceObjListGetNamesCb(void *payload,
-                              const void *name ATTRIBUTE_UNUSED,
+                              const void *name G_GNUC_UNUSED,
                               void *opaque)
 {
     virInterfaceObjPtr obj = payload;
@@ -544,10 +540,7 @@ virInterfaceObjListGetNamesCb(void *payload,
     if (data->wantActive != virInterfaceObjIsActive(obj))
         goto cleanup;
 
-    if (VIR_STRDUP(data->names[data->nnames], obj->def->name) < 0) {
-        data->error = true;
-        goto cleanup;
-    }
+    data->names[data->nnames] = g_strdup(obj->def->name);
 
     data->nnames++;
 

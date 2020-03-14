@@ -96,6 +96,7 @@ struct _virQEMUDriverConfig {
     char *swtpmLogDir;
     char *stateDir;
     char *swtpmStateDir;
+    char *slirpStateDir;
     /* These two directories are ones QEMU processes use (so must match
      * the QEMU user/group */
     char *libDir;
@@ -153,13 +154,13 @@ struct _virQEMUDriverConfig {
 
     char *bridgeHelperName;
     char *prHelperName;
+    char *slirpHelperName;
 
     bool macFilter;
 
     bool relaxedACS;
     bool vncAllowHostAudio;
     bool nogfxAllowHostAudio;
-    bool clearEmulatorCapabilities;
     bool setProcessName;
 
     unsigned int maxProcesses;
@@ -216,6 +217,9 @@ struct _virQEMUDriverConfig {
     char **capabilityfilters;
 };
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virQEMUDriverConfig, virObjectUnref);
+
+
 /* Main driver state */
 struct _virQEMUDriver {
     virMutex lock;
@@ -256,6 +260,19 @@ struct _virQEMUDriver {
      * lockless access thereafter
      */
     virCapsPtr caps;
+
+    /* Lazy initialized on first use, immutable thereafter.
+     * Require lock to get the pointer & do optional initialization
+     */
+    virCapsHostNUMAPtr hostnuma;
+
+    /* Lazy initialized on first use, immutable thereafter.
+     * Require lock to get the pointer & do optional initialization
+     */
+    virCPUDefPtr hostcpu;
+
+    /* Immutable value */
+    virArch hostarch;
 
     /* Immutable pointer, Immutable object */
     virDomainXMLOptionPtr xmlopt;
@@ -311,9 +328,18 @@ virQEMUDriverConfigSetDefaults(virQEMUDriverConfigPtr cfg);
 virQEMUDriverConfigPtr virQEMUDriverGetConfig(virQEMUDriverPtr driver);
 bool virQEMUDriverIsPrivileged(virQEMUDriverPtr driver);
 
+virCapsHostNUMAPtr virQEMUDriverGetHostNUMACaps(virQEMUDriverPtr driver);
+virCPUDefPtr virQEMUDriverGetHostCPU(virQEMUDriverPtr driver);
 virCapsPtr virQEMUDriverCreateCapabilities(virQEMUDriverPtr driver);
 virCapsPtr virQEMUDriverGetCapabilities(virQEMUDriverPtr driver,
                                         bool refresh);
+
+virDomainCapsPtr
+virQEMUDriverGetDomainCapabilities(virQEMUDriverPtr driver,
+                                   virQEMUCapsPtr qemuCaps,
+                                   const char *machine,
+                                   virArch arch,
+                                   virDomainVirtType virttype);
 
 typedef struct _qemuSharedDeviceEntry qemuSharedDeviceEntry;
 typedef qemuSharedDeviceEntry *qemuSharedDeviceEntryPtr;
@@ -326,7 +352,7 @@ bool qemuSharedDeviceEntryDomainExists(qemuSharedDeviceEntryPtr entry,
 char *qemuGetSharedDeviceKey(const char *disk_path)
     ATTRIBUTE_NONNULL(1);
 
-void qemuSharedDeviceEntryFree(void *payload, const void *name);
+void qemuSharedDeviceEntryFree(void *payload);
 
 int qemuAddSharedDisk(virQEMUDriverPtr driver,
                       virDomainDiskDefPtr disk,
@@ -351,7 +377,8 @@ int qemuRemoveSharedDisk(virQEMUDriverPtr driver,
 int qemuSetUnprivSGIO(virDomainDeviceDefPtr dev);
 
 int qemuDriverAllocateID(virQEMUDriverPtr driver);
-virDomainXMLOptionPtr virQEMUDriverCreateXMLConf(virQEMUDriverPtr driver);
+virDomainXMLOptionPtr virQEMUDriverCreateXMLConf(virQEMUDriverPtr driver,
+                                                 const char *defsecmodel);
 
 int qemuTranslateSnapshotDiskSourcePool(virDomainSnapshotDiskDefPtr def);
 
@@ -364,8 +391,8 @@ int qemuGetDomainHupageMemPath(const virDomainDef *def,
                                unsigned long long pagesize,
                                char **memPath);
 
-int qemuGetMemoryBackingBasePath(virQEMUDriverConfigPtr cfg,
-                                 char **path);
+void qemuGetMemoryBackingBasePath(virQEMUDriverConfigPtr cfg,
+                                  char **path);
 int qemuGetMemoryBackingDomainPath(const virDomainDef *def,
                                    virQEMUDriverConfigPtr cfg,
                                    char **path);

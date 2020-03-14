@@ -31,7 +31,6 @@
 #include "virhash.h"
 #include "virlog.h"
 #include "virstring.h"
-#include "base64.h"
 
 #define VIR_FROM_THIS VIR_FROM_SECRET
 
@@ -198,7 +197,7 @@ virSecretObjListFindByUUID(virSecretObjListPtr secrets,
 
 static int
 virSecretObjSearchName(const void *payload,
-                       const void *name ATTRIBUTE_UNUSED,
+                       const void *name G_GNUC_UNUSED,
                        const void *opaque)
 {
     virSecretObjPtr obj = (virSecretObjPtr) payload;
@@ -394,7 +393,7 @@ virSecretObjListAdd(virSecretObjListPtr secrets,
         virObjectRef(obj);
     }
 
-    VIR_STEAL_PTR(ret, obj);
+    ret = g_steal_pointer(&obj);
 
  cleanup:
     virSecretObjEndAPI(&obj);
@@ -411,7 +410,7 @@ struct virSecretCountData {
 
 static int
 virSecretObjListNumOfSecretsCallback(void *payload,
-                                     const void *name ATTRIBUTE_UNUSED,
+                                     const void *name G_GNUC_UNUSED,
                                      void *opaque)
 {
     struct virSecretCountData *data = opaque;
@@ -444,7 +443,7 @@ struct virSecretListData {
 
 static int
 virSecretObjListGetUUIDsCallback(void *payload,
-                                 const void *name ATTRIBUTE_UNUSED,
+                                 const void *name G_GNUC_UNUSED,
                                  void *opaque)
 {
     struct virSecretListData *data = opaque;
@@ -538,7 +537,7 @@ struct _virSecretObjListExportData {
 
 static int
 virSecretObjListExportCallback(void *payload,
-                               const void *name ATTRIBUTE_UNUSED,
+                               const void *name G_GNUC_UNUSED,
                                void *opaque)
 {
     virSecretObjListExportDataPtr data = opaque;
@@ -678,43 +677,32 @@ virSecretObjDeleteData(virSecretObjPtr obj)
 int
 virSecretObjSaveConfig(virSecretObjPtr obj)
 {
-    char *xml = NULL;
-    int ret = -1;
+    g_autofree char *xml = NULL;
 
     if (!(xml = virSecretDefFormat(obj->def)))
-        goto cleanup;
+        return -1;
 
     if (virFileRewriteStr(obj->configFile, S_IRUSR | S_IWUSR, xml) < 0)
-        goto cleanup;
+        return -1;
 
-    ret = 0;
-
- cleanup:
-    VIR_FREE(xml);
-    return ret;
+    return 0;
 }
 
 
 int
 virSecretObjSaveData(virSecretObjPtr obj)
 {
-    char *base64 = NULL;
-    int ret = -1;
+    g_autofree char *base64 = NULL;
 
     if (!obj->value)
         return 0;
 
-    if (!(base64 = virStringEncodeBase64(obj->value, obj->value_size)))
-        goto cleanup;
+    base64 = g_base64_encode(obj->value, obj->value_size);
 
     if (virFileRewriteStr(obj->base64File, S_IRUSR | S_IWUSR, base64) < 0)
-        goto cleanup;
+        return -1;
 
-    ret = 0;
-
- cleanup:
-    VIR_FREE(base64);
-    return ret;
+    return 0;
 }
 
 
@@ -744,14 +732,13 @@ virSecretObjGetValue(virSecretObjPtr obj)
         virUUIDFormat(def->uuid, uuidstr);
         virReportError(VIR_ERR_NO_SECRET,
                        _("secret '%s' does not have a value"), uuidstr);
-        goto cleanup;
+        return NULL;
     }
 
     if (VIR_ALLOC_N(ret, obj->value_size) < 0)
-        goto cleanup;
+        return NULL;
     memcpy(ret, obj->value, obj->value_size);
 
- cleanup:
     return ret;
 }
 
@@ -762,7 +749,8 @@ virSecretObjSetValue(virSecretObjPtr obj,
                      size_t value_size)
 {
     virSecretDefPtr def = obj->def;
-    unsigned char *old_value, *new_value;
+    g_autofree unsigned char *old_value = NULL;
+    g_autofree unsigned char *new_value = NULL;
     size_t old_value_size;
 
     if (VIR_ALLOC_N(new_value, value_size) < 0)
@@ -772,26 +760,24 @@ virSecretObjSetValue(virSecretObjPtr obj,
     old_value_size = obj->value_size;
 
     memcpy(new_value, value, value_size);
-    obj->value = new_value;
+    obj->value = g_steal_pointer(&new_value);
     obj->value_size = value_size;
 
     if (!def->isephemeral && virSecretObjSaveData(obj) < 0)
         goto error;
 
     /* Saved successfully - drop old value */
-    if (old_value) {
+    if (old_value)
         memset(old_value, 0, old_value_size);
-        VIR_FREE(old_value);
-    }
 
     return 0;
 
  error:
     /* Error - restore previous state and free new value */
-    obj->value = old_value;
+    new_value = g_steal_pointer(&obj->value);
+    obj->value = g_steal_pointer(&old_value);
     obj->value_size = old_value_size;
     memset(new_value, 0, value_size);
-    VIR_FREE(new_value);
     return -1;
 }
 
@@ -835,8 +821,7 @@ virSecretLoadValue(virSecretObjPtr obj)
 {
     int ret = -1, fd = -1;
     struct stat st;
-    char *contents = NULL, *value = NULL;
-    size_t value_size;
+    g_autofree char *contents = NULL;
 
     if ((fd = open(obj->base64File, O_RDONLY)) == -1) {
         if (errno == ENOENT) {
@@ -861,7 +846,7 @@ virSecretLoadValue(virSecretObjPtr obj)
         goto cleanup;
     }
 
-    if (VIR_ALLOC_N(contents, st.st_size) < 0)
+    if (VIR_ALLOC_N(contents, st.st_size + 1) < 0)
         goto cleanup;
 
     if (saferead(fd, contents, st.st_size) != st.st_size) {
@@ -869,33 +854,17 @@ virSecretLoadValue(virSecretObjPtr obj)
                              obj->base64File);
         goto cleanup;
     }
+    contents[st.st_size] = '\0';
 
     VIR_FORCE_CLOSE(fd);
 
-    if (!base64_decode_alloc(contents, st.st_size, &value, &value_size)) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("invalid base64 in '%s'"),
-                       obj->base64File);
-        goto cleanup;
-    }
-    if (value == NULL)
-        goto cleanup;
-
-    obj->value = (unsigned char *)value;
-    value = NULL;
-    obj->value_size = value_size;
+    obj->value = g_base64_decode(contents, &obj->value_size);
 
     ret = 0;
 
  cleanup:
-    if (value != NULL) {
-        memset(value, 0, value_size);
-        VIR_FREE(value);
-    }
-    if (contents != NULL) {
+    if (contents != NULL)
         memset(contents, 0, st.st_size);
-        VIR_FREE(contents);
-    }
     VIR_FORCE_CLOSE(fd);
     return ret;
 }

@@ -29,6 +29,7 @@
 #include "virfile.h"
 #include "virlog.h"
 #include "virmodule.h"
+#include "virstring.h"
 #include "virthread.h"
 #include "configmake.h"
 
@@ -69,6 +70,43 @@ virDriverLoadModule(const char *name,
 
 /* XXX unload modules, but we can't until we can unregister libvirt drivers */
 
+/**
+ * virDriverShouldAutostart:
+ * @dir: driver's run state directory (usually /var/run/libvirt/$driver)
+ * @autostart: whether driver should initiate autostart
+ *
+ * Automatic starting of libvirt's objects (e.g. domains, networks, storage
+ * pools, etc.) doesn't play nice with using '--timeout' on daemon's command
+ * line because the objects are attempted to autostart on every start of
+ * corresponding driver/daemon. To resolve this problem, a file is created in
+ * driver's private directory (which doesn't survive host's reboot) and thus
+ * autostart is attempted only once.
+ */
+int
+virDriverShouldAutostart(const char *dir,
+                         bool *autostart)
+{
+    g_autofree char *path = NULL;
+
+    *autostart = false;
+
+    path = g_strdup_printf("%s/autostarted", dir);
+
+    if (virFileExists(path)) {
+        VIR_DEBUG("Autostart file %s exists, skipping autostart", path);
+        return 0;
+    }
+
+    VIR_DEBUG("Autostart file %s does not exist, do autostart", path);
+    *autostart = true;
+
+    if (virFileTouch(path, 0600) < 0)
+        return -1;
+
+    return 0;
+}
+
+
 virThreadLocal connectInterface;
 virThreadLocal connectNetwork;
 virThreadLocal connectNWFilter;
@@ -96,112 +134,60 @@ virConnectCacheOnceInit(void)
 
 VIR_ONCE_GLOBAL_INIT(virConnectCache);
 
-virConnectPtr virGetConnectInterface(void)
+static virConnectPtr
+virGetConnectGeneric(virThreadLocalPtr threadPtr, const char *name)
 {
     virConnectPtr conn;
 
     if (virConnectCacheInitialize() < 0)
         return NULL;
 
-    conn = virThreadLocalGet(&connectInterface);
+    conn = virThreadLocalGet(threadPtr);
+
     if (conn) {
-        VIR_DEBUG("Return cached interface connection %p", conn);
+        VIR_DEBUG("Return cached %s connection %p", name, conn);
         virObjectRef(conn);
     } else {
-        conn = virConnectOpen(geteuid() == 0 ? "interface:///system" : "interface:///session");
-        VIR_DEBUG("Opened new interface connection %p", conn);
+        g_autofree char *uri = NULL;
+        const char *uriPath = geteuid() == 0 ? "/system" : "/session";
+
+        uri = g_strdup_printf("%s://%s", name, uriPath);
+
+        conn = virConnectOpen(uri);
+        VIR_DEBUG("Opened new %s connection %p", name, conn);
     }
     return conn;
+}
+
+
+virConnectPtr virGetConnectInterface(void)
+{
+    return virGetConnectGeneric(&connectInterface, "interface");
 }
 
 virConnectPtr virGetConnectNetwork(void)
 {
-    virConnectPtr conn;
-
-    if (virConnectCacheInitialize() < 0)
-        return NULL;
-
-    conn = virThreadLocalGet(&connectNetwork);
-    if (conn) {
-        VIR_DEBUG("Return cached network connection %p", conn);
-        virObjectRef(conn);
-    } else {
-        conn = virConnectOpen(geteuid() == 0 ? "network:///system" : "network:///session");
-        VIR_DEBUG("Opened new network connection %p", conn);
-    }
-    return conn;
+    return virGetConnectGeneric(&connectNetwork, "network");
 }
 
 virConnectPtr virGetConnectNWFilter(void)
 {
-    virConnectPtr conn;
-
-    if (virConnectCacheInitialize() < 0)
-        return NULL;
-
-    conn = virThreadLocalGet(&connectNWFilter);
-    if (conn) {
-        VIR_DEBUG("Return cached nwfilter connection %p", conn);
-        virObjectRef(conn);
-    } else {
-        conn = virConnectOpen(geteuid() == 0 ? "nwfilter:///system" : "nwfilter:///session");
-        VIR_DEBUG("Opened new nwfilter connection %p", conn);
-    }
-    return conn;
+    return virGetConnectGeneric(&connectNWFilter, "nwfilter");
 }
 
 virConnectPtr virGetConnectNodeDev(void)
 {
-    virConnectPtr conn;
-
-    if (virConnectCacheInitialize() < 0)
-        return NULL;
-
-    conn = virThreadLocalGet(&connectNodeDev);
-    if (conn) {
-        VIR_DEBUG("Return cached nodedev connection %p", conn);
-        virObjectRef(conn);
-    } else {
-        conn = virConnectOpen(geteuid() == 0 ? "nodedev:///system" : "nodedev:///session");
-        VIR_DEBUG("Opened new nodedev connection %p", conn);
-    }
-    return conn;
+    return virGetConnectGeneric(&connectNodeDev, "nodedev");
 }
 
 virConnectPtr virGetConnectSecret(void)
 {
-    virConnectPtr conn;
-
-    if (virConnectCacheInitialize() < 0)
-        return NULL;
-
-    conn = virThreadLocalGet(&connectSecret);
-    if (conn) {
-        VIR_DEBUG("Return cached secret connection %p", conn);
-        virObjectRef(conn);
-    } else {
-        conn = virConnectOpen(geteuid() == 0 ? "secret:///system" : "secret:///session");
-        VIR_DEBUG("Opened new secret connection %p", conn);
-    }
-    return conn;
+    return virGetConnectGeneric(&connectSecret, "secret");
 }
 
 virConnectPtr virGetConnectStorage(void)
 {
-    virConnectPtr conn;
-
-    if (virConnectCacheInitialize() < 0)
-        return NULL;
-
-    conn = virThreadLocalGet(&connectStorage);
-    if (conn) {
-        VIR_DEBUG("Return cached storage connection %p", conn);
-        virObjectRef(conn);
-    } else {
-        conn = virConnectOpen(geteuid() == 0 ? "storage:///system" : "storage:///session");
-        VIR_DEBUG("Opened new storage connection %p", conn);
-    }
-    return conn;
+    return virGetConnectGeneric(&connectStorage, "storage");
 }
 
 
@@ -268,4 +254,42 @@ virSetConnectStorage(virConnectPtr conn)
 
     VIR_DEBUG("Override storage connection with %p", conn);
     return virThreadLocalSet(&connectStorage, conn);
+}
+
+bool
+virConnectValidateURIPath(const char *uriPath,
+                          const char *entityName,
+                          bool privileged)
+{
+    if (privileged) {
+        /* TODO: qemu and vbox drivers allow '/session'
+         * connections as root. This is not ideal, but changing
+         * these drivers to refuse privileged '/session'
+         * connections, like everyone else is already doing, can
+         * break existing applications. Until we decide what to do,
+         * for now we can handle them as exception in this validate
+         * function.
+         */
+        bool compatSessionRoot = (STREQ(entityName, "qemu") ||
+                                  STREQ(entityName, "vbox")) &&
+                                  STREQ(uriPath, "/session");
+
+        if (STRNEQ(uriPath, "/system") && !compatSessionRoot) {
+            virReportError(VIR_ERR_INTERNAL_ERROR,
+                           _("unexpected %s URI path '%s', try "
+                             "%s:///system"),
+                           entityName, uriPath, entityName);
+            return false;
+        }
+    } else {
+        if (STRNEQ(uriPath, "/session")) {
+            virReportError(VIR_ERR_INTERNAL_ERROR,
+                           _("unexpected %s URI path '%s', try "
+                             "%s:///session"),
+                           entityName, uriPath, entityName);
+            return false;
+        }
+    }
+
+    return true;
 }

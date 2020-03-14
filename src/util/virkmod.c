@@ -28,7 +28,7 @@
 static int
 doModprobe(const char *opts, const char *module, char **outbuf, char **errbuf)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     cmd = virCommandNew(MODPROBE);
     if (opts)
@@ -49,7 +49,7 @@ doModprobe(const char *opts, const char *module, char **outbuf, char **errbuf)
 static int
 doRmmod(const char *module, char **errbuf)
 {
-    VIR_AUTOPTR(virCommand) cmd = NULL;
+    g_autoptr(virCommand) cmd = NULL;
 
     cmd = virCommandNewArgList(RMMOD, module, NULL);
     virCommandSetErrorBuffer(cmd, errbuf);
@@ -146,11 +146,10 @@ bool
 virKModIsBlacklisted(const char *module)
 {
     size_t i;
-    VIR_AUTOFREE(char *) drvblklst = NULL;
-    VIR_AUTOFREE(char *) outbuf = NULL;
+    g_autofree char *drvblklst = NULL;
+    g_autofree char *outbuf = NULL;
 
-    if (virAsprintfQuiet(&drvblklst, "blacklist %s\n", module) < 0)
-        return false;
+    drvblklst = g_strdup_printf("blacklist %s\n", module);
 
     /* modprobe will convert all '-' into '_', so we need to as well */
     for (i = 0; i < drvblklst[i]; i++)

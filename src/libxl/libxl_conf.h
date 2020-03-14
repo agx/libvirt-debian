@@ -48,7 +48,7 @@
 #define LIBXL_CONFIG_BASE_DIR SYSCONFDIR "/libvirt"
 #define LIBXL_CONFIG_DIR SYSCONFDIR "/libvirt/libxl"
 #define LIBXL_AUTOSTART_DIR LIBXL_CONFIG_DIR "/autostart"
-#define LIBXL_STATE_DIR LOCALSTATEDIR "/run/libvirt/libxl"
+#define LIBXL_STATE_DIR RUNSTATEDIR "/libvirt/libxl"
 #define LIBXL_LOG_DIR LOCALSTATEDIR "/log/libvirt/libxl"
 #define LIBXL_LIB_DIR LOCALSTATEDIR "/lib/libvirt/libxl"
 #define LIBXL_SAVE_DIR LIBXL_LIB_DIR "/save"
@@ -101,6 +101,8 @@ struct _libxlDriverConfig {
     virFirmwarePtr *firmwares;
     size_t nfirmwares;
 };
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(libxlDriverConfig, virObjectUnref);
 
 
 struct _libxlDriverPrivate {
@@ -205,12 +207,12 @@ libxlMakeUSB(virDomainHostdevDefPtr hostdev, libxl_device_usbdev *usbdev);
 #endif
 
 virDomainXMLOptionPtr
-libxlCreateXMLConf(void);
+libxlCreateXMLConf(libxlDriverPrivatePtr driver);
 
 #ifdef LIBXL_HAVE_DEVICE_CHANNEL
 # define LIBXL_ATTR_UNUSED
 #else
-# define LIBXL_ATTR_UNUSED ATTRIBUTE_UNUSED
+# define LIBXL_ATTR_UNUSED G_GNUC_UNUSED
 #endif
 int
 libxlBuildDomainConfig(virPortAllocatorRangePtr graphicsports,

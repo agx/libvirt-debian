@@ -28,7 +28,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "c-ctype.h"
 #include "internal.h"
 #include "virutil.h"
 #include "virerror.h"
@@ -102,46 +101,43 @@ virUUIDParse(const char *uuidstr, unsigned char *uuid)
      * 32 hexadecimal digits the end.
      */
     cur = uuidstr;
-    while (c_isspace(*cur))
+    while (g_ascii_isspace(*cur))
         cur++;
 
     for (i = 0; i < VIR_UUID_BUFLEN;) {
         uuid[i] = 0;
         if (*cur == 0)
-            goto error;
+            return -1;
         if ((*cur == '-') || (*cur == ' ')) {
             cur++;
             continue;
         }
-        if (!c_isxdigit(*cur))
-            goto error;
+        if (!g_ascii_isxdigit(*cur))
+            return -1;
         uuid[i] = virHexToBin(*cur);
         uuid[i] *= 16;
         cur++;
         if (*cur == 0)
-            goto error;
-        if (!c_isxdigit(*cur))
-            goto error;
+            return -1;
+        if (!g_ascii_isxdigit(*cur))
+            return -1;
         uuid[i] += virHexToBin(*cur);
         i++;
         cur++;
     }
 
     while (*cur) {
-        if (!c_isspace(*cur))
-            goto error;
+        if (!g_ascii_isspace(*cur))
+            return -1;
         cur++;
     }
 
     return 0;
-
- error:
-    return -1;
 }
 
 /**
  * virUUIDFormat:
- * @uuid: array of VIR_UUID_RAW_LEN bytes to store the raw UUID
+ * @uuid: array of VIR_UUID_BUFLEN bytes to store the raw UUID
  * @uuidstr: array of VIR_UUID_STRING_BUFLEN bytes to store the
  * string representation of the UUID in. The resulting string
  * will be NULL terminated.
@@ -153,12 +149,12 @@ virUUIDParse(const char *uuidstr, unsigned char *uuid)
 const char *
 virUUIDFormat(const unsigned char *uuid, char *uuidstr)
 {
-    snprintf(uuidstr, VIR_UUID_STRING_BUFLEN,
-             "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-             uuid[0], uuid[1], uuid[2], uuid[3],
-             uuid[4], uuid[5], uuid[6], uuid[7],
-             uuid[8], uuid[9], uuid[10], uuid[11],
-             uuid[12], uuid[13], uuid[14], uuid[15]);
+    g_snprintf(uuidstr, VIR_UUID_STRING_BUFLEN,
+               "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+               uuid[0], uuid[1], uuid[2], uuid[3],
+               uuid[4], uuid[5], uuid[6], uuid[7],
+               uuid[8], uuid[9], uuid[10], uuid[11],
+               uuid[12], uuid[13], uuid[14], uuid[15]);
     uuidstr[VIR_UUID_STRING_BUFLEN-1] = '\0';
     return uuidstr;
 }

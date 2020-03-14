@@ -266,7 +266,7 @@ virLogDaemonNewPostExecRestart(virJSONValuePtr object, bool privileged,
     }
 
     if (!(logd->dmn = virNetDaemonNewPostExecRestart(child,
-                                                     ARRAY_CARDINALITY(serverNames),
+                                                     G_N_ELEMENTS(serverNames),
                                                      serverNames,
                                                      virLogDaemonNewServerPostExecRestart,
                                                      (void*)(intptr_t)(privileged ? 0x1 : 0x0))))
@@ -388,49 +388,38 @@ virLogDaemonUnixSocketPaths(bool privileged,
                             char **adminSockfile)
 {
     if (privileged) {
-        if (VIR_STRDUP(*sockfile, LOCALSTATEDIR "/run/libvirt/virtlogd-sock") < 0 ||
-            VIR_STRDUP(*adminSockfile, LOCALSTATEDIR "/run/libvirt/virtlogd-admin-sock") < 0)
-            goto error;
+        *sockfile = g_strdup(RUNSTATEDIR "/libvirt/virtlogd-sock");
+        *adminSockfile = g_strdup(RUNSTATEDIR "/libvirt/virtlogd-admin-sock");
     } else {
-        char *rundir = NULL;
+        g_autofree char *rundir = NULL;
         mode_t old_umask;
 
-        if (!(rundir = virGetUserRuntimeDirectory()))
-            goto error;
+        rundir = virGetUserRuntimeDirectory();
 
         old_umask = umask(077);
         if (virFileMakePath(rundir) < 0) {
             umask(old_umask);
-            VIR_FREE(rundir);
-            goto error;
+            return -1;
         }
         umask(old_umask);
 
-        if (virAsprintf(sockfile, "%s/virtlogd-sock", rundir) < 0 ||
-            virAsprintf(adminSockfile, "%s/virtlogd-admin-sock", rundir) < 0) {
-            VIR_FREE(rundir);
-            goto error;
-        }
-
-        VIR_FREE(rundir);
+        *sockfile = g_strdup_printf("%s/virtlogd-sock", rundir);
+        *adminSockfile = g_strdup_printf("%s/virtlogd-admin-sock", rundir);
     }
     return 0;
-
- error:
-    return -1;
 }
 
 
 static void
-virLogDaemonErrorHandler(void *opaque ATTRIBUTE_UNUSED,
-                         virErrorPtr err ATTRIBUTE_UNUSED)
+virLogDaemonErrorHandler(void *opaque G_GNUC_UNUSED,
+                         virErrorPtr err G_GNUC_UNUSED)
 {
     /* Don't do anything, since logging infrastructure already
      * took care of reporting the error */
 }
 
 
-static int
+static void
 virLogDaemonSetupLogging(virLogDaemonConfigPtr config,
                          bool privileged,
                          bool verbose,
@@ -467,13 +456,10 @@ virLogDaemonSetupLogging(virLogDaemonConfigPtr config,
     /* Define the default output. This is only applied if there was no setting
      * from either the config or the environment.
      */
-    if (virLogSetDefaultOutput("virtlogd", godaemon, privileged) < 0)
-        return -1;
+    virLogSetDefaultOutput("virtlogd", godaemon, privileged);
 
     if (virLogGetNbOutputs() == 0)
         virLogSetOutputs(virLogGetDefaultOutput());
-
-    return 0;
 }
 
 
@@ -487,16 +473,16 @@ virLogDaemonVersion(const char *argv0)
 
 static void
 virLogDaemonShutdownHandler(virNetDaemonPtr dmn,
-                            siginfo_t *sig ATTRIBUTE_UNUSED,
-                            void *opaque ATTRIBUTE_UNUSED)
+                            siginfo_t *sig G_GNUC_UNUSED,
+                            void *opaque G_GNUC_UNUSED)
 {
     virNetDaemonQuit(dmn);
 }
 
 static void
 virLogDaemonExecRestartHandler(virNetDaemonPtr dmn,
-                               siginfo_t *sig ATTRIBUTE_UNUSED,
-                               void *opaque ATTRIBUTE_UNUSED)
+                               siginfo_t *sig G_GNUC_UNUSED,
+                               void *opaque G_GNUC_UNUSED)
 {
     execRestart = true;
     virNetDaemonQuit(dmn);
@@ -593,7 +579,7 @@ virLogDaemonClientNew(virNetServerClientPtr client,
 
 static void *
 virLogDaemonClientNewPostExecRestart(virNetServerClientPtr client,
-                                     virJSONValuePtr object ATTRIBUTE_UNUSED,
+                                     virJSONValuePtr object G_GNUC_UNUSED,
                                      void *opaque)
 {
     virLogDaemonClientPtr priv = virLogDaemonClientNew(client, opaque);
@@ -606,8 +592,8 @@ virLogDaemonClientNewPostExecRestart(virNetServerClientPtr client,
 
 
 static virJSONValuePtr
-virLogDaemonClientPreExecRestart(virNetServerClientPtr client ATTRIBUTE_UNUSED,
-                                 void *opaque ATTRIBUTE_UNUSED)
+virLogDaemonClientPreExecRestart(virNetServerClientPtr client G_GNUC_UNUSED,
+                                 void *opaque G_GNUC_UNUSED)
 {
     virJSONValuePtr object = virJSONValueNewObject();
 
@@ -623,35 +609,24 @@ virLogDaemonExecRestartStatePath(bool privileged,
                                  char **state_file)
 {
     if (privileged) {
-        if (VIR_STRDUP(*state_file, LOCALSTATEDIR "/run/virtlogd-restart-exec.json") < 0)
-            goto error;
+        *state_file = g_strdup(RUNSTATEDIR "/virtlogd-restart-exec.json");
     } else {
-        char *rundir = NULL;
+        g_autofree char *rundir = NULL;
         mode_t old_umask;
 
-        if (!(rundir = virGetUserRuntimeDirectory()))
-            goto error;
+        rundir = virGetUserRuntimeDirectory();
 
         old_umask = umask(077);
         if (virFileMakePath(rundir) < 0) {
             umask(old_umask);
-            VIR_FREE(rundir);
-            goto error;
+            return -1;
         }
         umask(old_umask);
 
-        if (virAsprintf(state_file, "%s/virtlogd-restart-exec.json", rundir) < 0) {
-            VIR_FREE(rundir);
-            goto error;
-        }
-
-        VIR_FREE(rundir);
+        *state_file = g_strdup_printf("%s/virtlogd-restart-exec.json", rundir);
     }
 
     return 0;
-
- error:
-    return -1;
 }
 
 
@@ -660,7 +635,7 @@ virLogDaemonGetExecRestartMagic(void)
 {
     char *ret;
 
-    ignore_value(virAsprintf(&ret, "%lld", (long long int)getpid()));
+    ret = g_strdup_printf("%lld", (long long int)getpid());
     return ret;
 }
 
@@ -834,14 +809,14 @@ virLogDaemonUsage(const char *argv0, bool privileged)
                   "      %s/libvirt/virtlogd.conf\n"
                   "\n"
                   "    Sockets:\n"
-                  "      %s/run/libvirt/virtlogd-sock\n"
+                  "      %s/libvirt/virtlogd-sock\n"
                   "\n"
                   "    PID file (unless overridden by -p):\n"
-                  "      %s/run/virtlogd.pid\n"
+                  "      %s/virtlogd.pid\n"
                   "\n"),
                 SYSCONFDIR,
-                LOCALSTATEDIR,
-                LOCALSTATEDIR);
+                RUNSTATEDIR,
+                RUNSTATEDIR);
     } else {
         fprintf(stderr, "%s",
                 _("\n"
@@ -896,7 +871,6 @@ int main(int argc, char **argv) {
     privileged = geteuid() == 0;
 
     if (virGettextInitialize() < 0 ||
-        virThreadInitialize() < 0 ||
         virErrorInitialize() < 0) {
         fprintf(stderr, _("%s: initialization failed\n"), argv[0]);
         exit(EXIT_FAILURE);
@@ -935,14 +909,12 @@ int main(int argc, char **argv) {
 
         case 'p':
             VIR_FREE(pid_file);
-            if (VIR_STRDUP_QUIET(pid_file, optarg) < 0)
-                goto no_memory;
+            pid_file = g_strdup(optarg);
             break;
 
         case 'f':
             VIR_FREE(remote_config_file);
-            if (VIR_STRDUP_QUIET(remote_config_file, optarg) < 0)
-                goto no_memory;
+            remote_config_file = g_strdup(optarg);
             break;
 
         case 'V':
@@ -960,7 +932,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    virFileActivateDirOverride(argv[0]);
+    virFileActivateDirOverrideForProg(argv[0]);
 
     if (!(config = virLogDaemonConfigNew(privileged))) {
         VIR_ERROR(_("Can't create initial configuration"));
@@ -985,14 +957,11 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    if (virLogDaemonSetupLogging(config, privileged, verbose, godaemon) < 0) {
-        VIR_ERROR(_("Can't initialize logging"));
-        exit(EXIT_FAILURE);
-    }
+    virLogDaemonSetupLogging(config, privileged, verbose, godaemon);
 
     if (!pid_file &&
         virPidFileConstructPath(privileged,
-                                LOCALSTATEDIR,
+                                RUNSTATEDIR,
                                 "virtlogd",
                                 &pid_file) < 0) {
         VIR_ERROR(_("Can't determine pid file path."));
@@ -1019,13 +988,9 @@ int main(int argc, char **argv) {
 
     /* Ensure the rundir exists (on tmpfs on some systems) */
     if (privileged) {
-        if (VIR_STRDUP_QUIET(run_dir, LOCALSTATEDIR "/run/libvirt") < 0)
-            goto no_memory;
+        run_dir = g_strdup(RUNSTATEDIR "/libvirt");
     } else {
-        if (!(run_dir = virGetUserRuntimeDirectory())) {
-            VIR_ERROR(_("Can't determine user directory"));
-            goto cleanup;
-        }
+        run_dir = virGetUserRuntimeDirectory();
     }
 
     if (privileged)
@@ -1057,7 +1022,7 @@ int main(int argc, char **argv) {
      * scratch if rv == 0
      */
     if (rv == 0) {
-        VIR_AUTOPTR(virSystemdActivation) act = NULL;
+        g_autoptr(virSystemdActivation) act = NULL;
         virSystemdActivationMap actmap[] = {
             { .name = "virtlogd.socket", .family = AF_UNIX, .path = sock_file },
             { .name = "virtlogd-admin.socket", .family = AF_UNIX, .path = admin_sock_file },
@@ -1091,7 +1056,7 @@ int main(int argc, char **argv) {
         }
 
         if (virSystemdGetActivation(actmap,
-                                    ARRAY_CARDINALITY(actmap),
+                                    G_N_ELEMENTS(actmap),
                                     &act) < 0) {
             ret = VIR_LOG_DAEMON_ERR_NETWORK;
             goto cleanup;
@@ -1221,8 +1186,4 @@ int main(int argc, char **argv) {
     VIR_FREE(remote_config_file);
     virLogDaemonConfigFree(config);
     return ret;
-
- no_memory:
-    VIR_ERROR(_("Can't allocate memory"));
-    exit(EXIT_FAILURE);
 }

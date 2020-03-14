@@ -66,20 +66,17 @@ virDomainMomentDefDispose(void *obj)
     VIR_FREE(def->description);
     VIR_FREE(def->parent_name);
     virDomainDefFree(def->dom);
+    virDomainDefFree(def->inactiveDom);
 }
 
 /* Provide defaults for creation time and moment name after parsing XML */
 int
 virDomainMomentDefPostParse(virDomainMomentDefPtr def)
 {
-    struct timeval tv;
+    def->creationTime = g_get_real_time() / (1000*1000);
 
-    gettimeofday(&tv, NULL);
+    if (!def->name)
+        def->name = g_strdup_printf("%lld", def->creationTime);
 
-    if (!def->name &&
-        virAsprintf(&def->name, "%lld", (long long)tv.tv_sec) < 0)
-        return -1;
-
-    def->creationTime = tv.tv_sec;
     return 0;
 }

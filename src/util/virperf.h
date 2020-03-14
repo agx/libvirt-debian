@@ -19,7 +19,6 @@
 #pragma once
 
 #include "virutil.h"
-#include "virautoclean.h"
 #include "virenum.h"
 
 /* Some Intel processor families introduced some RDT (Resource Director
@@ -82,4 +81,4 @@ int virPerfReadEvent(virPerfPtr perf,
                      virPerfEventType type,
                      uint64_t *value);
 
-VIR_DEFINE_AUTOPTR_FUNC(virPerf, virPerfFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virPerf, virPerfFree);

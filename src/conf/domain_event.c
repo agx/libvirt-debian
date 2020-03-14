@@ -22,8 +22,6 @@
 
 #include <config.h>
 
-#include <regex.h>
-
 #include "domain_event.h"
 #include "object_event.h"
 #include "object_event_private.h"
@@ -755,12 +753,9 @@ virDomainEventIOErrorNewFromDomImpl(int event,
         return NULL;
 
     ev->action = action;
-    if (VIR_STRDUP(ev->srcPath, srcPath) < 0 ||
-        VIR_STRDUP(ev->devAlias, devAlias) < 0 ||
-        VIR_STRDUP(ev->reason, reason) < 0) {
-        virObjectUnref(ev);
-        ev = NULL;
-    }
+    ev->srcPath = g_strdup(srcPath);
+    ev->devAlias = g_strdup(devAlias);
+    ev->reason = g_strdup(reason);
 
     return (virObjectEventPtr)ev;
 }
@@ -784,12 +779,9 @@ virDomainEventIOErrorNewFromObjImpl(int event,
         return NULL;
 
     ev->action = action;
-    if (VIR_STRDUP(ev->srcPath, srcPath) < 0 ||
-        VIR_STRDUP(ev->devAlias, devAlias) < 0 ||
-        VIR_STRDUP(ev->reason, reason) < 0) {
-        virObjectUnref(ev);
-        ev = NULL;
-    }
+    ev->srcPath = g_strdup(srcPath);
+    ev->devAlias = g_strdup(devAlias);
+    ev->reason = g_strdup(reason);
 
     return (virObjectEventPtr)ev;
 }
@@ -860,10 +852,7 @@ virDomainEventGraphicsNewFromDom(virDomainPtr dom,
         return NULL;
 
     ev->phase = phase;
-    if (VIR_STRDUP(ev->authScheme, authScheme) < 0) {
-        virObjectUnref(ev);
-        return NULL;
-    }
+    ev->authScheme = g_strdup(authScheme);
     ev->local = local;
     ev->remote = remote;
     ev->subject = subject;
@@ -891,10 +880,7 @@ virDomainEventGraphicsNewFromObj(virDomainObjPtr obj,
         return NULL;
 
     ev->phase = phase;
-    if (VIR_STRDUP(ev->authScheme, authScheme) < 0) {
-        virObjectUnref(ev);
-        return NULL;
-    }
+    ev->authScheme = g_strdup(authScheme);
     ev->local = local;
     ev->remote = remote;
     ev->subject = subject;
@@ -921,10 +907,7 @@ virDomainEventBlockJobNew(int event,
                                  id, name, uuid)))
         return NULL;
 
-    if (VIR_STRDUP(ev->disk, disk) < 0) {
-        virObjectUnref(ev);
-        return NULL;
-    }
+    ev->disk = g_strdup(disk);
     ev->type = type;
     ev->status = status;
 
@@ -1026,22 +1009,13 @@ virDomainEventDiskChangeNew(int id,
                                  id, name, uuid)))
         return NULL;
 
-    if (VIR_STRDUP(ev->devAlias, devAlias) < 0)
-        goto error;
-
-    if (VIR_STRDUP(ev->oldSrcPath, oldSrcPath) < 0)
-        goto error;
-
-    if (VIR_STRDUP(ev->newSrcPath, newSrcPath) < 0)
-        goto error;
+    ev->devAlias = g_strdup(devAlias);
+    ev->oldSrcPath = g_strdup(oldSrcPath);
+    ev->newSrcPath = g_strdup(newSrcPath);
 
     ev->reason = reason;
 
     return (virObjectEventPtr)ev;
-
- error:
-    virObjectUnref(ev);
-    return NULL;
 }
 
 virObjectEventPtr
@@ -1085,16 +1059,11 @@ virDomainEventTrayChangeNew(int id,
                                  id, name, uuid)))
         return NULL;
 
-    if (VIR_STRDUP(ev->devAlias, devAlias) < 0)
-        goto error;
+    ev->devAlias = g_strdup(devAlias);
 
     ev->reason = reason;
 
     return (virObjectEventPtr)ev;
-
- error:
-    virObjectUnref(ev);
-    return NULL;
 }
 
 virObjectEventPtr
@@ -1277,14 +1246,9 @@ virDomainEventDeviceRemovedNew(int id,
                                  id, name, uuid)))
         return NULL;
 
-    if (VIR_STRDUP(ev->devAlias, devAlias) < 0)
-        goto error;
+    ev->devAlias = g_strdup(devAlias);
 
     return (virObjectEventPtr)ev;
-
- error:
-    virObjectUnref(ev);
-    return NULL;
 }
 
 virObjectEventPtr
@@ -1319,14 +1283,9 @@ virDomainEventDeviceAddedNew(int id,
                                  id, name, uuid)))
         return NULL;
 
-    if (VIR_STRDUP(ev->devAlias, devAlias) < 0)
-        goto error;
+    ev->devAlias = g_strdup(devAlias);
 
     return (virObjectEventPtr)ev;
-
- error:
-    virObjectUnref(ev);
-    return NULL;
 }
 
 virObjectEventPtr
@@ -1362,14 +1321,9 @@ virDomainEventDeviceRemovalFailedNew(int id,
                                  id, name, uuid)))
         return NULL;
 
-    if (VIR_STRDUP(ev->devAlias, devAlias) < 0)
-        goto error;
+    ev->devAlias = g_strdup(devAlias);
 
     return (virObjectEventPtr)ev;
-
- error:
-    virObjectUnref(ev);
-    return NULL;
 }
 
 virObjectEventPtr
@@ -1589,14 +1543,10 @@ virDomainEventMetadataChangeNew(int id,
         return NULL;
 
     ev->type = type;
-    if (nsuri && VIR_STRDUP(ev->nsuri, nsuri) < 0)
-        goto error;
+    if (nsuri)
+        ev->nsuri = g_strdup(nsuri);
 
     return (virObjectEventPtr)ev;
-
- error:
-    virObjectUnref(ev);
-    return NULL;
 }
 
 virObjectEventPtr
@@ -1637,11 +1587,8 @@ virDomainEventBlockThresholdNew(int id,
                                  id, name, uuid)))
         return NULL;
 
-    if (VIR_STRDUP(ev->dev, dev) < 0 ||
-        VIR_STRDUP(ev->path, path) < 0) {
-        virObjectUnref(ev);
-        return NULL;
-    }
+    ev->dev = g_strdup(dev);
+    ev->path = g_strdup(path);
     ev->threshold = threshold;
     ev->excess = excess;
 
@@ -1987,19 +1934,12 @@ virDomainQemuMonitorEventNew(int id,
                                  0, id, name, uuid, uuidstr)))
         return NULL;
 
-    /* event is mandatory, details are optional */
-    if (VIR_STRDUP(ev->event, event) <= 0)
-        goto error;
+    ev->event = g_strdup(event);
     ev->seconds = seconds;
     ev->micros = micros;
-    if (VIR_STRDUP(ev->details, details) < 0)
-        goto error;
+    ev->details = g_strdup(details);
 
     return (virObjectEventPtr)ev;
-
- error:
-    virObjectUnref(ev);
-    return NULL;
 }
 
 
@@ -2009,7 +1949,7 @@ virDomainQemuMonitorEventNew(int id,
  * deregisters.  */
 struct virDomainQemuMonitorEventData {
     char *event;
-    regex_t regex;
+    GRegex *regex;
     unsigned int flags;
     void *opaque;
     virFreeCallback freecb;
@@ -2229,7 +2169,7 @@ virDomainEventStateDeregister(virConnectPtr conn,
  * event should be dispatched.
  */
 static bool
-virDomainQemuMonitorEventFilter(virConnectPtr conn ATTRIBUTE_UNUSED,
+virDomainQemuMonitorEventFilter(virConnectPtr conn G_GNUC_UNUSED,
                                 virObjectEventPtr event,
                                 void *opaque)
 {
@@ -2241,7 +2181,7 @@ virDomainQemuMonitorEventFilter(virConnectPtr conn ATTRIBUTE_UNUSED,
     if (data->flags == -1)
         return true;
     if (data->flags & VIR_CONNECT_DOMAIN_QEMU_MONITOR_EVENT_REGISTER_REGEX)
-        return regexec(&data->regex, monitorEvent->event, 0, NULL, 0) == 0;
+        return g_regex_match(data->regex, monitorEvent->event, 0, NULL) == TRUE;
     if (data->flags & VIR_CONNECT_DOMAIN_QEMU_MONITOR_EVENT_REGISTER_NOCASE)
         return STRCASEEQ(monitorEvent->event, data->event);
     return STREQ(monitorEvent->event, data->event);
@@ -2255,7 +2195,7 @@ virDomainQemuMonitorEventCleanup(void *opaque)
 
     VIR_FREE(data->event);
     if (data->flags & VIR_CONNECT_DOMAIN_QEMU_MONITOR_EVENT_REGISTER_REGEX)
-        regfree(&data->regex);
+        g_regex_unref(data->regex);
     if (data->freecb)
         (data->freecb)(data->opaque);
     VIR_FREE(data);
@@ -2306,26 +2246,22 @@ virDomainQemuMonitorEventStateRegisterID(virConnectPtr conn,
         return -1;
     data->flags = flags;
     if (event && flags != -1) {
-        int rflags = REG_NOSUB;
-
-        if (flags & VIR_CONNECT_DOMAIN_QEMU_MONITOR_EVENT_REGISTER_NOCASE)
-            rflags |= REG_ICASE;
         if (flags & VIR_CONNECT_DOMAIN_QEMU_MONITOR_EVENT_REGISTER_REGEX) {
-            int err = regcomp(&data->regex, event, rflags);
+            int cflags = G_REGEX_OPTIMIZE;
+            g_autoptr(GError) err = NULL;
 
-            if (err) {
-                char error[100];
-                regerror(err, &data->regex, error, sizeof(error));
+            if (flags & VIR_CONNECT_DOMAIN_QEMU_MONITOR_EVENT_REGISTER_NOCASE)
+                cflags |= G_REGEX_CASELESS;
+            data->regex = g_regex_new(event, cflags, 0, &err);
+            if (!data->regex) {
                 virReportError(VIR_ERR_INVALID_ARG,
                                _("failed to compile regex '%s': %s"),
-                               event, error);
-                regfree(&data->regex);
+                               event, err->message);
                 VIR_FREE(data);
                 return -1;
             }
-        } else if (VIR_STRDUP(data->event, event) < 0) {
-            VIR_FREE(data);
-            return -1;
+        } else {
+            data->event = g_strdup(event);
         }
     }
     data->opaque = opaque;

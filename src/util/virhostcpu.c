@@ -38,13 +38,11 @@
 # include <sys/resource.h>
 #endif
 
-#include "c-ctype.h"
 #include "viralloc.h"
 #define LIBVIRT_VIRHOSTCPUPRIV_H_ALLOW
 #include "virhostcpupriv.h"
 #include "physmem.h"
 #include "virerror.h"
-#include "count-one-bits.h"
 #include "intprops.h"
 #include "virarch.h"
 #include "virfile.h"
@@ -169,7 +167,7 @@ virHostCPUGetStatsFreeBSD(int cpuNum,
         }
 
         param->value = 0;
-        for (j = 0; j < ARRAY_CARDINALITY(cpu_map[i].idx); j++)
+        for (j = 0; j < G_N_ELEMENTS(cpu_map[i].idx); j++)
             param->value += cpu_times[offset + cpu_map[i].idx[j]] * TICK_TO_NSEC;
     }
 
@@ -513,7 +511,7 @@ virHostCPUParseFrequencyString(const char *str,
     str += strlen(prefix);
 
     /* Skip all whitespace */
-    while (c_isspace(*str))
+    while (g_ascii_isspace(*str))
         str++;
     if (*str == '\0')
         goto error;
@@ -525,7 +523,7 @@ virHostCPUParseFrequencyString(const char *str,
     str++;
 
     /* Skip all whitespace */
-    while (c_isspace(*str))
+    while (g_ascii_isspace(*str))
         str++;
     if (*str == '\0')
         goto error;
@@ -534,7 +532,7 @@ virHostCPUParseFrequencyString(const char *str,
      * followed by a fractional part (which gets discarded) or some
      * leading whitespace */
     if (virStrToLong_ui(str, &p, 10, &ui) < 0 ||
-        (*p != '.' && *p != '\0' && !c_isspace(*p))) {
+        (*p != '.' && *p != '\0' && !g_ascii_isspace(*p))) {
         goto error;
     }
 
@@ -628,8 +626,7 @@ virHostCPUGetInfoPopulateLinux(FILE *cpuinfo,
     /* OK, we've parsed clock speed out of /proc/cpuinfo. Get the
      * core, node, socket, thread and topology information from /sys
      */
-    if (virAsprintf(&sysfs_nodedir, "%s/node", SYSFS_SYSTEM_PATH) < 0)
-        goto cleanup;
+    sysfs_nodedir = g_strdup_printf("%s/node", SYSFS_SYSTEM_PATH);
 
     if (virDirOpenQuiet(&nodedir, sysfs_nodedir) < 0) {
         /* the host isn't probably running a NUMA architecture */
@@ -672,9 +669,8 @@ virHostCPUGetInfoPopulateLinux(FILE *cpuinfo,
 
         (*nodes)++;
 
-        if (virAsprintf(&sysfs_cpudir, "%s/node/%s", SYSFS_SYSTEM_PATH,
-                        nodedirent->d_name) < 0)
-            goto cleanup;
+        sysfs_cpudir = g_strdup_printf("%s/node/%s", SYSFS_SYSTEM_PATH,
+                                       nodedirent->d_name);
 
         if ((nodecpus = virHostCPUParseNode(sysfs_cpudir, arch,
                                             present_cpus_map,
@@ -707,8 +703,7 @@ virHostCPUGetInfoPopulateLinux(FILE *cpuinfo,
  fallback:
     VIR_FREE(sysfs_cpudir);
 
-    if (virAsprintf(&sysfs_cpudir, "%s/cpu", SYSFS_SYSTEM_PATH) < 0)
-        goto cleanup;
+    sysfs_cpudir = g_strdup_printf("%s/cpu", SYSFS_SYSTEM_PATH);
 
     if ((nodecpus = virHostCPUParseNode(sysfs_cpudir, arch,
                                         present_cpus_map,
@@ -777,7 +772,6 @@ virHostCPUGetStatsLinux(FILE *procstat,
                         virNodeCPUStatsPtr params,
                         int *nparams)
 {
-    int ret = -1;
     char line[1024];
     unsigned long long usr, ni, sys, idle, iowait;
     unsigned long long irq, softirq, steal, guest, guest_nice;
@@ -786,21 +780,20 @@ virHostCPUGetStatsLinux(FILE *procstat,
     if ((*nparams) == 0) {
         /* Current number of cpu stats supported by linux */
         *nparams = LINUX_NB_CPU_STATS;
-        ret = 0;
-        goto cleanup;
+        return 0;
     }
 
     if ((*nparams) != LINUX_NB_CPU_STATS) {
         virReportInvalidArg(*nparams,
                             _("nparams in %s must be equal to %d"),
                             __FUNCTION__, LINUX_NB_CPU_STATS);
-        goto cleanup;
+        return -1;
     }
 
     if (cpuNum == VIR_NODE_CPU_STATS_ALL_CPUS) {
         strcpy(cpu_header, "cpu ");
     } else {
-        snprintf(cpu_header, sizeof(cpu_header), "cpu%d ", cpuNum);
+        g_snprintf(cpu_header, sizeof(cpu_header), "cpu%d ", cpuNum);
     }
 
     while (fgets(line, sizeof(line), procstat) != NULL) {
@@ -817,22 +810,21 @@ virHostCPUGetStatsLinux(FILE *procstat,
 
             if (virHostCPUStatsAssign(&params[0], VIR_NODE_CPU_STATS_KERNEL,
                                       (sys + irq + softirq) * TICK_TO_NSEC) < 0)
-                goto cleanup;
+                return -1;
 
             if (virHostCPUStatsAssign(&params[1], VIR_NODE_CPU_STATS_USER,
                                       (usr + ni) * TICK_TO_NSEC) < 0)
-                goto cleanup;
+                return -1;
 
             if (virHostCPUStatsAssign(&params[2], VIR_NODE_CPU_STATS_IDLE,
                                       idle * TICK_TO_NSEC) < 0)
-                goto cleanup;
+                return -1;
 
             if (virHostCPUStatsAssign(&params[3], VIR_NODE_CPU_STATS_IOWAIT,
                                       iowait * TICK_TO_NSEC) < 0)
-                goto cleanup;
+                return -1;
 
-            ret = 0;
-            goto cleanup;
+            return 0;
         }
     }
 
@@ -840,8 +832,7 @@ virHostCPUGetStatsLinux(FILE *procstat,
                         _("Invalid cpuNum in %s"),
                         __FUNCTION__);
 
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -911,13 +902,13 @@ virHostCPUStatsAssign(virNodeCPUStatsPtr param,
 
 
 int
-virHostCPUGetInfo(virArch hostarch ATTRIBUTE_UNUSED,
-                  unsigned int *cpus ATTRIBUTE_UNUSED,
-                  unsigned int *mhz ATTRIBUTE_UNUSED,
-                  unsigned int *nodes ATTRIBUTE_UNUSED,
-                  unsigned int *sockets ATTRIBUTE_UNUSED,
-                  unsigned int *cores ATTRIBUTE_UNUSED,
-                  unsigned int *threads ATTRIBUTE_UNUSED)
+virHostCPUGetInfo(virArch hostarch G_GNUC_UNUSED,
+                  unsigned int *cpus G_GNUC_UNUSED,
+                  unsigned int *mhz G_GNUC_UNUSED,
+                  unsigned int *nodes G_GNUC_UNUSED,
+                  unsigned int *sockets G_GNUC_UNUSED,
+                  unsigned int *cores G_GNUC_UNUSED,
+                  unsigned int *threads G_GNUC_UNUSED)
 {
 #ifdef __linux__
     int ret = -1;
@@ -985,9 +976,9 @@ virHostCPUGetInfo(virArch hostarch ATTRIBUTE_UNUSED,
 
 
 int
-virHostCPUGetStats(int cpuNum ATTRIBUTE_UNUSED,
-                   virNodeCPUStatsPtr params ATTRIBUTE_UNUSED,
-                   int *nparams ATTRIBUTE_UNUSED,
+virHostCPUGetStats(int cpuNum G_GNUC_UNUSED,
+                   virNodeCPUStatsPtr params G_GNUC_UNUSED,
+                   int *nparams G_GNUC_UNUSED,
                    unsigned int flags)
 {
     virCheckFlags(0, -1);
@@ -1128,7 +1119,7 @@ virHostCPUGetThreadsPerSubcore(virArch arch)
          * In either case, falling back to the subcore-unaware thread
          * counting logic is the right thing to do */
         if (!virFileExists(KVM_DEVICE))
-            goto out;
+            return 0;
 
         if ((kvmfd = open(KVM_DEVICE, O_RDONLY)) < 0) {
             /* This can happen when running as a regular user if
@@ -1138,8 +1129,7 @@ virHostCPUGetThreadsPerSubcore(virArch arch)
             virReportSystemError(errno,
                                  _("Failed to open '%s'"),
                                  KVM_DEVICE);
-            threads_per_subcore = -1;
-            goto out;
+            return -1;
         }
 
         /* For Phyp and KVM based guests the ioctl for KVM_CAP_PPC_SMT
@@ -1152,7 +1142,6 @@ virHostCPUGetThreadsPerSubcore(virArch arch)
         VIR_FORCE_CLOSE(kvmfd);
     }
 
- out:
     return threads_per_subcore;
 }
 
@@ -1161,7 +1150,7 @@ virHostCPUGetThreadsPerSubcore(virArch arch)
 /* Fallback for nodeGetThreadsPerSubcore() used when KVM headers
  * are not available on the system */
 int
-virHostCPUGetThreadsPerSubcore(virArch arch ATTRIBUTE_UNUSED)
+virHostCPUGetThreadsPerSubcore(virArch arch G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -1390,8 +1379,8 @@ virHostCPUGetTscInfo(void)
 #else
 
 int
-virHostCPUGetMSR(unsigned long index ATTRIBUTE_UNUSED,
-                 uint64_t *msr ATTRIBUTE_UNUSED)
+virHostCPUGetMSR(unsigned long index G_GNUC_UNUSED,
+                 uint64_t *msr G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s",
                          _("Reading MSRs is not supported on this platform"));

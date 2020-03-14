@@ -20,7 +20,6 @@
 
 #include <inttypes.h>
 #include <math.h>
-#include <strings.h>
 #include <time.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -32,7 +31,6 @@
 
 #include "virrandom.h"
 #include "virthread.h"
-#include "count-one-bits.h"
 #include "virutil.h"
 #include "virerror.h"
 #include "virfile.h"
@@ -97,7 +95,7 @@ double virRandom(void)
 uint32_t virRandomInt(uint32_t max)
 {
     if ((max & (max - 1)) == 0)
-        return virRandomBits(ffs(max) - 1);
+        return virRandomBits(__builtin_ffs(max) - 1);
 
     double val = virRandom();
     return val * max;
@@ -183,8 +181,7 @@ virRandomGenerateWWN(char **wwn,
     if (STREQ(virt_type, "QEMU")) {
         oui = QUMRANET_OUI;
     } else if (STREQ(virt_type, "Xen") ||
-               STREQ(virt_type, "xenlight") ||
-               STREQ(virt_type, "XenAPI")) {
+               STREQ(virt_type, "xenlight")) {
         oui = XEN_OUI;
     } else if (STREQ(virt_type, "ESX") ||
                STREQ(virt_type, "VMWARE")) {
@@ -197,8 +194,7 @@ virRandomGenerateWWN(char **wwn,
         return -1;
     }
 
-    if (virAsprintf(wwn, "5" "%s%09llx", oui,
-                    (unsigned long long)virRandomBits(36)) < 0)
-        return -1;
+    *wwn = g_strdup_printf("5" "%s%09llx", oui,
+                           (unsigned long long)virRandomBits(36));
     return 0;
 }

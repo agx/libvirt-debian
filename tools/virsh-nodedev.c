@@ -375,14 +375,14 @@ static const vshCmdOptDef opts_node_list_devices[] = {
     },
     {.name = "cap",
      .type = VSH_OT_STRING,
-     .completer = virshNodedevCapabilityNameCompleter,
+     .completer = virshNodeDeviceCapabilityNameCompleter,
      .help = N_("capability names, separated by comma")
     },
     {.name = NULL}
 };
 
 static bool
-cmdNodeListDevices(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
+cmdNodeListDevices(vshControl *ctl, const vshCmd *cmd G_GNUC_UNUSED)
 {
     const char *cap_str = NULL;
     size_t i;
@@ -477,13 +477,12 @@ cmdNodeListDevices(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
         struct virshNodeList arrays = { names, parents };
 
         for (i = 0; i < list->ndevices; i++)
-            names[i] = vshStrdup(ctl, virNodeDeviceGetName(list->devices[i]));
+            names[i] = g_strdup(virNodeDeviceGetName(list->devices[i]));
 
         for (i = 0; i < list->ndevices; i++) {
             virNodeDevicePtr dev = list->devices[i];
             if (STRNEQ(names[i], "computer")) {
-                const char *parent = virNodeDeviceGetParent(dev);
-                parents[i] = parent ? vshStrdup(ctl, parent) : NULL;
+                parents[i] = g_strdup(virNodeDeviceGetParent(dev));
             } else {
                 parents[i] = NULL;
             }
@@ -775,15 +774,15 @@ struct virshNodeDeviceEventData {
     bool loop;
     bool timestamp;
     int count;
-    virshNodedevEventCallback *cb;
+    virshNodeDeviceEventCallback *cb;
 };
 typedef struct virshNodeDeviceEventData virshNodeDeviceEventData;
 
 static void
-vshEventLifecyclePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
+vshEventLifecyclePrint(virConnectPtr conn G_GNUC_UNUSED,
                        virNodeDevicePtr dev,
                        int event,
-                       int detail ATTRIBUTE_UNUSED,
+                       int detail G_GNUC_UNUSED,
                        void *opaque)
 {
     virshNodeDeviceEventData *data = opaque;
@@ -811,7 +810,7 @@ vshEventLifecyclePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
 }
 
 static void
-vshEventGenericPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
+vshEventGenericPrint(virConnectPtr conn G_GNUC_UNUSED,
                      virNodeDevicePtr dev,
                      void *opaque)
 {
@@ -841,12 +840,12 @@ vshEventGenericPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
         vshEventDone(data->ctl);
 }
 
-virshNodedevEventCallback virshNodedevEventCallbacks[] = {
+virshNodeDeviceEventCallback virshNodeDeviceEventCallbacks[] = {
     { "lifecycle",
       VIR_NODE_DEVICE_EVENT_CALLBACK(vshEventLifecyclePrint), },
     { "update", vshEventGenericPrint, }
 };
-verify(VIR_NODE_DEVICE_EVENT_ID_LAST == ARRAY_CARDINALITY(virshNodedevEventCallbacks));
+verify(VIR_NODE_DEVICE_EVENT_ID_LAST == G_N_ELEMENTS(virshNodeDeviceEventCallbacks));
 
 
 static const vshCmdInfo info_node_device_event[] = {
@@ -867,7 +866,7 @@ static const vshCmdOptDef opts_node_device_event[] = {
     },
     {.name = "event",
      .type = VSH_OT_STRING,
-     .completer = virshNodedevEventNameCompleter,
+     .completer = virshNodeDeviceEventNameCompleter,
      .help = N_("which event type to wait for")
     },
     {.name = "loop",
@@ -906,7 +905,7 @@ cmdNodeDeviceEvent(vshControl *ctl, const vshCmd *cmd)
         size_t i;
 
         for (i = 0; i < VIR_NODE_DEVICE_EVENT_ID_LAST; i++)
-            vshPrint(ctl, "%s\n", virshNodedevEventCallbacks[i].name);
+            vshPrint(ctl, "%s\n", virshNodeDeviceEventCallbacks[i].name);
         return true;
     }
 
@@ -918,7 +917,7 @@ cmdNodeDeviceEvent(vshControl *ctl, const vshCmd *cmd)
     }
 
     for (event = 0; event < VIR_NODE_DEVICE_EVENT_ID_LAST; event++)
-        if (STREQ(eventName, virshNodedevEventCallbacks[event].name))
+        if (STREQ(eventName, virshNodeDeviceEventCallbacks[event].name))
             break;
     if (event == VIR_NODE_DEVICE_EVENT_ID_LAST) {
         vshError(ctl, _("unknown event type %s"), eventName);
@@ -929,7 +928,7 @@ cmdNodeDeviceEvent(vshControl *ctl, const vshCmd *cmd)
     data.loop = vshCommandOptBool(cmd, "loop");
     data.timestamp = vshCommandOptBool(cmd, "timestamp");
     data.count = 0;
-    data.cb = &virshNodedevEventCallbacks[event];
+    data.cb = &virshNodeDeviceEventCallbacks[event];
     if (vshCommandOptTimeoutToMs(ctl, cmd, &timeout) < 0)
         return false;
     if (vshCommandOptStringReq(ctl, cmd, "device", &device_value) < 0)

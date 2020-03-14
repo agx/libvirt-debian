@@ -316,8 +316,7 @@ static virNetClientPtr virNetClientNew(virNetSocketPtr sock,
     client->wakeupSendFD = wakeupFD[1];
     wakeupFD[0] = wakeupFD[1] = -1;
 
-    if (VIR_STRDUP(client->hostname, hostname) < 0)
-        goto error;
+    client->hostname = g_strdup(hostname);
 
     PROBE(RPC_CLIENT_NEW,
           "client=%p sock=%p",
@@ -344,8 +343,7 @@ virNetClientCheckKeyExists(const char *homedir,
 {
     char *path;
 
-    if (virAsprintf(&path, "%s/.ssh/%s", homedir, name) < 0)
-        return -1;
+    path = g_strdup_printf("%s/.ssh/%s", homedir, name);
 
     if (!(virFileExists(path))) {
         VIR_FREE(path);
@@ -368,7 +366,7 @@ virNetClientFindDefaultSshKey(const char *homedir, char **retPath)
 
     const char *keys[] = { "identity", "id_dsa", "id_ecdsa", "id_ed25519", "id_rsa" };
 
-    for (i = 0; i < ARRAY_CARDINALITY(keys); ++i) {
+    for (i = 0; i < G_N_ELEMENTS(keys); ++i) {
         int ret = virNetClientCheckKeyExists(homedir, keys[i], retPath);
         if (ret != 0)
             return ret;
@@ -441,39 +439,32 @@ virNetClientPtr virNetClientNewLibSSH2(const char *host,
                                        virURIPtr uri)
 {
     virNetSocketPtr sock = NULL;
-    virNetClientPtr ret = NULL;
 
     virBuffer buf = VIR_BUFFER_INITIALIZER;
-    char *nc = NULL;
-    char *command = NULL;
+    g_autofree char *nc = NULL;
+    g_autofree char *command = NULL;
 
-    char *homedir = NULL;
-    char *confdir = NULL;
-    char *knownhosts = NULL;
-    char *privkey = NULL;
+    g_autofree char *homedir = NULL;
+    g_autofree char *confdir = NULL;
+    g_autofree char *knownhosts = NULL;
+    g_autofree char *privkey = NULL;
 
     /* Use default paths for known hosts an public keys if not provided */
     if (knownHostsPath) {
-        if (VIR_STRDUP(knownhosts, knownHostsPath) < 0)
-            goto cleanup;
+        knownhosts = g_strdup(knownHostsPath);
     } else {
         confdir = virGetUserConfigDirectory();
-        if (confdir) {
-            virBufferAsprintf(&buf, "%s/known_hosts", confdir);
-            if (!(knownhosts = virBufferContentAndReset(&buf)))
-                goto no_memory;
-        }
+        virBufferAsprintf(&buf, "%s/known_hosts", confdir);
+        if (!(knownhosts = virBufferContentAndReset(&buf)))
+            return NULL;
     }
 
     if (privkeyPath) {
-        if (VIR_STRDUP(privkey, privkeyPath) < 0)
-            goto cleanup;
+        privkey = g_strdup(privkeyPath);
     } else {
         homedir = virGetUserDirectory();
-        if (homedir) {
-            if (virNetClientFindDefaultSshKey(homedir, &privkey) < 0)
-                goto no_memory;
-        }
+        if (virNetClientFindDefaultSshKey(homedir, &privkey) < 0)
+            return NULL;
     }
 
     if (!authMethods) {
@@ -491,7 +482,11 @@ virNetClientPtr virNetClientNewLibSSH2(const char *host,
 
     virBufferEscapeShell(&buf, netcatPath);
     if (!(nc = virBufferContentAndReset(&buf)))
-        goto no_memory;
+        return NULL;
+    virBufferEscapeShell(&buf, nc);
+    VIR_FREE(nc);
+    if (!(nc = virBufferContentAndReset(&buf)))
+        return NULL;
 
     virBufferAsprintf(&buf,
          "sh -c "
@@ -504,30 +499,16 @@ virNetClientPtr virNetClientNewLibSSH2(const char *host,
          nc, nc, socketPath);
 
     if (!(command = virBufferContentAndReset(&buf)))
-        goto no_memory;
+        return NULL;
 
     if (virNetSocketNewConnectLibSSH2(host, port,
                                       family,
                                       username, privkey,
                                       knownhosts, knownHostsVerify, authMethods,
                                       command, authPtr, uri, &sock) != 0)
-        goto cleanup;
+        return NULL;
 
-    if (!(ret = virNetClientNew(sock, NULL)))
-        goto cleanup;
-
- cleanup:
-    VIR_FREE(command);
-    VIR_FREE(privkey);
-    VIR_FREE(knownhosts);
-    VIR_FREE(homedir);
-    VIR_FREE(confdir);
-    VIR_FREE(nc);
-    return ret;
-
- no_memory:
-    virReportOOMError();
-    goto cleanup;
+   return virNetClientNew(sock, NULL);
 }
 #undef DEFAULT_VALUE
 
@@ -548,38 +529,30 @@ virNetClientPtr virNetClientNewLibssh(const char *host,
                                       virURIPtr uri)
 {
     virNetSocketPtr sock = NULL;
-    virNetClientPtr ret = NULL;
 
     virBuffer buf = VIR_BUFFER_INITIALIZER;
-    char *nc = NULL;
-    char *command = NULL;
+    g_autofree char *nc = NULL;
+    g_autofree char *command = NULL;
 
-    char *homedir = NULL;
-    char *confdir = NULL;
-    char *knownhosts = NULL;
-    char *privkey = NULL;
+    g_autofree char *homedir = NULL;
+    g_autofree char *confdir = NULL;
+    g_autofree char *knownhosts = NULL;
+    g_autofree char *privkey = NULL;
 
     /* Use default paths for known hosts an public keys if not provided */
     if (knownHostsPath) {
-        if (VIR_STRDUP(knownhosts, knownHostsPath) < 0)
-            goto cleanup;
+        knownhosts = g_strdup(knownHostsPath);
     } else {
         confdir = virGetUserConfigDirectory();
-        if (confdir) {
-            if (virAsprintf(&knownhosts, "%s/known_hosts", confdir) < 0)
-                goto cleanup;
-        }
+        knownhosts = g_strdup_printf("%s/known_hosts", confdir);
     }
 
     if (privkeyPath) {
-        if (VIR_STRDUP(privkey, privkeyPath) < 0)
-            goto cleanup;
+        privkey = g_strdup(privkeyPath);
     } else {
         homedir = virGetUserDirectory();
-        if (homedir) {
-            if (virNetClientFindDefaultSshKey(homedir, &privkey) < 0)
-                goto no_memory;
-        }
+        if (virNetClientFindDefaultSshKey(homedir, &privkey) < 0)
+            return NULL;
     }
 
     if (!authMethods) {
@@ -597,41 +570,25 @@ virNetClientPtr virNetClientNewLibssh(const char *host,
 
     virBufferEscapeShell(&buf, netcatPath);
     if (!(nc = virBufferContentAndReset(&buf)))
-        goto no_memory;
+        return NULL;
+    virBufferEscapeShell(&buf, nc);
+    VIR_FREE(nc);
+    if (!(nc = virBufferContentAndReset(&buf)))
+        return NULL;
 
-    if (virAsprintf(&command,
-         "sh -c "
-         "'if '%s' -q 2>&1 | grep \"requires an argument\" >/dev/null 2>&1; then "
-             "ARG=-q0;"
-         "else "
-             "ARG=;"
-         "fi;"
-         "'%s' $ARG -U %s'",
-         nc, nc, socketPath) < 0)
-        goto cleanup;
+    command = g_strdup_printf("sh -c "
+                              "'if '%s' -q 2>&1 | grep \"requires an argument\" >/dev/null 2>&1; then "
+                              "ARG=-q0;" "else " "ARG=;" "fi;" "'%s' $ARG -U %s'", nc, nc,
+                              socketPath);
 
     if (virNetSocketNewConnectLibssh(host, port,
                                      family,
                                      username, privkey,
                                      knownhosts, knownHostsVerify, authMethods,
                                      command, authPtr, uri, &sock) != 0)
-        goto cleanup;
+        return NULL;
 
-    if (!(ret = virNetClientNew(sock, NULL)))
-        goto cleanup;
-
- cleanup:
-    VIR_FREE(command);
-    VIR_FREE(privkey);
-    VIR_FREE(knownhosts);
-    VIR_FREE(homedir);
-    VIR_FREE(confdir);
-    VIR_FREE(nc);
-    return ret;
-
- no_memory:
-    virReportOOMError();
-    goto cleanup;
+    return virNetClientNew(sock, NULL);
 }
 #undef DEFAULT_VALUE
 
@@ -931,7 +888,7 @@ int virNetClientSetTLSSession(virNetClientPtr client,
         ignore_value(pthread_sigmask(SIG_BLOCK, &blockedsigs, &oldmask));
 
     repoll:
-        ret = poll(fds, ARRAY_CARDINALITY(fds), -1);
+        ret = poll(fds, G_N_ELEMENTS(fds), -1);
         if (ret < 0 && (errno == EAGAIN || errno == EINTR))
             goto repoll;
 
@@ -955,7 +912,7 @@ int virNetClientSetTLSSession(virNetClientPtr client,
     ignore_value(pthread_sigmask(SIG_BLOCK, &blockedsigs, &oldmask));
 
     repoll2:
-    ret = poll(fds, ARRAY_CARDINALITY(fds), -1);
+    ret = poll(fds, G_N_ELEMENTS(fds), -1);
     if (ret < 0 && (errno == EAGAIN || errno == EINTR))
         goto repoll2;
 
@@ -1674,7 +1631,7 @@ static int virNetClientIOEventLoop(virNetClientPtr client,
         ignore_value(pthread_sigmask(SIG_BLOCK, &blockedsigs, &oldmask));
 
     repoll:
-        ret = poll(fds, ARRAY_CARDINALITY(fds), timeout);
+        ret = poll(fds, G_N_ELEMENTS(fds), timeout);
         if (ret < 0 && (errno == EAGAIN || errno == EINTR))
             goto repoll;
 

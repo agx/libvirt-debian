@@ -1,5 +1,5 @@
 /* Test posix_spawn_file_actions_adddup2() function.
-   Copyright (C) 2011-2019 Free Software Foundation, Inc.
+   Copyright (C) 2011-2020 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -67,6 +67,8 @@ main (void)
     errno = 0;
     ASSERT (posix_spawn_file_actions_adddup2 (&actions, 2, bad_fd) == EBADF);
   }
+
+  posix_spawn_file_actions_destroy (&actions);
 
   return 0;
 }

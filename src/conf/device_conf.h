@@ -45,6 +45,7 @@ typedef enum {
     VIR_DOMAIN_DEVICE_ADDRESS_TYPE_VIRTIO_MMIO,
     VIR_DOMAIN_DEVICE_ADDRESS_TYPE_ISA,
     VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DIMM,
+    VIR_DOMAIN_DEVICE_ADDRESS_TYPE_UNASSIGNED,
 
     VIR_DOMAIN_DEVICE_ADDRESS_TYPE_LAST
 } virDomainDeviceAddressType;
@@ -186,7 +187,7 @@ void virDomainDeviceInfoFree(virDomainDeviceInfoPtr info);
 
 bool virDomainDeviceInfoAddressIsEqual(const virDomainDeviceInfo *a,
                                        const virDomainDeviceInfo *b)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 
 bool virDomainDeviceAddressIsValid(virDomainDeviceInfoPtr info,
                                    int type);

@@ -112,8 +112,7 @@ addnhostsAdd(dnsmasqAddnHostsfile *addnhostsfile,
         if (VIR_ALLOC(addnhostsfile->hosts[idx].hostnames) < 0)
             goto error;
 
-        if (VIR_STRDUP(addnhostsfile->hosts[idx].ip, ipstr) < 0)
-            goto error;
+        addnhostsfile->hosts[idx].ip = g_strdup(ipstr);
 
         addnhostsfile->hosts[idx].nhostnames = 0;
         addnhostsfile->nhosts++;
@@ -122,9 +121,7 @@ addnhostsAdd(dnsmasqAddnHostsfile *addnhostsfile,
     if (VIR_REALLOC_N(addnhostsfile->hosts[idx].hostnames, addnhostsfile->hosts[idx].nhostnames + 1) < 0)
         goto error;
 
-    if (VIR_STRDUP(addnhostsfile->hosts[idx].hostnames[addnhostsfile->hosts[idx].nhostnames],
-                   name) < 0)
-        goto error;
+    addnhostsfile->hosts[idx].hostnames[addnhostsfile->hosts[idx].nhostnames] = g_strdup(name);
 
     VIR_FREE(ipstr);
 
@@ -154,9 +151,6 @@ addnhostsNew(const char *name,
     virBufferEscapeString(&buf, "/%s", name);
     virBufferAsprintf(&buf, ".%s", DNSMASQ_ADDNHOSTSFILE_SUFFIX);
 
-    if (virBufferCheckError(&buf) < 0)
-                goto error;
-
     if (!(addnhostsfile->path = virBufferContentAndReset(&buf)))
         goto error;
 
@@ -183,8 +177,7 @@ addnhostsWrite(const char *path,
      * for runtime addition.
      */
 
-    if (virAsprintf(&tmp, "%s.new", path) < 0)
-        return -ENOMEM;
+    tmp = g_strdup_printf("%s.new", path);
 
     if (!(f = fopen(tmp, "w"))) {
         istmp = false;
@@ -315,30 +308,24 @@ hostsfileAdd(dnsmasqHostsfile *hostsfile,
     /* the first test determines if it is a dhcpv6 host */
     if (ipv6) {
         if (name && id) {
-            if (virAsprintf(&hostsfile->hosts[hostsfile->nhosts].host,
-                            "id:%s,%s,[%s]", id, name, ipstr) < 0)
-                goto error;
+            hostsfile->hosts[hostsfile->nhosts].host = g_strdup_printf("id:%s,%s,[%s]",
+                                                                       id, name, ipstr);
         } else if (name && !id) {
-            if (virAsprintf(&hostsfile->hosts[hostsfile->nhosts].host,
-                            "%s,[%s]", name, ipstr) < 0)
-                goto error;
+            hostsfile->hosts[hostsfile->nhosts].host = g_strdup_printf("%s,[%s]",
+                                                                       name, ipstr);
         } else if (!name && id) {
-            if (virAsprintf(&hostsfile->hosts[hostsfile->nhosts].host,
-                            "id:%s,[%s]", id, ipstr) < 0)
-                goto error;
+            hostsfile->hosts[hostsfile->nhosts].host = g_strdup_printf("id:%s,[%s]",
+                                                                       id, ipstr);
         }
     } else if (name && mac) {
-        if (virAsprintf(&hostsfile->hosts[hostsfile->nhosts].host, "%s,%s,%s",
-                        mac, ipstr, name) < 0)
-            goto error;
+        hostsfile->hosts[hostsfile->nhosts].host = g_strdup_printf("%s,%s,%s",
+                                                                   mac, ipstr, name);
     } else if (name && !mac) {
-        if (virAsprintf(&hostsfile->hosts[hostsfile->nhosts].host, "%s,%s",
-                        name, ipstr) < 0)
-            goto error;
+        hostsfile->hosts[hostsfile->nhosts].host = g_strdup_printf("%s,%s", name,
+                                                                   ipstr);
     } else {
-        if (virAsprintf(&hostsfile->hosts[hostsfile->nhosts].host, "%s,%s",
-                        mac, ipstr) < 0)
-            goto error;
+        hostsfile->hosts[hostsfile->nhosts].host = g_strdup_printf("%s,%s", mac,
+                                                                   ipstr);
     }
     VIR_FREE(ipstr);
 
@@ -368,9 +355,6 @@ hostsfileNew(const char *name,
     virBufferEscapeString(&buf, "/%s", name);
     virBufferAsprintf(&buf, ".%s", DNSMASQ_HOSTSFILE_SUFFIX);
 
-    if (virBufferCheckError(&buf) < 0)
-                goto error;
-
     if (!(hostsfile->path = virBufferContentAndReset(&buf)))
         goto error;
     return hostsfile;
@@ -396,8 +380,7 @@ hostsfileWrite(const char *path,
      * for runtime addition.
      */
 
-    if (virAsprintf(&tmp, "%s.new", path) < 0)
-        return -ENOMEM;
+    tmp = g_strdup_printf("%s.new", path);
 
     if (!(f = fopen(tmp, "w"))) {
         istmp = false;
@@ -467,8 +450,7 @@ dnsmasqContextNew(const char *network_name,
     if (VIR_ALLOC(ctx) < 0)
         return NULL;
 
-    if (VIR_STRDUP(ctx->config_dir, config_dir) < 0)
-        goto error;
+    ctx->config_dir = g_strdup(config_dir);
 
     if (!(ctx->hostsfile = hostsfileNew(network_name, config_dir)))
         goto error;
@@ -595,7 +577,7 @@ dnsmasqDelete(const dnsmasqContext *ctx)
  * Reloads all the configurations associated to a context
  */
 int
-dnsmasqReload(pid_t pid ATTRIBUTE_UNUSED)
+dnsmasqReload(pid_t pid G_GNUC_UNUSED)
 {
 #ifndef WIN32
     if (kill(pid, SIGHUP) != 0) {
@@ -762,8 +744,7 @@ dnsmasqCapsRefreshInternal(dnsmasqCapsPtr caps, bool force)
     if (virCommandRun(cmd, NULL) < 0)
         goto cleanup;
 
-    if (virAsprintf(&complete, "%s\n%s", version, help) < 0)
-        goto cleanup;
+    complete = g_strdup_printf("%s\n%s", version, help);
 
     ret = dnsmasqCapsSetFromBuffer(caps, complete);
 
@@ -786,8 +767,7 @@ dnsmasqCapsNewEmpty(const char *binaryPath)
         return NULL;
     if (!(caps->flags = virBitmapNew(DNSMASQ_CAPS_LAST)))
         goto error;
-    if (VIR_STRDUP(caps->binaryPath, binaryPath ? binaryPath : DNSMASQ) < 0)
-        goto error;
+    caps->binaryPath = g_strdup(binaryPath ? binaryPath : DNSMASQ);
     return caps;
 
  error:

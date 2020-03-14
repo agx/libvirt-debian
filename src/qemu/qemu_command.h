@@ -41,6 +41,7 @@
 #define QEMU_BLOCK_IOTUNE_MAX 1000000000000000LL
 
 VIR_ENUM_DECL(qemuVideo);
+VIR_ENUM_DECL(qemuSoundCodec);
 
 virCommandPtr qemuBuildCommandLine(virQEMUDriverPtr driver,
                                    virLogManagerPtr logManager,
@@ -61,6 +62,9 @@ virJSONValuePtr qemuBuildPRManagedManagerInfoProps(qemuDomainObjPrivatePtr priv)
 /* Generate the object properties for a secret */
 int qemuBuildSecretInfoProps(qemuDomainSecretInfoPtr secinfo,
                              virJSONValuePtr *propsret);
+
+virJSONValuePtr qemuBuildDBusVMStateInfoProps(const char *id,
+                                              const char *addr);
 
 /* Generate the object properties for a tls-creds-x509 */
 int qemuBuildTLSx509BackendProps(const char *tlspath,
@@ -83,11 +87,11 @@ qemuBuildChrDeviceStr(char **deviceStr,
                       virQEMUCapsPtr qemuCaps);
 
 char *qemuBuildHostNetStr(virDomainNetDefPtr net,
-                          virQEMUDriverPtr driver,
                           char **tapfd,
                           size_t tapfdSize,
                           char **vhostfd,
-                          size_t vhostfdSize);
+                          size_t vhostfdSize,
+                          const char *slirpfd);
 
 /* Current, best practice */
 char *qemuBuildNicDevStr(virDomainDefPtr def,
@@ -119,6 +123,7 @@ qemuBuildStorageSourceChainAttachPrepareBlockdev(virStorageSourcePtr top,
 
 qemuBlockStorageSourceChainDataPtr
 qemuBuildStorageSourceChainAttachPrepareBlockdevTop(virStorageSourcePtr top,
+                                                    virStorageSourcePtr backingStore,
                                                     virQEMUCapsPtr qemuCaps);
 
 char
@@ -148,7 +153,6 @@ char *qemuBuildMemoryDeviceStr(virDomainMemoryDefPtr mem,
 char *qemuBuildPCIHostdevDevStr(const virDomainDef *def,
                                 virDomainHostdevDefPtr dev,
                                 unsigned int bootIndex,
-                                const char *configfd,
                                 virQEMUCapsPtr qemuCaps);
 
 char *qemuBuildRNGDevStr(const virDomainDef *def,
@@ -157,8 +161,6 @@ char *qemuBuildRNGDevStr(const virDomainDef *def,
 int qemuBuildRNGBackendProps(virDomainRNGDefPtr rng,
                              virQEMUCapsPtr qemuCaps,
                              virJSONValuePtr *props);
-
-int qemuOpenPCIConfig(virDomainHostdevDefPtr dev);
 
 /* Current, best practice */
 char *qemuBuildUSBHostdevDevStr(const virDomainDef *def,

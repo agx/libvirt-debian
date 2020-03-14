@@ -1,6 +1,6 @@
 /* Test for nonblocking read and write.
 
-   Copyright (C) 2011-2019 Free Software Foundation, Inc.
+   Copyright (C) 2011-2020 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
      Platform                        SOCKET_DATA_BLOCK_SIZE
 
      Linux                           >= 7350000 (depends on circumstances)
+     Linux/Android                   >= 1700000 (approx.)
      FreeBSD                         >= 107521
      OpenBSD                         >= 106430 (depends on circumstances)
      Mac OS X                        >= 680000 (depends on circumstances)
@@ -44,7 +45,7 @@
    sockets have very large buffers in the kernel, so that write() calls
    succeed before the reader has started reading, even if fd is blocking
    and the amount of data is larger than 1 MB.  */
-#if defined __linux__ || (defined __APPLE__ && defined __MACH__) || defined _WIN32 || defined __CYGWIN__
+#if defined __linux__ || defined __ANDROID__ || (defined __APPLE__ && defined __MACH__) || defined _WIN32 || defined __CYGWIN__
 # define SOCKET_HAS_LARGE_BUFFER 1
 #else
 # define SOCKET_HAS_LARGE_BUFFER 0

@@ -43,11 +43,6 @@
 
 VIR_LOG_INIT("util.time");
 
-/* We prefer clock_gettime if available because that is officially
- * async signal safe according to POSIX. Many platforms lack it
- * though, so fallback to gettimeofday everywhere else
- */
-
 /**
  * virTimeMillisNowRaw:
  * @now: filled with current time in milliseconds
@@ -59,22 +54,7 @@ VIR_LOG_INIT("util.time");
  */
 int virTimeMillisNowRaw(unsigned long long *now)
 {
-#ifdef HAVE_CLOCK_GETTIME
-    struct timespec ts;
-
-    if (clock_gettime(CLOCK_REALTIME, &ts) < 0)
-        return -1;
-
-    *now = (ts.tv_sec * 1000ull) + (ts.tv_nsec / (1000ull * 1000ull));
-#else
-    struct timeval tv;
-
-    if (gettimeofday(&tv, NULL) < 0)
-        return -1;
-
-    *now = (tv.tv_sec * 1000ull) + (tv.tv_usec / 1000ull);
-#endif
-
+    *now = g_get_real_time() / 1000;
     return 0;
 }
 
@@ -209,11 +189,11 @@ int virTimeStringThenRaw(unsigned long long when, char *buf)
     fields.tm_year += 1900;
     fields.tm_mon += 1;
 
-    if (snprintf(buf, VIR_TIME_STRING_BUFLEN,
-                 "%4d-%02d-%02d %02d:%02d:%02d.%03d+0000",
-                 fields.tm_year, fields.tm_mon, fields.tm_mday,
-                 fields.tm_hour, fields.tm_min, fields.tm_sec,
-                 (int) (when % 1000)) >= VIR_TIME_STRING_BUFLEN) {
+    if (g_snprintf(buf, VIR_TIME_STRING_BUFLEN,
+                   "%4d-%02d-%02d %02d:%02d:%02d.%03d+0000",
+                   fields.tm_year, fields.tm_mon, fields.tm_mday,
+                   fields.tm_hour, fields.tm_min, fields.tm_sec,
+                   (int) (when % 1000)) >= VIR_TIME_STRING_BUFLEN) {
         errno = ERANGE;
         return -1;
     }
@@ -243,7 +223,7 @@ int virTimeMillisNow(unsigned long long *now)
 
 
 /**
- * virTimeFieldsNowRaw:
+ * virTimeFieldsNow:
  * @fields: filled with current time fields
  *
  * Retrieves the current time, in broken-down field format.
@@ -448,6 +428,6 @@ virTimeBackOffWait(virTimeBackOffVar *var)
 
     VIR_DEBUG("sleeping for %llu ms", next);
 
-    usleep(next * 1000);
+    g_usleep(next * 1000);
     return 1;
 }

@@ -59,10 +59,7 @@ void virHostMsgCheck(const char *prefix,
         return;
 
     va_start(args, format);
-    if (virVasprintf(&msg, format, args) < 0) {
-        perror("malloc");
-        abort();
-    }
+    msg = g_strdup_vprintf(format, args);
     va_end(args);
 
     fprintf(stdout, _("%6s: Checking %-60s: "), prefix, msg);
@@ -99,7 +96,7 @@ static const char * failMessages[] = {
     N_("NOTE"),
 };
 
-verify(ARRAY_CARDINALITY(failMessages) == VIR_HOST_VALIDATE_LAST);
+verify(G_N_ELEMENTS(failMessages) == VIR_HOST_VALIDATE_LAST);
 
 static const char *failEscapeCodes[] = {
     "\033[31m",
@@ -107,7 +104,7 @@ static const char *failEscapeCodes[] = {
     "\033[34m",
 };
 
-verify(ARRAY_CARDINALITY(failEscapeCodes) == VIR_HOST_VALIDATE_LAST);
+verify(G_N_ELEMENTS(failEscapeCodes) == VIR_HOST_VALIDATE_LAST);
 
 void virHostMsgFail(virHostValidateLevel level,
                     const char *format,
@@ -120,10 +117,7 @@ void virHostMsgFail(virHostValidateLevel level,
         return;
 
     va_start(args, format);
-    if (virVasprintf(&msg, format, args) < 0) {
-        perror("malloc");
-        abort();
-    }
+    msg = g_strdup_vprintf(format, args);
     va_end(args);
 
     if (virHostMsgWantEscape())
@@ -178,7 +172,7 @@ int virHostValidateNamespace(const char *hvname,
     virHostMsgCheck(hvname, "for namespace %s", ns_name);
     char nspath[100];
 
-    snprintf(nspath, sizeof(nspath), "/proc/self/ns/%s", ns_name);
+    g_snprintf(nspath, sizeof(nspath), "/proc/self/ns/%s", ns_name);
 
     if (access(nspath, F_OK) < 0) {
         virHostMsgFail(level, "%s", hint);
@@ -323,8 +317,8 @@ int virHostValidateCGroupControllers(const char *hvname,
     return ret;
 }
 #else /*  !__linux__ */
-int virHostValidateCGroupControllers(const char *hvname ATTRIBUTE_UNUSED,
-                                     int controllers ATTRIBUTE_UNUSED,
+int virHostValidateCGroupControllers(const char *hvname G_GNUC_UNUSED,
+                                     int controllers G_GNUC_UNUSED,
                                      virHostValidateLevel level)
 {
     virHostMsgFail(level, "%s", "This platform does not support cgroups");

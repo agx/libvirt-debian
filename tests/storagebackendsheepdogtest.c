@@ -57,14 +57,13 @@ test_node_info_parser(const void *opaque)
 {
     const struct testNodeInfoParserData *data = opaque;
     collie_test test = data->data;
-    VIR_AUTOFREE(char *) output = NULL;
-    VIR_AUTOPTR(virStoragePoolDef) pool = NULL;
+    g_autofree char *output = NULL;
+    g_autoptr(virStoragePoolDef) pool = NULL;
 
     if (!(pool = virStoragePoolDefParseFile(data->poolxml)))
         return -1;
 
-    if (VIR_STRDUP(output, test.output) < 0)
-        return -1;
+    output = g_strdup(test.output);
 
     if (virStorageBackendSheepdogParseNodeInfo(pool, output) !=
         test.expected_return)
@@ -85,9 +84,9 @@ test_vdi_list_parser(const void *opaque)
 {
     const struct testVDIListParserData *data = opaque;
     collie_test test = data->data;
-    VIR_AUTOFREE(char *) output = NULL;
-    VIR_AUTOPTR(virStoragePoolDef) pool = NULL;
-    VIR_AUTOPTR(virStorageVolDef) vol = NULL;
+    g_autofree char *output = NULL;
+    g_autoptr(virStoragePoolDef) pool = NULL;
+    g_autoptr(virStorageVolDef) vol = NULL;
 
     if (!(pool = virStoragePoolDefParseFile(data->poolxml)))
         return -1;
@@ -95,8 +94,7 @@ test_vdi_list_parser(const void *opaque)
     if (!(vol = virStorageVolDefParseFile(pool, data->volxml, 0)))
         return -1;
 
-    if (VIR_STRDUP(output, test.output) < 0)
-        return -1;
+    output = g_strdup(test.output);
 
     if (virStorageBackendSheepdogParseVdiList(vol, output) !=
         test.expected_return)
@@ -117,8 +115,8 @@ static int
 mymain(void)
 {
     int ret = 0;
-    VIR_AUTOFREE(char *) poolxml = NULL;
-    VIR_AUTOFREE(char *) volxml = NULL;
+    g_autofree char *poolxml = NULL;
+    g_autofree char *volxml = NULL;
 
     collie_test node_info_tests[] = {
         {"", -1, 0, 0},
@@ -160,13 +158,11 @@ mymain(void)
 
     collie_test *test = node_info_tests;
 
-    if (virAsprintf(&poolxml, "%s/storagepoolxml2xmlin/pool-sheepdog.xml",
-                    abs_srcdir) < 0)
-        goto cleanup;
+    poolxml = g_strdup_printf("%s/storagepoolxml2xmlin/pool-sheepdog.xml",
+                              abs_srcdir);
 
-    if (virAsprintf(&volxml, "%s/storagevolxml2xmlin/vol-sheepdog.xml",
-                    abs_srcdir) < 0)
-        goto cleanup;
+    volxml = g_strdup_printf("%s/storagevolxml2xmlin/vol-sheepdog.xml",
+                             abs_srcdir);
 
 #define DO_TEST_NODE(collie) \
     do { \
@@ -204,7 +200,6 @@ mymain(void)
         ++test;
     }
 
- cleanup:
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

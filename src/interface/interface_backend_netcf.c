@@ -89,28 +89,24 @@ virNetcfDriverStateDispose(void *obj)
 
 static int
 netcfStateInitialize(bool privileged,
-                     virStateInhibitCallback callback ATTRIBUTE_UNUSED,
-                     void *opaque ATTRIBUTE_UNUSED)
+                     virStateInhibitCallback callback G_GNUC_UNUSED,
+                     void *opaque G_GNUC_UNUSED)
 {
     if (virNetcfDriverStateInitialize() < 0)
-        return -1;
+        return VIR_DRV_STATE_INIT_ERROR;
 
     if (!(driver = virObjectLockableNew(virNetcfDriverStateClass)))
-        return -1;
+        return VIR_DRV_STATE_INIT_ERROR;
 
     driver->privileged = privileged;
 
     if (privileged) {
-        if (virAsprintf(&driver->stateDir,
-                        "%s/run/libvirt/interface", LOCALSTATEDIR) < 0)
-            goto error;
+        driver->stateDir = g_strdup_printf("%s/libvirt/interface", RUNSTATEDIR);
     } else {
-        VIR_AUTOFREE(char *) rundir = NULL;
+        g_autofree char *rundir = NULL;
 
-        if (!(rundir = virGetUserRuntimeDirectory()))
-            goto error;
-        if (virAsprintf(&driver->stateDir, "%s/interface/run", rundir) < 0)
-            goto error;
+        rundir = virGetUserRuntimeDirectory();
+        driver->stateDir = g_strdup_printf("%s/interface/run", rundir);
     }
 
     if (virFileMakePathWithMode(driver->stateDir, S_IRWXU) < 0) {
@@ -129,12 +125,12 @@ netcfStateInitialize(bool privileged,
                        _("failed to initialize netcf"));
         goto error;
     }
-    return 0;
+    return VIR_DRV_STATE_INIT_COMPLETE;
 
  error:
     virObjectUnref(driver);
     driver = NULL;
-    return -1;
+    return VIR_DRV_STATE_INIT_ERROR;
 }
 
 
@@ -188,8 +184,8 @@ netcfStateReload(void)
 
 static virDrvOpenStatus
 netcfConnectOpen(virConnectPtr conn,
-                 virConnectAuthPtr auth ATTRIBUTE_UNUSED,
-                 virConfPtr conf ATTRIBUTE_UNUSED,
+                 virConnectAuthPtr auth G_GNUC_UNUSED,
+                 virConfPtr conf G_GNUC_UNUSED,
                  unsigned int flags)
 {
     virCheckFlags(VIR_CONNECT_RO, VIR_DRV_OPEN_ERROR);
@@ -200,21 +196,10 @@ netcfConnectOpen(virConnectPtr conn,
         return VIR_DRV_OPEN_ERROR;
     }
 
-    if (driver->privileged) {
-        if (STRNEQ(conn->uri->path, "/system")) {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("unexpected interface URI path '%s', try interface:///system"),
-                           conn->uri->path);
-            return VIR_DRV_OPEN_ERROR;
-        }
-    } else {
-        if (STRNEQ(conn->uri->path, "/session")) {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("unexpected interface URI path '%s', try interface:///session"),
-                           conn->uri->path);
-            return VIR_DRV_OPEN_ERROR;
-        }
-    }
+    if (!virConnectValidateURIPath(conn->uri->path,
+                                   "interface",
+                                   driver->privileged))
+        return VIR_DRV_OPEN_ERROR;
 
     if (virConnectOpenEnsureACL(conn) < 0)
         return VIR_DRV_OPEN_ERROR;
@@ -222,27 +207,27 @@ netcfConnectOpen(virConnectPtr conn,
     return VIR_DRV_OPEN_SUCCESS;
 }
 
-static int netcfConnectClose(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int netcfConnectClose(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 0;
 }
 
 
-static int netcfConnectIsSecure(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int netcfConnectIsSecure(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* Trivially secure, since always inside the daemon */
     return 1;
 }
 
 
-static int netcfConnectIsEncrypted(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int netcfConnectIsEncrypted(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* Not encrypted, but remote driver takes care of that */
     return 0;
 }
 
 
-static int netcfConnectIsAlive(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int netcfConnectIsAlive(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 1;
 }
@@ -262,17 +247,10 @@ netcfGetMinimalDefForDevice(struct netcf_if *iface)
     if (VIR_ALLOC(def) < 0)
         return NULL;
 
-    if (VIR_STRDUP(def->name, ncf_if_name(iface)) < 0)
-        goto cleanup;
-
-    if (VIR_STRDUP(def->mac, ncf_if_mac_string(iface)) < 0)
-        goto cleanup;
+    def->name = g_strdup(ncf_if_name(iface));
+    def->mac = g_strdup(ncf_if_mac_string(iface));
 
     return def;
-
- cleanup:
-    virInterfaceDefFree(def);
-    return NULL;
 }
 
 
@@ -1135,7 +1113,6 @@ static int netcfInterfaceIsActive(virInterfacePtr ifinfo)
     return ret;
 }
 
-#ifdef HAVE_NETCF_TRANSACTIONS
 static int netcfInterfaceChangeBegin(virConnectPtr conn, unsigned int flags)
 {
     int ret;
@@ -1210,7 +1187,6 @@ static int netcfInterfaceChangeRollback(virConnectPtr conn, unsigned int flags)
     virObjectUnlock(driver);
     return ret;
 }
-#endif /* HAVE_NETCF_TRANSACTIONS */
 
 static virInterfaceDriver interfaceDriver = {
     .name = INTERFACE_DRIVER_NAME,
@@ -1227,11 +1203,9 @@ static virInterfaceDriver interfaceDriver = {
     .interfaceCreate = netcfInterfaceCreate, /* 0.7.0 */
     .interfaceDestroy = netcfInterfaceDestroy, /* 0.7.0 */
     .interfaceIsActive = netcfInterfaceIsActive, /* 0.7.3 */
-#ifdef HAVE_NETCF_TRANSACTIONS
     .interfaceChangeBegin = netcfInterfaceChangeBegin, /* 0.9.2 */
     .interfaceChangeCommit = netcfInterfaceChangeCommit, /* 0.9.2 */
     .interfaceChangeRollback = netcfInterfaceChangeRollback, /* 0.9.2 */
-#endif /* HAVE_NETCF_TRANSACTIONS */
 };
 
 

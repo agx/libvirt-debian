@@ -33,7 +33,6 @@
 #include "viralloc.h"
 #include "vircommand.h"
 #include "virlog.h"
-#include "dirname.h"
 #include "driver.h"
 
 #include "security_driver.h"
@@ -95,18 +94,20 @@ vahDeinit(vahControl * ctl)
 static void
 vah_usage(void)
 {
-    printf(_("\n%s [options] [< def.xml]\n\n"
-            "  Options:\n"
+    printf(_("\n%s mode [options] [extra file] [< def.xml]\n\n"
+            "  Modes:\n"
             "    -a | --add                     load profile\n"
             "    -c | --create                  create profile from template\n"
-            "    -d | --dryrun                  dry run\n"
             "    -D | --delete                  unload and delete profile\n"
-            "    -f | --add-file <file>         add file to profile\n"
-            "    -F | --append-file <file>      append file to profile\n"
             "    -r | --replace                 reload profile\n"
             "    -R | --remove                  unload profile\n"
-            "    -h | --help                    this help\n"
+            "  Options:\n"
+            "    -d | --dryrun                  dry run\n"
             "    -u | --uuid <uuid>             uuid (profile name)\n"
+            "    -h | --help                    this help\n"
+            "  Extra File:\n"
+            "    -f | --add-file <file>         add file to a profile generated from XML\n"
+            "    -F | --append-file <file>      append file to an existing profile\n"
             "\n"), progname);
 
     puts(_("This command is intended to be used by libvirtd "
@@ -155,13 +156,9 @@ parserCommand(const char *profile_name, const char cmd)
         return -1;
     }
 
-    snprintf(flag, 3, "-%c", cmd);
+    g_snprintf(flag, 3, "-%c", cmd);
 
-    if (virAsprintfQuiet(&profile, "%s/%s",
-                         APPARMOR_DIR "/libvirt", profile_name) < 0) {
-        vah_error(NULL, 0, _("profile name exceeds maximum length"));
-        return -1;
-    }
+    profile = g_strdup_printf("%s/%s", APPARMOR_DIR "/libvirt", profile_name);
 
     if (!virFileExists(profile)) {
         vah_error(NULL, 0, _("profile does not exist"));
@@ -170,7 +167,10 @@ parserCommand(const char *profile_name, const char cmd)
         const char * const argv[] = {
             "/sbin/apparmor_parser", flag, profile, NULL
         };
-        if ((ret = virRun(argv, &status)) != 0 ||
+        g_autoptr(virCommand) command = virCommandNewArgs(argv);
+
+        virCommandRawStatus(command);
+        if ((ret = virCommandRun(command, &status)) != 0 ||
             (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
             if (ret != 0) {
                 vah_error(NULL, 0, _("failed to run apparmor_parser"));
@@ -214,17 +214,10 @@ update_include_file(const char *include_file, const char *included_files,
             return rc;
     }
 
-    if (append && virFileExists(include_file)) {
-        if (virAsprintfQuiet(&pcontent, "%s%s", existing, included_files) == -1) {
-            vah_error(NULL, 0, _("could not allocate memory for profile"));
-            goto cleanup;
-        }
-    } else {
-        if (virAsprintfQuiet(&pcontent, "%s%s", warning, included_files) == -1) {
-            vah_error(NULL, 0, _("could not allocate memory for profile"));
-            goto cleanup;
-        }
-    }
+    if (append && virFileExists(include_file))
+        pcontent = g_strdup_printf("%s%s", existing, included_files);
+    else
+        pcontent = g_strdup_printf("%s%s", warning, included_files);
 
     plen = strlen(pcontent);
     if (plen > MAX_FILE_LEN) {
@@ -298,11 +291,7 @@ create_profile(const char *profile, const char *profile_name,
         driver_name = virDomainVirtTypeToString(virtType);
     }
 
-    if (virAsprintfQuiet(&template, "%s/TEMPLATE.%s", APPARMOR_DIR "/libvirt",
-                         driver_name) < 0) {
-        vah_error(NULL, 0, _("template name exceeds maximum length"));
-        goto end;
-    }
+    template = g_strdup_printf("%s/TEMPLATE.%s", APPARMOR_DIR "/libvirt", driver_name);
 
     if (!virFileExists(template)) {
         vah_error(NULL, 0, _("template does not exist"));
@@ -325,18 +314,11 @@ create_profile(const char *profile, const char *profile_name,
     }
 
     /* '\nprofile <profile_name>\0' */
-    if (virAsprintfQuiet(&replace_name, "\nprofile %s", profile_name) == -1) {
-        vah_error(NULL, 0, _("could not allocate memory for profile name"));
-        goto clean_tcontent;
-    }
+    replace_name = g_strdup_printf("\nprofile %s", profile_name);
 
     /* '\n<profile_files>\n}\0' */
-    if ((virtType != VIR_DOMAIN_VIRT_LXC) &&
-            virAsprintfQuiet(&replace_files, "\n%s\n}", profile_files) == -1) {
-        vah_error(NULL, 0, _("could not allocate memory for profile files"));
-        VIR_FREE(replace_name);
-        goto clean_tcontent;
-    }
+    if (virtType != VIR_DOMAIN_VIRT_LXC)
+    replace_files = g_strdup_printf("\n%s\n}", profile_files);
 
     plen = tlen + strlen(replace_name) - strlen(template_name) + 1;
 
@@ -355,7 +337,7 @@ create_profile(const char *profile, const char *profile_name,
         if (!(tmp = virStringReplace(pcontent, template_end, replace_files)))
             goto clean_all;
         VIR_FREE(pcontent);
-        VIR_STEAL_PTR(pcontent, tmp);
+        pcontent = g_steal_pointer(&tmp);
     }
 
     /* write the file */
@@ -502,6 +484,7 @@ valid_path(const char *path, const bool readonly)
         "/vmlinuz",
         "/initrd",
         "/initrd.img",
+        "/usr/share/edk2/",
         "/usr/share/OVMF/",              /* for OVMF images */
         "/usr/share/ovmf/",              /* for OVMF images */
         "/usr/share/AAVMF/",             /* for AAVMF images */
@@ -515,9 +498,9 @@ valid_path(const char *path, const bool readonly)
         "/etc/libvirt-sandbox/services/"   /* for virt-sandbox service config */
     };
 
-    const int nropaths = ARRAY_CARDINALITY(restricted);
-    const int nrwpaths = ARRAY_CARDINALITY(restricted_rw);
-    const int nopaths = ARRAY_CARDINALITY(override);
+    const int nropaths = G_N_ELEMENTS(restricted);
+    const int nrwpaths = G_N_ELEMENTS(restricted_rw);
+    const int nopaths = G_N_ELEMENTS(override);
 
     if (path == NULL) {
         vah_error(NULL, 0, _("bad pathname"));
@@ -558,32 +541,28 @@ valid_path(const char *path, const bool readonly)
 static int
 verify_xpath_context(xmlXPathContextPtr ctxt)
 {
-    int rc = -1;
     char *tmp = NULL;
 
     if (!ctxt) {
         vah_warning(_("Invalid context"));
-        goto error;
+        return -1;
     }
 
     /* check if have <name> */
     if (!(tmp = virXPathString("string(./name[1])", ctxt))) {
         vah_warning(_("Could not find <name>"));
-        goto error;
+        return -1;
     }
     VIR_FREE(tmp);
 
     /* check if have <uuid> */
     if (!(tmp = virXPathString("string(./uuid[1])", ctxt))) {
         vah_warning(_("Could not find <uuid>"));
-        goto error;
+        return -1;
     }
     VIR_FREE(tmp);
 
-    rc = 0;
-
- error:
-    return rc;
+    return 0;
 }
 
 /*
@@ -653,7 +632,7 @@ virDomainDefParserConfig virAAHelperDomainDefParserConfig = {
 static int
 get_definition(vahControl * ctl, const char *xmlStr)
 {
-    int rc = -1, ostype, virtType;
+    int ostype, virtType;
     virCapsGuestPtr guest;  /* this is freed when caps is freed */
 
     /*
@@ -661,22 +640,22 @@ get_definition(vahControl * ctl, const char *xmlStr)
      * but need them for virDomainDefParseString().
      */
     if (caps_mockup(ctl, xmlStr) != 0)
-        goto exit;
+        return -1;
 
     if ((ctl->caps = virCapabilitiesNew(ctl->arch, true, true)) == NULL) {
         vah_error(ctl, 0, _("could not allocate memory"));
-        goto exit;
+        return -1;
     }
 
     if (!(ctl->xmlopt = virDomainXMLOptionNew(&virAAHelperDomainDefParserConfig,
                                               NULL, NULL, NULL, NULL))) {
         vah_error(ctl, 0, _("Failed to create XML config object"));
-        goto exit;
+        return -1;
     }
 
     if ((ostype = virDomainOSTypeFromString(ctl->os)) < 0) {
         vah_error(ctl, 0, _("unknown OS type"));
-        goto exit;
+        return -1;
     }
 
     if ((guest = virCapabilitiesAddGuest(ctl->caps,
@@ -687,12 +666,12 @@ get_definition(vahControl * ctl, const char *xmlStr)
                                          0,
                                          NULL)) == NULL) {
         vah_error(ctl, 0, _("could not allocate memory"));
-        goto exit;
+        return -1;
     }
 
     if ((virtType = virDomainVirtTypeFromString(ctl->virtType)) < 0) {
         vah_error(ctl, 0, _("unknown virtualization type"));
-        goto exit;
+        return -1;
     }
 
     if (virCapabilitiesAddGuestDomain(guest,
@@ -702,33 +681,30 @@ get_definition(vahControl * ctl, const char *xmlStr)
                                       0,
                                       NULL) == NULL) {
         vah_error(ctl, 0, _("could not allocate memory"));
-        goto exit;
+        return -1;
     }
 
     ctl->def = virDomainDefParseString(xmlStr,
-                                       ctl->caps, ctl->xmlopt, NULL,
+                                       ctl->xmlopt, NULL,
                                        VIR_DOMAIN_DEF_PARSE_SKIP_SECLABEL |
                                        VIR_DOMAIN_DEF_PARSE_SKIP_VALIDATE);
 
     if (ctl->def == NULL) {
         vah_error(ctl, 0, _("could not parse XML"));
-        goto exit;
+        return -1;
     }
 
     if (!ctl->def->name) {
         vah_error(ctl, 0, _("could not find name in XML"));
-        goto exit;
+        return -1;
     }
 
     if (valid_name(ctl->def->name) != 0) {
         vah_error(ctl, 0, _("bad name"));
-        goto exit;
+        return -1;
     }
 
-    rc = 0;
-
- exit:
-    return rc;
+    return 0;
 }
 
 /**
@@ -768,33 +744,27 @@ vah_add_path(virBufferPtr buf, const char *path, const char *perms, bool recursi
      * 3. re-combine the realpath with the remaining suffix
      * Note: A totally non existent path is used as-is
      */
-     if (VIR_STRDUP_QUIET(pathdir, path) < 0)
-         goto cleanup;
+     pathdir = g_strdup(path);
      while (!virFileExists(pathdir)) {
-         if ((pathtmp = mdir_name(pathdir)) == NULL)
-             goto cleanup;
+         pathtmp = g_path_get_dirname(pathdir);
          VIR_FREE(pathdir);
-         VIR_STEAL_PTR(pathdir, pathtmp);
+         pathdir = g_steal_pointer(&pathtmp);
      }
 
     if (strlen(pathdir) == 1) {
         /* nothing of the path does exist yet */
-        if (VIR_STRDUP_QUIET(tmp, path) < 0)
-            goto cleanup;
+        tmp = g_strdup(path);
     } else {
-        if (VIR_STRDUP_QUIET(pathtmp, path+strlen(pathdir)) < 0)
-            goto cleanup;
+        pathtmp = g_strdup(path + strlen(pathdir));
         if ((pathreal = realpath(pathdir, NULL)) == NULL) {
             vah_error(NULL, 0, pathdir);
             vah_error(NULL, 0, _("could not find realpath"));
             goto cleanup;
         }
-        if (virAsprintfQuiet(&tmp, "%s%s", pathreal, pathtmp) < 0)
-            goto cleanup;
+        tmp = g_strdup_printf("%s%s", pathreal, pathtmp);
     }
 
-    if (VIR_STRDUP_QUIET(perms_new, perms) < 0)
-        goto cleanup;
+    perms_new = g_strdup(perms);
 
     if (strchr(perms_new, 'w') != NULL) {
         readonly = false;
@@ -858,19 +828,13 @@ vah_add_file_chardev(virBufferPtr buf,
 
     if (type == VIR_DOMAIN_CHR_TYPE_PIPE) {
         /* add the pipe input */
-        if (virAsprintfQuiet(&pipe_in, "%s.in", path) == -1) {
-            vah_error(NULL, 0, _("could not allocate memory"));
-            goto cleanup;
-        }
+        pipe_in = g_strdup_printf("%s.in", path);
 
         if (vah_add_file(buf, pipe_in, perms) != 0)
             goto clean_pipe_in;
 
         /* add the pipe output */
-        if (virAsprintfQuiet(&pipe_out, "%s.out", path) == -1) {
-            vah_error(NULL, 0, _("could not allocate memory"));
-            goto clean_pipe_in;
-        }
+        pipe_out = g_strdup_printf("%s.out", path);
 
         if (vah_add_file(buf, pipe_out, perms) != 0)
             goto clean_pipe_out;
@@ -883,16 +847,15 @@ vah_add_file_chardev(virBufferPtr buf,
     } else {
         /* add the file */
         if (vah_add_file(buf, path, perms) != 0)
-            goto cleanup;
+            return -1;
         rc = 0;
     }
 
- cleanup:
     return rc;
 }
 
 static int
-file_iterate_hostdev_cb(virUSBDevicePtr dev ATTRIBUTE_UNUSED,
+file_iterate_hostdev_cb(virUSBDevicePtr dev G_GNUC_UNUSED,
                         const char *file, void *opaque)
 {
     virBufferPtr buf = opaque;
@@ -900,7 +863,7 @@ file_iterate_hostdev_cb(virUSBDevicePtr dev ATTRIBUTE_UNUSED,
 }
 
 static int
-file_iterate_pci_cb(virPCIDevicePtr dev ATTRIBUTE_UNUSED,
+file_iterate_pci_cb(virPCIDevicePtr dev G_GNUC_UNUSED,
                     const char *file, void *opaque)
 {
     virBufferPtr buf = opaque;
@@ -908,27 +871,51 @@ file_iterate_pci_cb(virPCIDevicePtr dev ATTRIBUTE_UNUSED,
 }
 
 static int
-add_file_path(virDomainDiskDefPtr disk,
-              const char *path,
+add_file_path(virStorageSourcePtr src,
               size_t depth,
-              void *opaque)
+              virBufferPtr buf)
 {
-    virBufferPtr buf = opaque;
     int ret;
 
+    /* execute the callback only for local storage */
+    if (!src->path || !virStorageSourceIsLocalStorage(src))
+        return 0;
+
     if (depth == 0) {
-        if (disk->src->readonly)
-            ret = vah_add_file(buf, path, "rk");
+        if (src->readonly)
+            ret = vah_add_file(buf, src->path, "rk");
         else
-            ret = vah_add_file(buf, path, "rwk");
+            ret = vah_add_file(buf, src->path, "rwk");
     } else {
-        ret = vah_add_file(buf, path, "rk");
+        ret = vah_add_file(buf, src->path, "rk");
     }
 
     if (ret != 0)
         ret = -1;
 
     return ret;
+}
+
+
+static int
+storage_source_add_files(virStorageSourcePtr src,
+                         virBufferPtr buf,
+                         size_t depth)
+{
+    virStorageSourcePtr tmp;
+
+    for (tmp = src; virStorageSourceIsBacking(tmp); tmp = tmp->backingStore) {
+        if (add_file_path(tmp, depth, buf) < 0)
+            return -1;
+
+        if (tmp->externalDataStore &&
+            storage_source_add_files(tmp->externalDataStore, buf, depth) < 0)
+            return -1;
+
+        depth++;
+    }
+
+    return 0;
 }
 
 static int
@@ -938,15 +925,13 @@ get_files(vahControl * ctl)
     int rc = -1;
     size_t i;
     char *uuid;
+    char *mem_path = NULL;
     char uuidstr[VIR_UUID_STRING_BUFLEN];
     bool needsVfio = false, needsvhost = false, needsgl = false;
 
     /* verify uuid is same as what we were given on the command line */
     virUUIDFormat(ctl->def->uuid, uuidstr);
-    if (virAsprintfQuiet(&uuid, "%s%s", AA_PREFIX, uuidstr) == -1) {
-        vah_error(ctl, 0, _("could not allocate memory"));
-        return rc;
-    }
+    uuid = g_strdup_printf("%s%s", AA_PREFIX, uuidstr);
 
     if (STRNEQ(uuid, ctl->uuid)) {
         vah_error(ctl, 0, _("given uuid does not match XML uuid"));
@@ -969,12 +954,9 @@ get_files(vahControl * ctl)
         if (!virStorageSourceHasBacking(disk->src))
             virStorageFileGetMetadata(disk->src, -1, -1, false);
 
-        /* XXX passing ignoreOpenFailure = true to get back to the behavior
-         * from before using virDomainDiskDefForeachPath. actually we should
-         * be passing ignoreOpenFailure = false and handle open errors more
-         * careful than just ignoring them.
+         /* XXX should handle open errors more careful than just ignoring them.
          */
-        if (virDomainDiskDefForeachPath(disk, true, add_file_path, &buf) < 0)
+        if (storage_source_add_files(disk->src, &buf, 0) < 0)
             goto cleanup;
     }
 
@@ -1207,6 +1189,37 @@ get_files(vahControl * ctl)
         }
     }
 
+    for (i = 0; i < ctl->def->nshmems; i++) {
+        virDomainShmemDef *shmem = ctl->def->shmems[i];
+        /* explicit server paths can be on any model to overwrites defaults.
+         * When the server path is enabled, use it - otherwise fallback to
+         * model dependent defaults. */
+        if (shmem->server.enabled &&
+            shmem->server.chr.data.nix.path) {
+                if (vah_add_file(&buf, shmem->server.chr.data.nix.path,
+                        "rw") != 0)
+                    goto cleanup;
+        } else {
+            switch (shmem->model) {
+            case VIR_DOMAIN_SHMEM_MODEL_IVSHMEM_PLAIN:
+                /* until exposed, recreate qemuBuildShmemBackendMemProps */
+                mem_path = g_strdup_printf("/dev/shm/%s", shmem->name);
+                break;
+            case VIR_DOMAIN_SHMEM_MODEL_IVSHMEM_DOORBELL:
+            case VIR_DOMAIN_SHMEM_MODEL_IVSHMEM:
+                 /* until exposed, recreate qemuDomainPrepareShmemChardev */
+                mem_path = g_strdup_printf("/var/lib/libvirt/shmem-%s-sock",
+                               shmem->name);
+                break;
+            }
+            if (mem_path != NULL) {
+                if (vah_add_file(&buf, mem_path, "rw") != 0)
+                    goto cleanup;
+            }
+        }
+    }
+
+
     if (ctl->def->tpm) {
         char *shortName = NULL;
         const char *tpmpath = NULL;
@@ -1229,20 +1242,20 @@ get_files(vahControl * ctl)
 
             /* Unix socket for QEMU and swtpm to use */
             virBufferAsprintf(&buf,
-                "  \"/run/libvirt/qemu/swtpm/%s-swtpm.sock\" rw,\n",
-                shortName);
+                "  \"%s/libvirt/qemu/swtpm/%s-swtpm.sock\" rw,\n",
+                RUNSTATEDIR, shortName);
             /* Paths for swtpm to use: give it access to its state
              * directory, log, and PID files.
              */
             virBufferAsprintf(&buf,
-                "  \"%s/lib/libvirt/swtpm/%s/%s/**\" rw,\n",
+                "  \"%s/lib/libvirt/swtpm/%s/%s/**\" rwk,\n",
                 LOCALSTATEDIR, uuidstr, tpmpath);
             virBufferAsprintf(&buf,
-                "  \"%s/log/swtpm/libvirt/qemu/%s-swtpm.log\" a,\n",
+                "  \"%s/log/swtpm/libvirt/qemu/%s-swtpm.log\" w,\n",
                 LOCALSTATEDIR, ctl->def->name);
             virBufferAsprintf(&buf,
-                "  \"/run/libvirt/qemu/swtpm/%s-swtpm.pid\" rw,\n",
-                shortName);
+                "  \"%s/libvirt/qemu/swtpm/%s-swtpm.pid\" rw,\n",
+                RUNSTATEDIR, shortName);
 
             VIR_FREE(shortName);
             break;
@@ -1297,16 +1310,11 @@ get_files(vahControl * ctl)
         if (vah_add_file(&buf, ctl->newfile, "rwk") != 0)
             goto cleanup;
 
-    if (virBufferError(&buf)) {
-        virBufferFreeAndReset(&buf);
-        vah_error(NULL, 0, _("failed to allocate file buffer"));
-        goto cleanup;
-    }
-
     rc = 0;
     ctl->files = virBufferContentAndReset(&buf);
 
  cleanup:
+    VIR_FREE(mem_path);
     VIR_FREE(uuid);
     return rc;
 }
@@ -1346,8 +1354,7 @@ vahParseArgv(vahControl * ctl, int argc, char **argv)
                 break;
             case 'f':
             case 'F':
-                if (VIR_STRDUP_QUIET(ctl->newfile, optarg) < 0)
-                    vah_error(ctl, 1, _("could not allocate memory for disk"));
+                ctl->newfile = g_strdup(optarg);
                 ctl->append = arg == 'F';
                 break;
             case 'h':
@@ -1418,24 +1425,23 @@ main(int argc, char **argv)
     char *include_file = NULL;
 
     if (virGettextInitialize() < 0 ||
-        virThreadInitialize() < 0 ||
         virErrorInitialize() < 0) {
         fprintf(stderr, _("%s: initialization failed\n"), argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    virFileActivateDirOverride(argv[0]);
+    virFileActivateDirOverrideForProg(argv[0]);
 
     /* Initialize the log system */
     virLogSetFromEnv();
 
     /* clear the environment */
     environ = NULL;
-    if (setenv("PATH", "/sbin:/usr/sbin", 1) != 0)
+    if (g_setenv("PATH", "/sbin:/usr/sbin", TRUE) == FALSE)
         vah_error(ctl, 1, _("could not set PATH"));
 
     /* ensure the traditional IFS setting */
-    if (setenv("IFS", " \t\n", 1) != 0)
+    if (g_setenv("IFS", " \t\n", TRUE) == FALSE)
         vah_error(ctl, 1, _("could not set IFS"));
 
     if (!(progname = strrchr(argv[0], '/')))
@@ -1448,13 +1454,8 @@ main(int argc, char **argv)
     if (vahParseArgv(ctl, argc, argv) != 0)
         vah_error(ctl, 1, _("could not parse arguments"));
 
-    if (virAsprintfQuiet(&profile, "%s/%s",
-                         APPARMOR_DIR "/libvirt", ctl->uuid) < 0)
-        vah_error(ctl, 0, _("could not allocate memory"));
-
-    if (virAsprintfQuiet(&include_file, "%s/%s.files",
-                         APPARMOR_DIR "/libvirt", ctl->uuid) < 0)
-        vah_error(ctl, 0, _("could not allocate memory"));
+    profile = g_strdup_printf("%s/%s", APPARMOR_DIR "/libvirt", ctl->uuid);
+    include_file = g_strdup_printf("%s/%s.files", APPARMOR_DIR "/libvirt", ctl->uuid);
 
     if (ctl->cmd == 'a') {
         rc = parserLoad(ctl->uuid);
@@ -1483,22 +1484,13 @@ main(int argc, char **argv)
                                   LOCALSTATEDIR, ctl->def->name);
                 virBufferAsprintf(&buf, "  \"%s/lib/libvirt/qemu/domain-%d-%.*s/*\" rw,\n",
                                   LOCALSTATEDIR, ctl->def->id, 20, ctl->def->name);
-                virBufferAsprintf(&buf, "  \"%s/run/libvirt/**/%s.pid\" rwk,\n",
-                                  LOCALSTATEDIR, ctl->def->name);
-                virBufferAsprintf(&buf, "  \"/run/libvirt/**/%s.pid\" rwk,\n",
-                                  ctl->def->name);
-                virBufferAsprintf(&buf, "  \"%s/run/libvirt/**/*.tunnelmigrate.dest.%s\" rw,\n",
-                                  LOCALSTATEDIR, ctl->def->name);
-                virBufferAsprintf(&buf, "  \"/run/libvirt/**/*.tunnelmigrate.dest.%s\" rw,\n",
-                                  ctl->def->name);
+                virBufferAsprintf(&buf, "  \"%s/libvirt/**/%s.pid\" rwk,\n",
+                                  RUNSTATEDIR, ctl->def->name);
+                virBufferAsprintf(&buf, "  \"%s/libvirt/**/*.tunnelmigrate.dest.%s\" rw,\n",
+                                  RUNSTATEDIR, ctl->def->name);
             }
             if (ctl->files)
                 virBufferAdd(&buf, ctl->files, -1);
-        }
-
-        if (virBufferError(&buf)) {
-            virBufferFreeAndReset(&buf);
-            vah_error(ctl, 1, _("failed to allocate buffer"));
         }
 
         included_files = virBufferContentAndReset(&buf);
@@ -1520,11 +1512,7 @@ main(int argc, char **argv)
         /* create the profile from TEMPLATE */
         if (ctl->cmd == 'c') {
             char *tmp = NULL;
-            if (virAsprintfQuiet(&tmp, "  #include <libvirt/%s.files>\n",
-                                 ctl->uuid) == -1) {
-                vah_error(ctl, 0, _("could not allocate memory"));
-                goto cleanup;
-            }
+            tmp = g_strdup_printf("  #include <libvirt/%s.files>\n", ctl->uuid);
 
             if (ctl->dryrun) {
                 vah_info(profile);

@@ -29,30 +29,14 @@
 #include "device_conf.h"
 #include "object_event.h"
 #include "storage_adapter_conf.h"
-#include "virautoclean.h"
 #include "virenum.h"
+#include "virxml.h"
 
-#include <libxml/tree.h>
 
-/* Various callbacks needed to parse/create Storage Pool XML's using
- * a private namespace */
-typedef int (*virStoragePoolDefNamespaceParse)(xmlXPathContextPtr, void **);
-typedef void (*virStoragePoolDefNamespaceFree)(void *);
-typedef int (*virStoragePoolDefNamespaceXMLFormat)(virBufferPtr, void *);
-typedef const char *(*virStoragePoolDefNamespaceHref)(void);
-
-typedef struct _virStoragePoolXMLNamespace virStoragePoolXMLNamespace;
-typedef virStoragePoolXMLNamespace *virStoragePoolXMLNamespacePtr;
-struct _virStoragePoolXMLNamespace {
-    virStoragePoolDefNamespaceParse parse;
-    virStoragePoolDefNamespaceFree free;
-    virStoragePoolDefNamespaceXMLFormat format;
-    virStoragePoolDefNamespaceHref href;
-};
 
 int
 virStoragePoolOptionsPoolTypeSetXMLNamespace(int type,
-                                             virStoragePoolXMLNamespacePtr ns);
+                                             virXMLNamespacePtr ns);
 
 int
 virStoragePoolOptionsFormatPool(virBufferPtr buf,
@@ -277,7 +261,7 @@ struct _virStoragePoolDef {
 
     /* Pool backend specific XML namespace data */
     void *namespaceData;
-    virStoragePoolXMLNamespace ns;
+    virXMLNamespace ns;
 };
 
 typedef struct _virStoragePoolSourceList virStoragePoolSourceList;
@@ -378,6 +362,7 @@ typedef enum {
     VIR_STORAGE_POOL_FS_HFSPLUS,
     VIR_STORAGE_POOL_FS_XFS,
     VIR_STORAGE_POOL_FS_OCFS2,
+    VIR_STORAGE_POOL_FS_VMFS,
     VIR_STORAGE_POOL_FS_LAST,
 } virStoragePoolFormatFileSystem;
 VIR_ENUM_DECL(virStoragePoolFormatFileSystem);
@@ -493,6 +478,6 @@ VIR_ENUM_DECL(virStoragePartedFs);
                  VIR_CONNECT_LIST_STORAGE_POOLS_FILTERS_AUTOSTART  | \
                  VIR_CONNECT_LIST_STORAGE_POOLS_FILTERS_POOL_TYPE)
 
-VIR_DEFINE_AUTOPTR_FUNC(virStoragePoolSource, virStoragePoolSourceFree);
-VIR_DEFINE_AUTOPTR_FUNC(virStoragePoolDef, virStoragePoolDefFree);
-VIR_DEFINE_AUTOPTR_FUNC(virStorageVolDef, virStorageVolDefFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virStoragePoolSource, virStoragePoolSourceFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virStoragePoolDef, virStoragePoolDefFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virStorageVolDef, virStorageVolDefFree);

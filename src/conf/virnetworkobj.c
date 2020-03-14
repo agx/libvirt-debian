@@ -94,7 +94,7 @@ virNetworkObjLoadAllPorts(virNetworkObjPtr net,
 
 
 static void
-virNetworkObjPortFree(void *val, const void *key ATTRIBUTE_UNUSED)
+virNetworkObjPortFree(void *val)
 {
     virNetworkPortDefFree(val);
 }
@@ -404,7 +404,7 @@ virNetworkObjFindByUUID(virNetworkObjListPtr nets,
 
 static int
 virNetworkObjSearchName(const void *payload,
-                        const void *name ATTRIBUTE_UNUSED,
+                        const void *name G_GNUC_UNUSED,
                         const void *data)
 {
     virNetworkObjPtr obj = (virNetworkObjPtr) payload;
@@ -620,7 +620,7 @@ virNetworkObjAssignDefLocked(virNetworkObjListPtr nets,
         obj->persistent = !(flags & VIR_NETWORK_OBJ_LIST_ADD_LIVE);
     }
 
-    VIR_STEAL_PTR(ret, obj);
+    ret = g_steal_pointer(&obj);
 
  cleanup:
     virNetworkObjEndAPI(&obj);
@@ -766,14 +766,13 @@ virNetworkObjConfigChangeSetup(virNetworkObjPtr obj,
                                unsigned int flags)
 {
     bool isActive;
-    int ret = -1;
 
     isActive = virNetworkObjIsActive(obj);
 
     if (!isActive && (flags & VIR_NETWORK_UPDATE_AFFECT_LIVE)) {
         virReportError(VIR_ERR_OPERATION_INVALID, "%s",
                        _("network is not running"));
-        goto cleanup;
+        return -1;
     }
 
     if (flags & VIR_NETWORK_UPDATE_AFFECT_CONFIG) {
@@ -781,18 +780,16 @@ virNetworkObjConfigChangeSetup(virNetworkObjPtr obj,
             virReportError(VIR_ERR_OPERATION_INVALID, "%s",
                            _("cannot change persistent config of a "
                              "transient network"));
-            goto cleanup;
+            return -1;
         }
         /* this should already have been done by the driver, but do it
          * anyway just in case.
          */
         if (isActive && (virNetworkObjSetDefTransient(obj, false, xmlopt) < 0))
-            goto cleanup;
+            return -1;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -842,9 +839,6 @@ virNetworkObjFormat(virNetworkObjPtr obj,
 
     virBufferAdjustIndent(&buf, -2);
     virBufferAddLit(&buf, "</networkstatus>");
-
-    if (virBufferCheckError(&buf) < 0)
-        goto error;
 
     return virBufferContentAndReset(&buf);
 
@@ -1190,7 +1184,7 @@ struct virNetworkObjBridgeInUseHelperData {
 
 static int
 virNetworkObjBridgeInUseHelper(const void *payload,
-                               const void *name ATTRIBUTE_UNUSED,
+                               const void *name G_GNUC_UNUSED,
                                const void *opaque)
 {
     int ret;
@@ -1367,7 +1361,7 @@ struct _virNetworkObjListExportData {
 
 static int
 virNetworkObjListExportCallback(void *payload,
-                                const void *name ATTRIBUTE_UNUSED,
+                                const void *name G_GNUC_UNUSED,
                                 void *opaque)
 {
     virNetworkObjListExportDataPtr data = opaque;
@@ -1451,7 +1445,7 @@ struct virNetworkObjListForEachHelperData {
 
 static int
 virNetworkObjListForEachHelper(void *payload,
-                               const void *name ATTRIBUTE_UNUSED,
+                               const void *name G_GNUC_UNUSED,
                                void *opaque)
 {
     struct virNetworkObjListForEachHelperData *data = opaque;
@@ -1501,7 +1495,7 @@ struct virNetworkObjListGetHelperData {
 
 static int
 virNetworkObjListGetHelper(void *payload,
-                           const void *name ATTRIBUTE_UNUSED,
+                           const void *name G_GNUC_UNUSED,
                            void *opaque)
 {
     struct virNetworkObjListGetHelperData *data = opaque;
@@ -1522,11 +1516,8 @@ virNetworkObjListGetHelper(void *payload,
 
     if ((data->active && virNetworkObjIsActive(obj)) ||
         (!data->active && !virNetworkObjIsActive(obj))) {
-        if (data->names &&
-            VIR_STRDUP(data->names[data->nnames], obj->def->name) < 0) {
-            data->error = true;
-            goto cleanup;
-        }
+        if (data->names)
+            data->names[data->nnames] = g_strdup(obj->def->name);
         data->nnames++;
     }
 
@@ -1591,7 +1582,7 @@ struct virNetworkObjListPruneHelperData {
 
 static int
 virNetworkObjListPruneHelper(const void *payload,
-                             const void *name ATTRIBUTE_UNUSED,
+                             const void *name G_GNUC_UNUSED,
                              const void *opaque)
 {
     const struct virNetworkObjListPruneHelperData *data = opaque;
@@ -1630,7 +1621,7 @@ virNetworkObjGetPortStatusDir(virNetworkObjPtr net,
                               const char *stateDir)
 {
     char *ret;
-    ignore_value(virAsprintf(&ret, "%s/%s/ports", stateDir, net->def->name));
+    ret = g_strdup_printf("%s/%s/ports", stateDir, net->def->name);
     return ret;
 }
 
@@ -1640,7 +1631,7 @@ virNetworkObjAddPort(virNetworkObjPtr net,
                      const char *stateDir)
 {
     char uuidstr[VIR_UUID_STRING_BUFLEN];
-    VIR_AUTOFREE(char *) dir = NULL;
+    g_autofree char *dir = NULL;
 
     virUUIDFormat(portdef->uuid, uuidstr);
 
@@ -1679,10 +1670,9 @@ virNetworkObjLookupPort(virNetworkObjPtr net,
         virReportError(VIR_ERR_NO_NETWORK_PORT,
                        _("Network port with UUID %s does not exist"),
                        uuidstr);
-        goto cleanup;
+        return NULL;
     }
 
- cleanup:
     return ret;
 }
 
@@ -1693,7 +1683,7 @@ virNetworkObjDeletePort(virNetworkObjPtr net,
                         const char *stateDir)
 {
     char uuidstr[VIR_UUID_STRING_BUFLEN];
-    VIR_AUTOFREE(char *) dir = NULL;
+    g_autofree char *dir = NULL;
     virNetworkPortDefPtr portdef;
 
     virUUIDFormat(uuid, uuidstr);
@@ -1722,7 +1712,7 @@ int
 virNetworkObjDeleteAllPorts(virNetworkObjPtr net,
                             const char *stateDir)
 {
-    VIR_AUTOFREE(char *) dir = NULL;
+    g_autofree char *dir = NULL;
     DIR *dh = NULL;
     struct dirent *de;
     int rc;
@@ -1742,8 +1732,7 @@ virNetworkObjDeleteAllPorts(virNetworkObjPtr net,
         if (!virStringStripSuffix(de->d_name, ".xml"))
             continue;
 
-        if (virAsprintf(&file, "%s/%s.xml", dir, de->d_name) < 0)
-            goto cleanup;
+        file = g_strdup_printf("%s/%s.xml", dir, de->d_name);
 
         if (unlink(file) < 0 && errno != ENOENT)
             VIR_WARN("Unable to delete %s", file);
@@ -1773,7 +1762,7 @@ struct _virNetworkObjPortListExportData {
 
 static int
 virNetworkObjPortListExportCallback(void *payload,
-                                    const void *name ATTRIBUTE_UNUSED,
+                                    const void *name G_GNUC_UNUSED,
                                     void *opaque)
 {
     virNetworkObjPortListExportDataPtr data = opaque;
@@ -1785,21 +1774,20 @@ virNetworkObjPortListExportCallback(void *payload,
 
     if (data->filter &&
         !data->filter(data->net->conn, data->def, def))
-        goto cleanup;
+        return 0;
 
     if (!data->ports) {
         data->nports++;
-        goto cleanup;
+        return 0;
     }
 
     if (!(port = virGetNetworkPort(data->net, def->uuid))) {
         data->error = true;
-        goto cleanup;
+        return 0;
     }
 
     data->ports[data->nports++] = port;
 
- cleanup:
     return 0;
 }
 
@@ -1844,17 +1832,50 @@ virNetworkObjPortListExport(virNetworkPtr net,
 }
 
 
+typedef struct _virNetworkObjPortListForEachData virNetworkObjPortListForEachData;
+struct _virNetworkObjPortListForEachData {
+    virNetworkPortListIter iter;
+    void *opaque;
+    bool err;
+};
+
+static int
+virNetworkObjPortForEachCallback(void *payload,
+                                 const void *name G_GNUC_UNUSED,
+                                 void *opaque)
+{
+    virNetworkObjPortListForEachData *data = opaque;
+
+    if (!data->iter(payload, data->opaque))
+        data->err = true;
+
+    return 0;
+}
+
+int
+virNetworkObjPortForEach(virNetworkObjPtr obj,
+                         virNetworkPortListIter iter,
+                         void *opaque)
+{
+    virNetworkObjPortListForEachData data = { iter, opaque, false };
+    virHashForEach(obj->ports, virNetworkObjPortForEachCallback, &data);
+    if (data.err)
+        return -1;
+    return 0;
+}
+
+
 static int
 virNetworkObjLoadAllPorts(virNetworkObjPtr net,
                           const char *stateDir)
 {
-    VIR_AUTOFREE(char *) dir = NULL;
+    g_autofree char *dir = NULL;
     DIR *dh = NULL;
     struct dirent *de;
     int ret = -1;
     int rc;
     char uuidstr[VIR_UUID_STRING_BUFLEN];
-    virNetworkPortDefPtr portdef = NULL;
+    g_autoptr(virNetworkPortDef) portdef = NULL;
 
     if (!(dir = virNetworkObjGetPortStatusDir(net, stateDir)))
         goto cleanup;
@@ -1870,8 +1891,7 @@ virNetworkObjLoadAllPorts(virNetworkObjPtr net,
         if (!virStringStripSuffix(de->d_name, ".xml"))
             continue;
 
-        if (virAsprintf(&file, "%s/%s.xml", dir, de->d_name) < 0)
-            goto cleanup;
+        file = g_strdup_printf("%s/%s.xml", dir, de->d_name);
 
         portdef = virNetworkPortDefParseFile(file);
         VIR_FREE(file);
@@ -1892,6 +1912,5 @@ virNetworkObjLoadAllPorts(virNetworkObjPtr net,
     ret = 0;
  cleanup:
     VIR_DIR_CLOSE(dh);
-    virNetworkPortDefFree(portdef);
     return ret;
 }

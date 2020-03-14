@@ -95,7 +95,7 @@ static void virDomainObjListDispose(void *obj)
 
 
 static int virDomainObjListSearchID(const void *payload,
-                                    const void *name ATTRIBUTE_UNUSED,
+                                    const void *name G_GNUC_UNUSED,
                                     const void *data)
 {
     virDomainObjPtr obj = (virDomainObjPtr)payload;
@@ -440,8 +440,7 @@ virDomainObjListRename(virDomainObjListPtr doms,
         return ret;
     }
 
-    if (VIR_STRDUP(old_name, dom->def->name) < 0)
-        return ret;
+    old_name = g_strdup(dom->def->name);
 
     /* doms and dom locks must be attained in right order thus relock dom. */
     /* dom reference is touched for the benefit of those callers that
@@ -484,7 +483,6 @@ virDomainObjListRename(virDomainObjListPtr doms,
 
 static virDomainObjPtr
 virDomainObjListLoadConfig(virDomainObjListPtr doms,
-                           virCapsPtr caps,
                            virDomainXMLOptionPtr xmlopt,
                            const char *configDir,
                            const char *autostartDir,
@@ -500,7 +498,7 @@ virDomainObjListLoadConfig(virDomainObjListPtr doms,
 
     if ((configFile = virDomainConfigFile(configDir, name)) == NULL)
         goto error;
-    if (!(def = virDomainDefParseFile(configFile, caps, xmlopt, NULL,
+    if (!(def = virDomainDefParseFile(configFile, xmlopt, NULL,
                                       VIR_DOMAIN_DEF_PARSE_INACTIVE |
                                       VIR_DOMAIN_DEF_PARSE_SKIP_VALIDATE |
                                       VIR_DOMAIN_DEF_PARSE_ALLOW_POST_PARSE_FAIL)))
@@ -537,7 +535,6 @@ static virDomainObjPtr
 virDomainObjListLoadStatus(virDomainObjListPtr doms,
                            const char *statusDir,
                            const char *name,
-                           virCapsPtr caps,
                            virDomainXMLOptionPtr xmlopt,
                            virDomainLoadConfigNotify notify,
                            void *opaque)
@@ -549,7 +546,7 @@ virDomainObjListLoadStatus(virDomainObjListPtr doms,
     if ((statusFile = virDomainConfigFile(statusDir, name)) == NULL)
         goto error;
 
-    if (!(obj = virDomainObjParseFile(statusFile, caps, xmlopt,
+    if (!(obj = virDomainObjParseFile(statusFile, xmlopt,
                                       VIR_DOMAIN_DEF_PARSE_STATUS |
                                       VIR_DOMAIN_DEF_PARSE_ACTUAL_NET |
                                       VIR_DOMAIN_DEF_PARSE_PCI_ORIG_STATES |
@@ -587,7 +584,6 @@ virDomainObjListLoadAllConfigs(virDomainObjListPtr doms,
                                const char *configDir,
                                const char *autostartDir,
                                bool liveStatus,
-                               virCapsPtr caps,
                                virDomainXMLOptionPtr xmlopt,
                                virDomainLoadConfigNotify notify,
                                void *opaque)
@@ -617,13 +613,11 @@ virDomainObjListLoadAllConfigs(virDomainObjListPtr doms,
             dom = virDomainObjListLoadStatus(doms,
                                              configDir,
                                              entry->d_name,
-                                             caps,
                                              xmlopt,
                                              notify,
                                              opaque);
         else
             dom = virDomainObjListLoadConfig(doms,
-                                             caps,
                                              xmlopt,
                                              configDir,
                                              autostartDir,
@@ -655,7 +649,7 @@ struct virDomainObjListData {
 
 static int
 virDomainObjListCount(void *payload,
-                      const void *name ATTRIBUTE_UNUSED,
+                      const void *name G_GNUC_UNUSED,
                       void *opaque)
 {
     virDomainObjPtr obj = payload;
@@ -702,7 +696,7 @@ struct virDomainIDData {
 
 static int
 virDomainObjListCopyActiveIDs(void *payload,
-                              const void *name ATTRIBUTE_UNUSED,
+                              const void *name G_GNUC_UNUSED,
                               void *opaque)
 {
     virDomainObjPtr obj = payload;
@@ -747,7 +741,7 @@ struct virDomainNameData {
 
 static int
 virDomainObjListCopyInactiveNames(void *payload,
-                                  const void *name ATTRIBUTE_UNUSED,
+                                  const void *name G_GNUC_UNUSED,
                                   void *opaque)
 {
     virDomainObjPtr obj = payload;
@@ -761,11 +755,10 @@ virDomainObjListCopyInactiveNames(void *payload,
         !data->filter(data->conn, obj->def))
         goto cleanup;
     if (!virDomainObjIsActive(obj) && data->numnames < data->maxnames) {
-        if (VIR_STRDUP(data->names[data->numnames], obj->def->name) < 0)
-            data->oom = 1;
-        else
-            data->numnames++;
+        data->names[data->numnames] = g_strdup(obj->def->name);
+        data->numnames++;
     }
+
  cleanup:
     virObjectUnlock(obj);
     return 0;
@@ -804,7 +797,7 @@ struct virDomainListIterData {
 
 static int
 virDomainObjListHelper(void *payload,
-                       const void *name ATTRIBUTE_UNUSED,
+                       const void *name G_GNUC_UNUSED,
                        void *opaque)
 {
     struct virDomainListIterData *data = opaque;
@@ -815,15 +808,36 @@ virDomainObjListHelper(void *payload,
 }
 
 
+/**
+ * virDomainObjListForEach:
+ * @doms: Pointer to the domain object list
+ * @modify: Whether to lock @doms for modify operation
+ * @callback: callback to run over each domain on the list
+ * @opaque: opaque data to pass to @callback
+ *
+ * For every domain on the list (@doms) run @callback on it. If
+ * @callback fails (i.e. returns a negative value), the iteration
+ * carries still on until all domains are visited. Moreover, if
+ * @callback wants to modify the list of domains (@doms) then
+ * @modify must be set to true.
+ *
+ * Returns: 0 on success,
+ *         -1 otherwise.
+ */
 int
 virDomainObjListForEach(virDomainObjListPtr doms,
+                        bool modify,
                         virDomainObjListIterator callback,
                         void *opaque)
 {
     struct virDomainListIterData data = {
         callback, opaque, 0,
     };
-    virObjectRWLockRead(doms);
+
+    if (modify)
+        virObjectRWLockWrite(doms);
+    else
+        virObjectRWLockRead(doms);
     virHashForEach(doms->objs, virDomainObjListHelper, &data);
     virObjectRWUnlock(doms);
     return data.ret;
@@ -911,7 +925,7 @@ struct virDomainListData {
 
 static int
 virDomainObjListCollectIterator(void *payload,
-                                const void *name ATTRIBUTE_UNUSED,
+                                const void *name G_GNUC_UNUSED,
                                 void *opaque)
 {
     struct virDomainListData *data = opaque;

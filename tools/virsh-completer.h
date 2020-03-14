@@ -20,108 +20,20 @@
 
 #pragma once
 
-#include "vsh.h"
+#include "virsh-completer-domain.h"
+#include "virsh-completer-host.h"
+#include "virsh-completer-interface.h"
+#include "virsh-completer-network.h"
+#include "virsh-completer-nodedev.h"
+#include "virsh-completer-nwfilter.h"
+#include "virsh-completer-pool.h"
+#include "virsh-completer-secret.h"
+#include "virsh-completer-snapshot.h"
+#include "virsh-completer-volume.h"
 
-char ** virshDomainNameCompleter(vshControl *ctl,
-                                 const vshCmd *cmd,
-                                 unsigned int flags);
-
-enum {
-    VIRSH_DOMAIN_INTERFACE_COMPLETER_MAC = 1 << 0, /* Return just MACs */
-};
-
-char ** virshDomainInterfaceCompleter(vshControl *ctl,
-                                      const vshCmd *cmd,
-                                      unsigned int flags);
-
-char ** virshDomainDiskTargetCompleter(vshControl *ctl,
-                                       const vshCmd *cmd,
-                                       unsigned int flags);
-
-char ** virshStoragePoolNameCompleter(vshControl *ctl,
-                                      const vshCmd *cmd,
-                                      unsigned int flags);
-
-char ** virshStorageVolNameCompleter(vshControl *ctl,
-                                     const vshCmd *cmd,
-                                     unsigned int flags);
-
-char ** virshInterfaceNameCompleter(vshControl *ctl,
-                                    const vshCmd *cmd,
-                                    unsigned int flags);
-
-char ** virshNetworkNameCompleter(vshControl *ctl,
-                                  const vshCmd *cmd,
-                                  unsigned int flags);
-
-char ** virshNetworkEventNameCompleter(vshControl *ctl,
-                                       const vshCmd *cmd,
-                                       unsigned int flags);
-
-char ** virshNetworkPortUUIDCompleter(vshControl *ctl,
-                                      const vshCmd *cmd,
-                                      unsigned int flags);
-
-char ** virshNodeDeviceNameCompleter(vshControl *ctl,
-                                     const vshCmd *cmd,
-                                     unsigned int flags);
-
-char ** virshNWFilterNameCompleter(vshControl *ctl,
-                                   const vshCmd *cmd,
-                                   unsigned int flags);
-
-char ** virshNWFilterBindingNameCompleter(vshControl *ctl,
-                                          const vshCmd *cmd,
-                                          unsigned int flags);
-
-char ** virshSecretUUIDCompleter(vshControl *ctl,
-                                 const vshCmd *cmd,
-                                 unsigned int flags);
+char ** virshCommaStringListComplete(const char *input,
+                                     const char **options);
 
 char ** virshCheckpointNameCompleter(vshControl *ctl,
                                      const vshCmd *cmd,
                                      unsigned int flags);
-
-char ** virshSnapshotNameCompleter(vshControl *ctl,
-                                   const vshCmd *cmd,
-                                   unsigned int flags);
-
-char ** virshAllocpagesPagesizeCompleter(vshControl *ctl,
-                                         const vshCmd *cmd,
-                                         unsigned int flags);
-
-char ** virshSecretEventNameCompleter(vshControl *ctl,
-                                      const vshCmd *cmd,
-                                      unsigned int flags);
-
-char ** virshDomainEventNameCompleter(vshControl *ctl,
-                                      const vshCmd *cmd,
-                                      unsigned int flags);
-
-char ** virshPoolEventNameCompleter(vshControl *ctl,
-                                    const vshCmd *cmd,
-                                    unsigned int flags);
-
-char ** virshDomainInterfaceStateCompleter(vshControl *ctl,
-                                           const vshCmd *cmd,
-                                           unsigned int flags);
-
-char ** virshNodedevEventNameCompleter(vshControl *ctl,
-                                       const vshCmd *cmd,
-                                       unsigned int flags);
-
-char ** virshNodedevCapabilityNameCompleter(vshControl *ctl,
-                                            const vshCmd *cmd,
-                                            unsigned int flags);
-
-char ** virshDomainDeviceAliasCompleter(vshControl *ctl,
-                                        const vshCmd *cmd,
-                                        unsigned int flags);
-
-char ** virshCellnoCompleter(vshControl *ctl,
-                             const vshCmd *cmd,
-                             unsigned int flags);
-
-char ** virshDomainShutdownModeCompleter(vshControl *ctl,
-                                         const vshCmd *cmd,
-                                         unsigned int flags);

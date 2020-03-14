@@ -23,6 +23,7 @@
 
 
 #include "qemu_monitor_text.h"
+#include "qemu_monitor_json.h"
 #include "viralloc.h"
 #include "virlog.h"
 #include "virerror.h"
@@ -38,18 +39,12 @@ int qemuMonitorTextAddDrive(qemuMonitorPtr mon,
     char *cmd = NULL;
     char *reply = NULL;
     int ret = -1;
-    char *safe_str;
-
-    safe_str = qemuMonitorEscapeArg(drivestr);
-    if (!safe_str)
-        return -1;
 
     /* 'dummy' here is just a placeholder since there is no PCI
      * address required when attaching drives to a controller */
-    if (virAsprintf(&cmd, "drive_add dummy %s", safe_str) < 0)
-        goto cleanup;
+    cmd = g_strdup_printf("drive_add dummy %s", drivestr);
 
-    if (qemuMonitorHMPCommand(mon, cmd, &reply) < 0)
+    if (qemuMonitorJSONHumanCommand(mon, cmd, &reply) < 0)
         goto cleanup;
 
     if (strstr(reply, "unknown command:")) {
@@ -80,12 +75,18 @@ int qemuMonitorTextAddDrive(qemuMonitorPtr mon,
         goto cleanup;
     }
 
+    if (strstr(reply, "IOMMU") ||
+        strstr(reply, "VFIO")) {
+        virReportError(VIR_ERR_OPERATION_FAILED, "%s",
+                       reply);
+        goto cleanup;
+    }
+
     ret = 0;
 
  cleanup:
     VIR_FREE(cmd);
     VIR_FREE(reply);
-    VIR_FREE(safe_str);
     return ret;
 }
 
@@ -95,16 +96,11 @@ int qemuMonitorTextDriveDel(qemuMonitorPtr mon,
 {
     char *cmd = NULL;
     char *reply = NULL;
-    char *safedev;
     int ret = -1;
 
-    if (!(safedev = qemuMonitorEscapeArg(drivestr)))
-        goto cleanup;
+    cmd = g_strdup_printf("drive_del %s", drivestr);
 
-    if (virAsprintf(&cmd, "drive_del %s", safedev) < 0)
-        goto cleanup;
-
-    if (qemuMonitorHMPCommand(mon, cmd, &reply) < 0)
+    if (qemuMonitorJSONHumanCommand(mon, cmd, &reply) < 0)
         goto cleanup;
 
     if (strstr(reply, "unknown command:")) {
@@ -129,7 +125,6 @@ int qemuMonitorTextDriveDel(qemuMonitorPtr mon,
  cleanup:
     VIR_FREE(cmd);
     VIR_FREE(reply);
-    VIR_FREE(safedev);
     return ret;
 }
 
@@ -137,17 +132,13 @@ int
 qemuMonitorTextCreateSnapshot(qemuMonitorPtr mon,
                               const char *name)
 {
-    char *cmd = NULL;
-    char *reply = NULL;
-    int ret = -1;
-    char *safename;
+    g_autofree char *cmd = NULL;
+    g_autofree char *reply = NULL;
 
-    if (!(safename = qemuMonitorEscapeArg(name)) ||
-        virAsprintf(&cmd, "savevm \"%s\"", safename) < 0)
-        goto cleanup;
+    cmd = g_strdup_printf("savevm \"%s\"", name);
 
-    if (qemuMonitorHMPCommand(mon, cmd, &reply))
-        goto cleanup;
+    if (qemuMonitorJSONHumanCommand(mon, cmd, &reply))
+        return -1;
 
     if (strstr(reply, "Error while creating snapshot") ||
         strstr(reply, "Could not open VM state file") ||
@@ -156,20 +147,14 @@ qemuMonitorTextCreateSnapshot(qemuMonitorPtr mon,
         (strstr(reply, "Error") && strstr(reply, "while writing VM"))) {
         virReportError(VIR_ERR_OPERATION_FAILED,
                        _("Failed to take snapshot: %s"), reply);
-        goto cleanup;
+        return -1;
     } else if (strstr(reply, "No block device can accept snapshots")) {
         virReportError(VIR_ERR_OPERATION_INVALID, "%s",
                        _("this domain does not have a device to take snapshots"));
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
-
- cleanup:
-    VIR_FREE(safename);
-    VIR_FREE(cmd);
-    VIR_FREE(reply);
-    return ret;
+    return 0;
 }
 
 int qemuMonitorTextLoadSnapshot(qemuMonitorPtr mon, const char *name)
@@ -177,13 +162,10 @@ int qemuMonitorTextLoadSnapshot(qemuMonitorPtr mon, const char *name)
     char *cmd = NULL;
     char *reply = NULL;
     int ret = -1;
-    char *safename;
 
-    if (!(safename = qemuMonitorEscapeArg(name)) ||
-        virAsprintf(&cmd, "loadvm \"%s\"", safename) < 0)
-        goto cleanup;
+    cmd = g_strdup_printf("loadvm \"%s\"", name);
 
-    if (qemuMonitorHMPCommand(mon, cmd, &reply))
+    if (qemuMonitorJSONHumanCommand(mon, cmd, &reply))
         goto cleanup;
 
     if (strstr(reply, "No block device supports snapshots")) {
@@ -212,7 +194,6 @@ int qemuMonitorTextLoadSnapshot(qemuMonitorPtr mon, const char *name)
     ret = 0;
 
  cleanup:
-    VIR_FREE(safename);
     VIR_FREE(cmd);
     VIR_FREE(reply);
     return ret;
@@ -223,12 +204,9 @@ int qemuMonitorTextDeleteSnapshot(qemuMonitorPtr mon, const char *name)
     char *cmd = NULL;
     char *reply = NULL;
     int ret = -1;
-    char *safename;
 
-    if (!(safename = qemuMonitorEscapeArg(name)) ||
-        virAsprintf(&cmd, "delvm \"%s\"", safename) < 0)
-        goto cleanup;
-    if (qemuMonitorHMPCommand(mon, cmd, &reply))
+    cmd = g_strdup_printf("delvm \"%s\"", name);
+    if (qemuMonitorJSONHumanCommand(mon, cmd, &reply))
         goto cleanup;
 
     if (strstr(reply, "No block device supports snapshots")) {
@@ -249,7 +227,6 @@ int qemuMonitorTextDeleteSnapshot(qemuMonitorPtr mon, const char *name)
     ret = 0;
 
  cleanup:
-    VIR_FREE(safename);
     VIR_FREE(cmd);
     VIR_FREE(reply);
     return ret;

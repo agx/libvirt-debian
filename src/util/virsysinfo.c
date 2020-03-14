@@ -220,23 +220,23 @@ virSysinfoParsePPCSystem(const char *base, virSysinfoSystemDefPtr *sysdef)
     cur = strchr(cur, ':') + 1;
     eol = strchr(cur, '\n');
     virSkipSpaces(&cur);
-    if (eol && VIR_STRNDUP(def->family, cur, eol - cur) < 0)
-        goto cleanup;
+    if (eol)
+        def->family = g_strndup(cur, eol - cur);
 
     if ((cur = strstr(base, "model")) != NULL) {
         cur = strchr(cur, ':') + 1;
         eol = strchr(cur, '\n');
         virSkipSpaces(&cur);
-        if (eol && VIR_STRNDUP(def->serial, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->serial = g_strndup(cur, eol - cur);
     }
 
     if ((cur = strstr(base, "machine")) != NULL) {
         cur = strchr(cur, ':') + 1;
         eol = strchr(cur, '\n');
         virSkipSpaces(&cur);
-        if (eol && VIR_STRNDUP(def->version, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->version = g_strndup(cur, eol - cur);
     }
 
     if (!def->manufacturer && !def->product && !def->version &&
@@ -248,7 +248,6 @@ virSysinfoParsePPCSystem(const char *base, virSysinfoSystemDefPtr *sysdef)
     *sysdef = def;
     def = NULL;
     ret = 0;
- cleanup:
     virSysinfoSystemDefFree(def);
     return ret;
 }
@@ -270,18 +269,17 @@ virSysinfoParsePPCProcessor(const char *base, virSysinfoDefPtr ret)
         processor = &ret->processor[ret->nprocessor - 1];
 
         virSkipSpaces(&cur);
-        if (eol && VIR_STRNDUP(processor->processor_socket_destination,
-                               cur, eol - cur) < 0)
-            return -1;
+        if (eol)
+            processor->processor_socket_destination = g_strndup(cur,
+                                                                eol - cur);
         base = cur;
 
         if ((cur = strstr(base, "cpu")) != NULL) {
             cur = strchr(cur, ':') + 1;
             eol = strchr(cur, '\n');
             virSkipSpaces(&cur);
-            if (eol && VIR_STRNDUP(processor->processor_type,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_type = g_strndup(cur, eol - cur);
             base = cur;
         }
 
@@ -289,9 +287,8 @@ virSysinfoParsePPCProcessor(const char *base, virSysinfoDefPtr ret)
             cur = strchr(cur, ':') + 1;
             eol = strchr(cur, '\n');
             virSkipSpaces(&cur);
-            if (eol && VIR_STRNDUP(processor->processor_version,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_version = g_strndup(cur, eol - cur);
             base = cur;
         }
 
@@ -305,33 +302,27 @@ virSysinfoParsePPCProcessor(const char *base, virSysinfoDefPtr ret)
 virSysinfoDefPtr
 virSysinfoReadPPC(void)
 {
-    virSysinfoDefPtr ret = NULL;
-    char *outbuf = NULL;
+    g_auto(virSysinfoDefPtr) ret = NULL;
+    g_autofree char *outbuf = NULL;
 
     if (VIR_ALLOC(ret) < 0)
-        goto no_memory;
+        return NULL;
 
     if (virFileReadAll(CPUINFO, CPUINFO_FILE_LEN, &outbuf) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("Failed to open %s"), CPUINFO);
-        goto no_memory;
+        return NULL;
     }
 
     ret->nprocessor = 0;
     ret->processor = NULL;
     if (virSysinfoParsePPCProcessor(outbuf, ret) < 0)
-        goto no_memory;
+        return NULL;
 
     if (virSysinfoParsePPCSystem(outbuf, &ret->system) < 0)
-        goto no_memory;
+        return NULL;
 
-    VIR_FREE(outbuf);
-    return ret;
-
- no_memory:
-    VIR_FREE(outbuf);
-    virSysinfoDefFree(ret);
-    return NULL;
+    return g_steal_pointer(&ret);
 }
 
 
@@ -354,23 +345,23 @@ virSysinfoParseARMSystem(const char *base, virSysinfoSystemDefPtr *sysdef)
     cur = strchr(cur, ':') + 1;
     eol = strchr(cur, '\n');
     virSkipSpaces(&cur);
-    if (eol && VIR_STRNDUP(def->family, cur, eol - cur) < 0)
-        goto cleanup;
+    if (eol)
+        def->family = g_strndup(cur, eol - cur);
 
     if ((cur = strstr(base, "model")) != NULL) {
         cur = strchr(cur, ':') + 1;
         eol = strchr(cur, '\n');
         virSkipSpaces(&cur);
-        if (eol && VIR_STRNDUP(def->serial, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->serial = g_strndup(cur, eol - cur);
     }
 
     if ((cur = strstr(base, "machine")) != NULL) {
         cur = strchr(cur, ':') + 1;
         eol = strchr(cur, '\n');
         virSkipSpaces(&cur);
-        if (eol && VIR_STRNDUP(def->version, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->version = g_strndup(cur, eol - cur);
     }
 
     if (!def->manufacturer && !def->product && !def->version &&
@@ -382,7 +373,6 @@ virSysinfoParseARMSystem(const char *base, virSysinfoSystemDefPtr *sysdef)
     *sysdef = def;
     def = NULL;
     ret = 0;
- cleanup:
     virSysinfoSystemDefFree(def);
     return ret;
 }
@@ -402,8 +392,8 @@ virSysinfoParseARMProcessor(const char *base, virSysinfoDefPtr ret)
     eol = strchr(tmp_base, '\n');
     cur = strchr(tmp_base, ':') + 1;
     virSkipSpaces(&cur);
-    if (eol && VIR_STRNDUP(processor_type, cur, eol - cur) < 0)
-        goto error;
+    if (eol)
+        processor_type = g_strndup(cur, eol - cur);
 
     while ((tmp_base = strstr(base, "processor")) != NULL) {
         base = tmp_base;
@@ -415,13 +405,11 @@ virSysinfoParseARMProcessor(const char *base, virSysinfoDefPtr ret)
         processor = &ret->processor[ret->nprocessor - 1];
 
         virSkipSpaces(&cur);
-        if (eol &&
-            VIR_STRNDUP(processor->processor_socket_destination,
-                        cur, eol - cur) < 0)
-            goto error;
+        if (eol)
+            processor->processor_socket_destination = g_strndup(cur,
+                                                                eol - cur);
 
-        if (VIR_STRDUP(processor->processor_type, processor_type) < 0)
-            goto error;
+        processor->processor_type = g_strdup(processor_type);
 
         base = cur;
     }
@@ -439,13 +427,13 @@ virSysinfoParseARMProcessor(const char *base, virSysinfoDefPtr ret)
 virSysinfoDefPtr
 virSysinfoReadARM(void)
 {
-    virSysinfoDefPtr ret = NULL;
-    char *outbuf = NULL;
+    g_auto(virSysinfoDefPtr) ret = NULL;
+    g_autofree char *outbuf = NULL;
 
     /* Some ARM systems have DMI tables available. */
     if ((ret = virSysinfoReadDMI())) {
         if (!virSysinfoDefIsEmpty(ret))
-            return ret;
+            return g_steal_pointer(&ret);
         virSysinfoDefFree(ret);
     }
 
@@ -453,34 +441,24 @@ virSysinfoReadARM(void)
     virResetLastError();
 
     if (VIR_ALLOC(ret) < 0)
-        goto no_memory;
+        return NULL;
 
     if (virFileReadAll(CPUINFO, CPUINFO_FILE_LEN, &outbuf) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("Failed to open %s"), CPUINFO);
-        goto no_memory;
+        return NULL;
     }
 
     ret->nprocessor = 0;
     ret->processor = NULL;
     if (virSysinfoParseARMProcessor(outbuf, ret) < 0)
-        goto no_memory;
+        return NULL;
 
     if (virSysinfoParseARMSystem(outbuf, &ret->system) < 0)
-        goto no_memory;
+        return NULL;
 
-    VIR_FREE(outbuf);
-    return ret;
-
- no_memory:
-    VIR_FREE(outbuf);
-    virSysinfoDefFree(ret);
-    return NULL;
+    return g_steal_pointer(&ret);
 }
-
-
-
-VIR_WARNINGS_NO_WLOGICALOP_STRCHR
 
 static char *
 virSysinfoParseS390Delimited(const char *base, const char *name, char **value,
@@ -495,8 +473,7 @@ virSysinfoParseS390Delimited(const char *base, const char *name, char **value,
         start += 1;
         end = strchrnul(start, delim2);
         virSkipSpaces(&start);
-        if (VIR_STRNDUP(*value, start, end - start) < 0)
-            return NULL;
+        *value = g_strndup(start, end - start);
         virTrimSpaces(*value, NULL);
         return end;
     }
@@ -562,8 +539,7 @@ virSysinfoParseS390Processor(const char *base, virSysinfoDefPtr ret)
         if (VIR_EXPAND_N(ret->processor, ret->nprocessor, 1) < 0)
             goto error;
         processor = &ret->processor[ret->nprocessor - 1];
-        if (VIR_STRDUP(processor->processor_manufacturer, manufacturer) < 0)
-            goto error;
+        processor->processor_manufacturer = g_strdup(manufacturer);
         if (!virSysinfoParseS390Delimited(procline, "version",
                                           &processor->processor_version,
                                           '=', ',') ||
@@ -618,21 +594,21 @@ virSysinfoParseS390Processor(const char *base, virSysinfoDefPtr ret)
 virSysinfoDefPtr
 virSysinfoReadS390(void)
 {
-    virSysinfoDefPtr ret = NULL;
-    char *outbuf = NULL;
+    g_auto(virSysinfoDefPtr) ret = NULL;
+    g_autofree char *outbuf = NULL;
 
     if (VIR_ALLOC(ret) < 0)
-        goto no_memory;
+        return NULL;
 
     /* Gather info from /proc/cpuinfo */
     if (virFileReadAll(CPUINFO, CPUINFO_FILE_LEN, &outbuf) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("Failed to open %s"), CPUINFO);
-        goto no_memory;
+        return NULL;
     }
 
     if (virSysinfoParseS390Processor(outbuf, ret) < 0)
-        goto no_memory;
+        return NULL;
 
     /* Free buffer before reading next file */
     VIR_FREE(outbuf);
@@ -641,19 +617,13 @@ virSysinfoReadS390(void)
     if (virFileReadAll(SYSINFO, 8192, &outbuf) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("Failed to open %s"), SYSINFO);
-        goto no_memory;
+        return NULL;
     }
 
     if (virSysinfoParseS390System(outbuf, &ret->system) < 0)
-        goto no_memory;
+        return NULL;
 
-    VIR_FREE(outbuf);
-    return ret;
-
- no_memory:
-    virSysinfoDefFree(ret);
-    VIR_FREE(outbuf);
-    return NULL;
+    return g_steal_pointer(&ret);
 }
 
 
@@ -676,29 +646,29 @@ virSysinfoParseBIOS(const char *base, virSysinfoBIOSDefPtr *bios)
         cur += 8;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->vendor, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->vendor = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "Version: ")) != NULL) {
         cur += 9;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->version, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->version = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "Release Date: ")) != NULL) {
         cur += 14;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->date, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->date = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "BIOS Revision: ")) != NULL) {
         cur += 15;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->release, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->release = g_strndup(cur, eol - cur);
     }
 
     if (!def->vendor && !def->version &&
@@ -710,7 +680,6 @@ virSysinfoParseBIOS(const char *base, virSysinfoBIOSDefPtr *bios)
     *bios = def;
     def = NULL;
     ret = 0;
- cleanup:
     virSysinfoBIOSDefFree(def);
     return ret;
 }
@@ -734,50 +703,50 @@ virSysinfoParseX86System(const char *base, virSysinfoSystemDefPtr *sysdef)
         cur += 14;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->manufacturer, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->manufacturer = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "Product Name: ")) != NULL) {
         cur += 14;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->product, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->product = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "Version: ")) != NULL) {
         cur += 9;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->version, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->version = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "Serial Number: ")) != NULL) {
         cur += 15;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->serial, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->serial = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "UUID: ")) != NULL) {
         cur += 6;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->uuid, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->uuid = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "SKU Number: ")) != NULL) {
         cur += 12;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->sku, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->sku = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "Family: ")) != NULL) {
         cur += 8;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->family, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->family = g_strndup(cur, eol - cur);
     }
 
     if (!def->manufacturer && !def->product && !def->version &&
@@ -789,7 +758,6 @@ virSysinfoParseX86System(const char *base, virSysinfoSystemDefPtr *sysdef)
     *sysdef = def;
     def = NULL;
     ret = 0;
- cleanup:
     virSysinfoSystemDefFree(def);
     return ret;
 }
@@ -819,43 +787,43 @@ virSysinfoParseX86BaseBoard(const char *base,
             cur += 14;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(def->manufacturer, cur, eol - cur) < 0)
-                goto cleanup;
+            if (eol)
+                def->manufacturer = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Product Name: ")) != NULL) {
             cur += 14;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(def->product, cur, eol - cur) < 0)
-                goto cleanup;
+            if (eol)
+                def->product = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Version: ")) != NULL) {
             cur += 9;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(def->version, cur, eol - cur) < 0)
-                goto cleanup;
+            if (eol)
+                def->version = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Serial Number: ")) != NULL) {
             cur += 15;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(def->serial, cur, eol - cur) < 0)
-                goto cleanup;
+            if (eol)
+                def->serial = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Asset Tag: ")) != NULL) {
             cur += 11;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(def->asset, cur, eol - cur) < 0)
-                goto cleanup;
+            if (eol)
+                def->asset = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Location In Chassis: ")) != NULL) {
             cur += 21;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(def->location, cur, eol - cur) < 0)
-                goto cleanup;
+            if (eol)
+                def->location = g_strndup(cur, eol - cur);
         }
 
         if (!def->manufacturer && !def->product && !def->version &&
@@ -904,36 +872,36 @@ virSysinfoParseX86Chassis(const char *base,
         cur += 14;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->manufacturer, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->manufacturer = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "Version: ")) != NULL) {
         cur += 9;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->version, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->version = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "Serial Number: ")) != NULL) {
         cur += 15;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->serial, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->serial = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "Asset Tag: ")) != NULL) {
         cur += 11;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->asset, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->asset = g_strndup(cur, eol - cur);
     }
     if ((cur = strstr(base, "SKU Number: ")) != NULL) {
         cur += 12;
         eol = strchr(cur, '\n');
         virSkipSpacesBackwards(cur, &eol);
-        if (eol && VIR_STRNDUP(def->sku, cur, eol - cur) < 0)
-            goto cleanup;
+        if (eol)
+            def->sku = g_strndup(cur, eol - cur);
     }
 
     if (!def->manufacturer && !def->version &&
@@ -945,7 +913,6 @@ virSysinfoParseX86Chassis(const char *base,
     *chassisdef = def;
     def = NULL;
     ret = 0;
- cleanup:
     virSysinfoChassisDefFree(def);
     return ret;
 }
@@ -970,86 +937,80 @@ virSysinfoParseX86Processor(const char *base, virSysinfoDefPtr ret)
             cur += 20;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_socket_destination,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_socket_destination = g_strndup(cur,
+                                                                    eol - cur);
         }
         if ((cur = strstr(base, "Type: ")) != NULL) {
             cur += 6;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_type, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_type = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Family: ")) != NULL) {
             cur += 8;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_family, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_family = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Manufacturer: ")) != NULL) {
             cur += 14;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_manufacturer,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_manufacturer = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Signature: ")) != NULL) {
             cur += 11;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_signature,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_signature = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Version: ")) != NULL) {
             cur += 9;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_version,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_version = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "External Clock: ")) != NULL) {
             cur += 16;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_external_clock,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_external_clock = g_strndup(cur,
+                                                                eol - cur);
         }
         if ((cur = strstr(base, "Max Speed: ")) != NULL) {
             cur += 11;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_max_speed,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_max_speed = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Status: ")) != NULL) {
             cur += 8;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_status, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_status = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Serial Number: ")) != NULL) {
             cur += 15;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_serial_number,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_serial_number = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Part Number: ")) != NULL) {
             cur += 13;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(processor->processor_part_number,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                processor->processor_part_number = g_strndup(cur, eol - cur);
         }
 
         base += strlen("Processor Information");
@@ -1080,74 +1041,71 @@ virSysinfoParseX86Memory(const char *base, virSysinfoDefPtr ret)
                 goto next;
 
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_size, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_size = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Form Factor: ")) != NULL) {
             cur += 13;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_form_factor,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_form_factor = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Locator: ")) != NULL) {
             cur += 9;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_locator, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_locator = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Bank Locator: ")) != NULL) {
             cur += 14;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_bank_locator,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_bank_locator = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Type: ")) != NULL) {
             cur += 6;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_type, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_type = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Type Detail: ")) != NULL) {
             cur += 13;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_type_detail, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_type_detail = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Speed: ")) != NULL) {
             cur += 7;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_speed, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_speed = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Manufacturer: ")) != NULL) {
             cur += 14;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_manufacturer, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_manufacturer = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Serial Number: ")) != NULL) {
             cur += 15;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_serial_number,
-                                   cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_serial_number = g_strndup(cur, eol - cur);
         }
         if ((cur = strstr(base, "Part Number: ")) != NULL) {
             cur += 13;
             eol = strchr(cur, '\n');
             virSkipSpacesBackwards(cur, &eol);
-            if (eol && VIR_STRNDUP(memory->memory_part_number, cur, eol - cur) < 0)
-                return -1;
+            if (eol)
+                memory->memory_part_number = g_strndup(cur, eol - cur);
         }
 
     next:
@@ -1487,20 +1445,17 @@ virSysinfoOEMStringsFormat(virBufferPtr buf, virSysinfoOEMStringsDefPtr def)
 int
 virSysinfoFormat(virBufferPtr buf, virSysinfoDefPtr def)
 {
-    virBuffer childrenBuf = VIR_BUFFER_INITIALIZER;
+    virBuffer attrBuf = VIR_BUFFER_INITIALIZER;
+    virBuffer childrenBuf = VIR_BUFFER_INIT_CHILD(buf);
     const char *type = virSysinfoTypeToString(def->type);
-    int indent = virBufferGetIndent(buf, false);
-    int ret = -1;
 
     if (!type) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("unexpected sysinfo type model %d"),
                        def->type);
         virBufferFreeAndReset(buf);
-        goto cleanup;
+        return -1;
     }
-
-    virBufferAdjustIndent(&childrenBuf, indent + 2);
 
     virSysinfoBIOSFormat(&childrenBuf, def->bios);
     virSysinfoSystemFormat(&childrenBuf, def->system);
@@ -1510,22 +1465,11 @@ virSysinfoFormat(virBufferPtr buf, virSysinfoDefPtr def)
     virSysinfoMemoryFormat(&childrenBuf, def);
     virSysinfoOEMStringsFormat(&childrenBuf, def->oemStrings);
 
-    virBufferAsprintf(buf, "<sysinfo type='%s'", type);
-    if (virBufferUse(&childrenBuf)) {
-        virBufferAddLit(buf, ">\n");
-        virBufferAddBuffer(buf, &childrenBuf);
-        virBufferAddLit(buf, "</sysinfo>\n");
-    } else {
-        virBufferAddLit(buf, "/>\n");
-    }
+    virBufferAsprintf(&attrBuf, " type='%s'", type);
 
-    if (virBufferCheckError(buf) < 0)
-        goto cleanup;
+    virXMLFormatElement(buf, "sysinfo", &attrBuf, &childrenBuf);
 
-    ret = 0;
- cleanup:
-    virBufferFreeAndReset(&childrenBuf);
-    return ret;
+    return 0;
 }
 
 #define CHECK_FIELD(name, desc) \
@@ -1534,7 +1478,7 @@ virSysinfoFormat(virBufferPtr buf, virSysinfoDefPtr def)
             virReportError(VIR_ERR_CONFIG_UNSUPPORTED, \
                            _("Target sysinfo %s %s does not match source %s"), \
                            desc, NULLSTR(dst->name), NULLSTR(src->name)); \
-            goto cleanup; \
+            return false; \
         } \
     } while (0)
 
@@ -1542,15 +1486,13 @@ static bool
 virSysinfoBIOSIsEqual(virSysinfoBIOSDefPtr src,
                       virSysinfoBIOSDefPtr dst)
 {
-    bool identical = false;
-
     if (!src && !dst)
         return true;
 
     if ((src && !dst) || (!src && dst)) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
                        _("Target sysinfo does not match source"));
-        goto cleanup;
+        return false;
     }
 
     CHECK_FIELD(vendor, "BIOS vendor");
@@ -1558,24 +1500,20 @@ virSysinfoBIOSIsEqual(virSysinfoBIOSDefPtr src,
     CHECK_FIELD(date, "BIOS date");
     CHECK_FIELD(release, "BIOS release");
 
-    identical = true;
- cleanup:
-    return identical;
+    return true;
 }
 
 static bool
 virSysinfoSystemIsEqual(virSysinfoSystemDefPtr src,
                         virSysinfoSystemDefPtr dst)
 {
-    bool identical = false;
-
     if (!src && !dst)
         return true;
 
     if ((src && !dst) || (!src && dst)) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
                        _("Target sysinfo does not match source"));
-        goto cleanup;
+        return false;
     }
 
     CHECK_FIELD(manufacturer, "system vendor");
@@ -1586,24 +1524,20 @@ virSysinfoSystemIsEqual(virSysinfoSystemDefPtr src,
     CHECK_FIELD(sku, "system sku");
     CHECK_FIELD(family, "system family");
 
-    identical = true;
- cleanup:
-    return identical;
+    return true;
 }
 
 static bool
 virSysinfoBaseBoardIsEqual(virSysinfoBaseBoardDefPtr src,
                            virSysinfoBaseBoardDefPtr dst)
 {
-    bool identical = false;
-
     if (!src && !dst)
         return true;
 
     if ((src && !dst) || (!src && dst)) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
                        _("Target base board does not match source"));
-        goto cleanup;
+        return false;
     }
 
     CHECK_FIELD(manufacturer, "base board vendor");
@@ -1613,9 +1547,7 @@ virSysinfoBaseBoardIsEqual(virSysinfoBaseBoardDefPtr src,
     CHECK_FIELD(asset, "base board asset");
     CHECK_FIELD(location, "base board location");
 
-    identical = true;
- cleanup:
-    return identical;
+    return true;
 }
 
 
@@ -1623,15 +1555,13 @@ static bool
 virSysinfoChassisIsEqual(virSysinfoChassisDefPtr src,
                          virSysinfoChassisDefPtr dst)
 {
-    bool identical = false;
-
     if (!src && !dst)
         return true;
 
     if ((src && !dst) || (!src && dst)) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
                        _("Target chassis does not match source"));
-        goto cleanup;
+        return false;
     }
 
     CHECK_FIELD(manufacturer, "chassis vendor");
@@ -1640,9 +1570,7 @@ virSysinfoChassisIsEqual(virSysinfoChassisDefPtr src,
     CHECK_FIELD(asset, "chassis asset");
     CHECK_FIELD(sku, "chassis sku");
 
-    identical = true;
- cleanup:
-    return identical;
+    return true;
 }
 
 
@@ -1651,7 +1579,6 @@ virSysinfoChassisIsEqual(virSysinfoChassisDefPtr src,
 bool virSysinfoIsEqual(virSysinfoDefPtr src,
                        virSysinfoDefPtr dst)
 {
-    bool identical = false;
     size_t i;
 
     if (!src && !dst)
@@ -1660,7 +1587,7 @@ bool virSysinfoIsEqual(virSysinfoDefPtr src,
     if ((src && !dst) || (!src && dst)) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
                        _("Target sysinfo does not match source"));
-        goto cleanup;
+        return false;
     }
 
     if (src->type != dst->type) {
@@ -1668,32 +1595,29 @@ bool virSysinfoIsEqual(virSysinfoDefPtr src,
                        _("Target sysinfo %s does not match source %s"),
                        virSysinfoTypeToString(dst->type),
                        virSysinfoTypeToString(src->type));
-        goto cleanup;
+        return false;
     }
 
     if (!virSysinfoBIOSIsEqual(src->bios, dst->bios))
-        goto cleanup;
+        return false;
 
     if (!virSysinfoSystemIsEqual(src->system, dst->system))
-        goto cleanup;
+        return false;
 
     if (src->nbaseBoard != dst->nbaseBoard) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Target sysinfo base board count '%zu' does not match source '%zu'"),
                        dst->nbaseBoard, src->nbaseBoard);
-        goto cleanup;
+        return false;
     }
 
     for (i = 0; i < src->nbaseBoard; i++)
         if (!virSysinfoBaseBoardIsEqual(src->baseBoard + i,
                                         dst->baseBoard + i))
-            goto cleanup;
+            return false;
 
     if (!virSysinfoChassisIsEqual(src->chassis, dst->chassis))
-        goto cleanup;
+        return false;
 
-    identical = true;
-
- cleanup:
-    return identical;
+    return true;
 }

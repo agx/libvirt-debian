@@ -21,8 +21,10 @@
 #include <config.h>
 
 #include "qemu_extdevice.h"
+#include "qemu_vhost_user_gpu.h"
 #include "qemu_domain.h"
 #include "qemu_tpm.h"
+#include "qemu_slirp.h"
 
 #include "viralloc.h"
 #include "virlog.h"
@@ -36,37 +38,22 @@
 VIR_LOG_INIT("qemu.qemu_extdevice");
 
 int
-qemuExtDeviceLogCommand(qemuDomainLogContextPtr logCtxt,
+qemuExtDeviceLogCommand(virQEMUDriverPtr driver,
+                        virDomainObjPtr vm,
                         virCommandPtr cmd,
                         const char *info)
 {
-    int ret = -1;
-    char *timestamp = NULL;
-    char *logline = NULL;
-    int logFD;
+    g_autofree char *timestamp = virTimeStringNow();
+    g_autofree char *cmds = virCommandToString(cmd, false);
 
-    logFD = qemuDomainLogContextGetWriteFD(logCtxt);
+    if (!timestamp || !cmds)
+        return -1;
 
-    if ((timestamp = virTimeStringNow()) == NULL)
-        goto cleanup;
-
-    if (virAsprintf(&logline, "%s: Starting external device: %s\n",
-                    timestamp, info) < 0)
-        goto cleanup;
-
-    if (safewrite(logFD, logline, strlen(logline)) < 0)
-        goto cleanup;
-
-    virCommandWriteArgLog(cmd, logFD);
-
-    ret = 0;
-
- cleanup:
-    VIR_FREE(timestamp);
-    VIR_FREE(logline);
-
-    return ret;
+    return qemuDomainLogAppendMessage(driver, vm,
+                                      _("%s: Starting external device: %s\n%s\n"),
+                                      timestamp, info, cmds);
 }
+
 
 
 /*
@@ -79,7 +66,7 @@ qemuExtDeviceLogCommand(qemuDomainLogContextPtr logCtxt,
  * stored and we can remove directories and files in case of domain XML
  * changes.
  */
-int
+static int
 qemuExtDevicesInitPaths(virQEMUDriverPtr driver,
                         virDomainDefPtr def)
 {
@@ -87,6 +74,34 @@ qemuExtDevicesInitPaths(virQEMUDriverPtr driver,
 
     if (def->tpm)
         ret = qemuExtTPMInitPaths(driver, def);
+
+    return ret;
+}
+
+
+/*
+ * qemuExtDevicesPrepareDomain:
+ *
+ * @driver: QEMU driver
+ * @vm: domain
+ *
+ * Code that modifies live XML of a domain which is about to start.
+ */
+int
+qemuExtDevicesPrepareDomain(virQEMUDriverPtr driver,
+                            virDomainObjPtr vm)
+{
+    int ret = 0;
+    size_t i;
+
+    for (i = 0; i < vm->def->nvideos; i++) {
+        virDomainVideoDefPtr video = vm->def->videos[i];
+
+        if (video->backend == VIR_DOMAIN_VIDEO_BACKEND_TYPE_VHOSTUSER) {
+            if ((ret = qemuExtVhostUserGPUPrepareDomain(driver, video)) < 0)
+                break;
+        }
+    }
 
     return ret;
 }
@@ -102,14 +117,24 @@ qemuExtDevicesInitPaths(virQEMUDriverPtr driver,
  */
 int
 qemuExtDevicesPrepareHost(virQEMUDriverPtr driver,
-                          virDomainDefPtr def)
+                          virDomainObjPtr vm)
 {
-    int ret = 0;
+    virDomainDefPtr def = vm->def;
+    size_t i;
 
-    if (def->tpm)
-        ret = qemuExtTPMPrepareHost(driver, def);
+    if (def->tpm &&
+        qemuExtTPMPrepareHost(driver, def) < 0)
+        return -1;
 
-    return ret;
+    for (i = 0; i < def->nnets; i++) {
+        virDomainNetDefPtr net = def->nets[i];
+        qemuSlirpPtr slirp = QEMU_DOMAIN_NETWORK_PRIVATE(net)->slirp;
+
+        if (slirp && qemuSlirpOpen(slirp, driver, def) < 0)
+            return -1;
+    }
+
+    return 0;
 }
 
 
@@ -128,16 +153,36 @@ qemuExtDevicesCleanupHost(virQEMUDriverPtr driver,
 int
 qemuExtDevicesStart(virQEMUDriverPtr driver,
                     virDomainObjPtr vm,
-                    qemuDomainLogContextPtr logCtxt,
                     bool incomingMigration)
 {
+    virDomainDefPtr def = vm->def;
     int ret = 0;
+    size_t i;
 
     if (qemuExtDevicesInitPaths(driver, vm->def) < 0)
         return -1;
 
+    for (i = 0; i < vm->def->nvideos; i++) {
+        virDomainVideoDefPtr video = vm->def->videos[i];
+
+        if (video->backend == VIR_DOMAIN_VIDEO_BACKEND_TYPE_VHOSTUSER) {
+            ret = qemuExtVhostUserGPUStart(driver, vm, video);
+            if (ret < 0)
+                return ret;
+        }
+    }
+
     if (vm->def->tpm)
-        ret = qemuExtTPMStart(driver, vm, logCtxt, incomingMigration);
+        ret = qemuExtTPMStart(driver, vm, incomingMigration);
+
+    for (i = 0; i < def->nnets; i++) {
+        virDomainNetDefPtr net = def->nets[i];
+        qemuSlirpPtr slirp = QEMU_DOMAIN_NETWORK_PRIVATE(net)->slirp;
+
+        if (slirp &&
+            qemuSlirpStart(slirp, vm, driver, net, false, incomingMigration) < 0)
+            return -1;
+    }
 
     return ret;
 }
@@ -147,17 +192,42 @@ void
 qemuExtDevicesStop(virQEMUDriverPtr driver,
                    virDomainObjPtr vm)
 {
-    if (qemuExtDevicesInitPaths(driver, vm->def) < 0)
+    virDomainDefPtr def = vm->def;
+    size_t i;
+
+    if (qemuExtDevicesInitPaths(driver, def) < 0)
         return;
 
-    if (vm->def->tpm)
+    for (i = 0; i < def->nvideos; i++) {
+        virDomainVideoDefPtr video = def->videos[i];
+
+        if (video->backend == VIR_DOMAIN_VIDEO_BACKEND_TYPE_VHOSTUSER)
+            qemuExtVhostUserGPUStop(driver, vm, video);
+    }
+
+    if (def->tpm)
         qemuExtTPMStop(driver, vm);
+
+    for (i = 0; i < def->nnets; i++) {
+        virDomainNetDefPtr net = def->nets[i];
+        qemuSlirpPtr slirp = QEMU_DOMAIN_NETWORK_PRIVATE(net)->slirp;
+
+        if (slirp)
+            qemuSlirpStop(slirp, vm, driver, net, false);
+    }
 }
 
 
 bool
 qemuExtDevicesHasDevice(virDomainDefPtr def)
 {
+    size_t i;
+
+    for (i = 0; i < def->nvideos; i++) {
+        if (def->videos[i]->backend == VIR_DOMAIN_VIDEO_BACKEND_TYPE_VHOSTUSER)
+            return true;
+    }
+
     if (def->tpm && def->tpm->type == VIR_DOMAIN_TPM_TYPE_EMULATOR)
         return true;
 
@@ -170,10 +240,19 @@ qemuExtDevicesSetupCgroup(virQEMUDriverPtr driver,
                           virDomainDefPtr def,
                           virCgroupPtr cgroup)
 {
-    int ret = 0;
+    size_t i;
 
-    if (def->tpm)
-        ret = qemuExtTPMSetupCgroup(driver, def, cgroup);
+    for (i = 0; i < def->nvideos; i++) {
+        virDomainVideoDefPtr video = def->videos[i];
 
-    return ret;
+        if (video->backend == VIR_DOMAIN_VIDEO_BACKEND_TYPE_VHOSTUSER &&
+            qemuExtVhostUserGPUSetupCgroup(driver, def, video, cgroup) < 0)
+            return -1;
+    }
+
+    if (def->tpm &&
+        qemuExtTPMSetupCgroup(driver, def, cgroup) < 0)
+        return -1;
+
+    return 0;
 }

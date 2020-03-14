@@ -30,7 +30,6 @@
 #include "virstring.h"
 #include "node_device_conf.h"
 #include "device_conf.h"
-#include "dirname.h"
 #include "virxml.h"
 #include "virbuffer.h"
 #include "viruuid.h"
@@ -239,8 +238,8 @@ virNodeDeviceCapPCIDefFormat(virBufferPtr buf,
         virBufferAddLit(buf, "<capability type='phys_function'>\n");
         virBufferAdjustIndent(buf, 2);
         virBufferAsprintf(buf,
-                          "<address domain='0x%.4x' bus='0x%.2x' "
-                          "slot='0x%.2x' function='0x%.1x'/>\n",
+                          "<address domain='0x%04x' bus='0x%02x' "
+                          "slot='0x%02x' function='0x%d'/>\n",
                           data->pci_dev.physical_function->domain,
                           data->pci_dev.physical_function->bus,
                           data->pci_dev.physical_function->slot,
@@ -260,8 +259,8 @@ virNodeDeviceCapPCIDefFormat(virBufferPtr buf,
             virBufferAdjustIndent(buf, 2);
             for (i = 0; i < data->pci_dev.num_virtual_functions; i++) {
                 virBufferAsprintf(buf,
-                                  "<address domain='0x%.4x' bus='0x%.2x' "
-                                  "slot='0x%.2x' function='0x%.1x'/>\n",
+                                  "<address domain='0x%04x' bus='0x%02x' "
+                                  "slot='0x%02x' function='0x%d'/>\n",
                                   data->pci_dev.virtual_functions[i]->domain,
                                   data->pci_dev.virtual_functions[i]->bus,
                                   data->pci_dev.virtual_functions[i]->slot,
@@ -302,8 +301,8 @@ virNodeDeviceCapPCIDefFormat(virBufferPtr buf,
         virBufferAdjustIndent(buf, 2);
         for (i = 0; i < data->pci_dev.nIommuGroupDevices; i++) {
             virBufferAsprintf(buf,
-                              "<address domain='0x%.4x' bus='0x%.2x' "
-                              "slot='0x%.2x' function='0x%.1x'/>\n",
+                              "<address domain='0x%04x' bus='0x%02x' "
+                              "slot='0x%02x' function='0x%d'/>\n",
                               data->pci_dev.iommuGroupDevices[i]->domain,
                               data->pci_dev.iommuGroupDevices[i]->bus,
                               data->pci_dev.iommuGroupDevices[i]->slot,
@@ -609,9 +608,6 @@ virNodeDeviceDefFormat(const virNodeDeviceDef *def)
 
     virBufferAdjustIndent(&buf, -2);
     virBufferAddLit(&buf, "</device>\n");
-
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
 
     return virBufferContentAndReset(&buf);
 }
@@ -1944,8 +1940,7 @@ virNodeDeviceDefParseXML(xmlXPathContextPtr ctxt,
             goto error;
         }
     } else {
-        if (VIR_STRDUP(def->name, "new device") < 0)
-            goto error;
+        def->name = g_strdup("new device");
     }
 
     def->sysfs_path = virXPathString("string(./path[1])", ctxt);
@@ -2052,8 +2047,7 @@ virNodeDeviceDefParseNode(xmlDocPtr xml,
                           int create,
                           const char *virt_type)
 {
-    xmlXPathContextPtr ctxt = NULL;
-    virNodeDeviceDefPtr def = NULL;
+    g_autoptr(xmlXPathContext) ctxt = NULL;
 
     if (!virXMLNodeNameEqual(root, "device")) {
         virReportError(VIR_ERR_XML_ERROR,
@@ -2063,18 +2057,11 @@ virNodeDeviceDefParseNode(xmlDocPtr xml,
         return NULL;
     }
 
-    ctxt = xmlXPathNewContext(xml);
-    if (ctxt == NULL) {
-        virReportOOMError();
-        goto cleanup;
-    }
+    if (!(ctxt = virXMLXPathContextNew(xml)))
+        return NULL;
 
     ctxt->node = root;
-    def = virNodeDeviceDefParseXML(ctxt, create, virt_type);
-
- cleanup:
-    xmlXPathFreeContext(ctxt);
-    return def;
+    return virNodeDeviceDefParseXML(ctxt, create, virt_type);
 }
 
 
@@ -2124,18 +2111,13 @@ virNodeDeviceGetWWNs(virNodeDeviceDefPtr def,
                      char **wwpn)
 {
     virNodeDevCapsDefPtr cap = NULL;
-    int ret = -1;
 
     cap = def->caps;
     while (cap != NULL) {
         if (cap->data.type == VIR_NODE_DEV_CAP_SCSI_HOST &&
             cap->data.scsi_host.flags & VIR_NODE_DEV_CAP_FLAG_HBA_FC_HOST) {
-            if (VIR_STRDUP(*wwnn, cap->data.scsi_host.wwnn) < 0 ||
-                VIR_STRDUP(*wwpn, cap->data.scsi_host.wwpn) < 0) {
-                /* Free the other one, if allocated... */
-                VIR_FREE(*wwnn);
-                goto cleanup;
-            }
+            *wwnn = g_strdup(cap->data.scsi_host.wwnn);
+            *wwpn = g_strdup(cap->data.scsi_host.wwpn);
             break;
         }
 
@@ -2145,12 +2127,10 @@ virNodeDeviceGetWWNs(virNodeDeviceDefPtr def,
     if (cap == NULL) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        "%s", _("Device is not a fibre channel HBA"));
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -2362,7 +2342,7 @@ virNodeDeviceCapsListExport(virNodeDeviceDefPtr def,
 #undef MAYBE_ADD_CAP
 
     if (want_list)
-        VIR_STEAL_PTR(*list, tmp);
+        *list = g_steal_pointer(&tmp);
     ret = ncaps;
  cleanup:
     VIR_FREE(tmp);
@@ -2394,18 +2374,18 @@ virNodeDeviceGetSCSIHostCaps(virNodeDevCapSCSIHostPtr scsi_host)
             goto cleanup;
         }
         VIR_FREE(scsi_host->wwpn);
-        VIR_STEAL_PTR(scsi_host->wwpn, tmp);
+        scsi_host->wwpn = g_steal_pointer(&tmp);
 
         if (!(tmp = virVHBAGetConfig(NULL, scsi_host->host, "node_name"))) {
             VIR_WARN("Failed to read WWNN for host%d", scsi_host->host);
             goto cleanup;
         }
         VIR_FREE(scsi_host->wwnn);
-        VIR_STEAL_PTR(scsi_host->wwnn, tmp);
+        scsi_host->wwnn = g_steal_pointer(&tmp);
 
         if ((tmp = virVHBAGetConfig(NULL, scsi_host->host, "fabric_name"))) {
             VIR_FREE(scsi_host->fabric_wwn);
-            VIR_STEAL_PTR(scsi_host->fabric_wwn, tmp);
+            scsi_host->fabric_wwn = g_steal_pointer(&tmp);
         }
     }
 
@@ -2464,17 +2444,15 @@ virNodeDeviceGetSCSITargetCaps(const char *sysfsPath,
     VIR_DEBUG("Checking if '%s' is an FC remote port", scsi_target->name);
 
     /* /sys/devices/[...]/host0/rport-0:0-0/target0:0:0 -> rport-0:0-0 */
-    if (!(dir = mdir_name(sysfsPath)))
-        return -1;
+    dir = g_path_get_dirname(sysfsPath);
 
-    if (VIR_STRDUP(rport, last_component(dir)) < 0)
-        goto cleanup;
+    rport = g_path_get_basename(dir);
 
     if (!virFCIsCapableRport(rport))
         goto cleanup;
 
     VIR_FREE(scsi_target->rport);
-    VIR_STEAL_PTR(scsi_target->rport, rport);
+    scsi_target->rport = g_steal_pointer(&rport);
 
     if (virFCReadRportValue(scsi_target->rport, "port_name",
                             &scsi_target->wwpn) < 0) {
@@ -2509,6 +2487,7 @@ virNodeDeviceGetPCISRIOVCaps(const char *sysfsPath,
     for (i = 0; i < pci_dev->num_virtual_functions; i++)
        VIR_FREE(pci_dev->virtual_functions[i]);
     VIR_FREE(pci_dev->virtual_functions);
+    VIR_FREE(pci_dev->physical_function);
     pci_dev->num_virtual_functions = 0;
     pci_dev->max_virtual_functions = 0;
     pci_dev->flags &= ~VIR_NODE_DEV_CAP_FLAG_PCI_VIRTUAL_FUNCTION;
@@ -2517,7 +2496,7 @@ virNodeDeviceGetPCISRIOVCaps(const char *sysfsPath,
     ret = virPCIGetPhysicalFunction(sysfsPath,
                                     &pci_dev->physical_function);
     if (ret < 0)
-        goto cleanup;
+        return ret;
 
     if (pci_dev->physical_function)
         pci_dev->flags |= VIR_NODE_DEV_CAP_FLAG_PCI_PHYSICAL_FUNCTION;
@@ -2526,13 +2505,12 @@ virNodeDeviceGetPCISRIOVCaps(const char *sysfsPath,
                                     &pci_dev->num_virtual_functions,
                                     &pci_dev->max_virtual_functions);
     if (ret < 0)
-        goto cleanup;
+        return ret;
 
     if (pci_dev->num_virtual_functions > 0 ||
         pci_dev->max_virtual_functions > 0)
         pci_dev->flags |= VIR_NODE_DEV_CAP_FLAG_PCI_VIRTUAL_FUNCTION;
 
- cleanup:
     return ret;
 }
 
@@ -2541,7 +2519,7 @@ static int
 virNodeDeviceGetPCIIOMMUGroupCaps(virNodeDevCapPCIDevPtr pci_dev)
 {
     size_t i;
-    int tmpGroup, ret = -1;
+    int tmpGroup;
     virPCIDeviceAddress addr;
 
     /* this could be a refresh, so clear out the old data */
@@ -2558,23 +2536,19 @@ virNodeDeviceGetPCIIOMMUGroupCaps(virNodeDevCapPCIDevPtr pci_dev)
     tmpGroup = virPCIDeviceAddressGetIOMMUGroupNum(&addr);
     if (tmpGroup == -1) {
         /* error was already reported */
-        goto cleanup;
+        return -1;
     }
-    if (tmpGroup == -2) {
+    if (tmpGroup == -2)
         /* -2 return means there is no iommu_group data */
-        ret = 0;
-        goto cleanup;
-    }
+        return 0;
     if (tmpGroup >= 0) {
         if (virPCIDeviceAddressGetIOMMUGroupAddresses(&addr, &pci_dev->iommuGroupDevices,
                                                       &pci_dev->nIommuGroupDevices) < 0)
-            goto cleanup;
+            return -1;
         pci_dev->iommuGroupNumber = tmpGroup;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -2598,7 +2572,7 @@ virNodeDeviceGetPCIMdevTypesCaps(const char *sysfspath,
     if (rc <= 0)
         return rc;
 
-    VIR_STEAL_PTR(pci_dev->mdev_types, types);
+    pci_dev->mdev_types = g_steal_pointer(&types);
     pci_dev->nmdev_types = rc;
     pci_dev->flags |= VIR_NODE_DEV_CAP_FLAG_PCI_MDEV;
 
@@ -2626,21 +2600,21 @@ virNodeDeviceGetPCIDynamicCaps(const char *sysfsPath,
 #else
 
 int
-virNodeDeviceGetSCSIHostCaps(virNodeDevCapSCSIHostPtr scsi_host ATTRIBUTE_UNUSED)
+virNodeDeviceGetSCSIHostCaps(virNodeDevCapSCSIHostPtr scsi_host G_GNUC_UNUSED)
 {
     return -1;
 }
 
 int
-virNodeDeviceGetPCIDynamicCaps(const char *sysfsPath ATTRIBUTE_UNUSED,
-                               virNodeDevCapPCIDevPtr pci_dev ATTRIBUTE_UNUSED)
+virNodeDeviceGetPCIDynamicCaps(const char *sysfsPath G_GNUC_UNUSED,
+                               virNodeDevCapPCIDevPtr pci_dev G_GNUC_UNUSED)
 {
     return -1;
 }
 
 
-int virNodeDeviceGetSCSITargetCaps(const char *sysfsPath ATTRIBUTE_UNUSED,
-                                   virNodeDevCapSCSITargetPtr scsi_target ATTRIBUTE_UNUSED)
+int virNodeDeviceGetSCSITargetCaps(const char *sysfsPath G_GNUC_UNUSED,
+                                   virNodeDevCapSCSITargetPtr scsi_target G_GNUC_UNUSED)
 {
     return -1;
 }

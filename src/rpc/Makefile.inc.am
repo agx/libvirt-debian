@@ -3,7 +3,6 @@
 EXTRA_DIST += \
 	rpc/gendispatch.pl \
 	rpc/genprotocol.pl \
-	rpc/gensystemtap.pl \
 	rpc/virnetprotocol.x \
 	rpc/virkeepaliveprotocol.x \
 	$(NULL)
@@ -16,7 +15,7 @@ VIR_NET_RPC_GENERATED = \
 	$(NULL)
 
 BUILT_SOURCES += $(VIR_NET_RPC_GENERATED)
-MAINTAINERCLEANFILES += $(VIR_NET_RPC_GENERATED)
+CLEANFILES += $(VIR_NET_RPC_GENERATED)
 
 noinst_LTLIBRARIES += \
 	libvirt-net-rpc.la \
@@ -39,6 +38,9 @@ libvirt_net_rpc_la_SOURCES = \
 	rpc/virnetsocket.c \
 	rpc/virkeepalive.h \
 	rpc/virkeepalive.c \
+	$(NULL)
+
+nodist_libvirt_net_rpc_la_SOURCES = \
 	$(VIR_NET_RPC_GENERATED) \
 	$(NULL)
 
@@ -79,6 +81,7 @@ EXTRA_DIST += \
 endif ! WITH_LIBSSH
 
 libvirt_net_rpc_la_CFLAGS = \
+	-I$(builddir)/rpc \
 	$(GNUTLS_CFLAGS) \
 	$(SASL_CFLAGS) \
 	$(SSH2_CFLAGS) \
@@ -109,6 +112,7 @@ libvirt_net_rpc_server_la_SOURCES = \
 	rpc/virnetserver.c \
 	$(NULL)
 libvirt_net_rpc_server_la_CFLAGS = \
+	-I$(builddir)/rpc \
 	$(DBUS_CFLAGS) \
 	$(XDR_CFLAGS) \
 	$(SASL_CFLAGS) \
@@ -129,6 +133,7 @@ libvirt_net_rpc_client_la_SOURCES = \
 	rpc/virnetclient.c \
 	$(NULL)
 libvirt_net_rpc_client_la_CFLAGS = \
+	-I$(builddir)/rpc \
 	$(AM_CFLAGS) \
 	$(XDR_CFLAGS) \
 	$(NULL)

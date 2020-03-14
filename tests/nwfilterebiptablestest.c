@@ -66,7 +66,7 @@
     "ebtables -t nat -X libvirt-P-vnet0\n"
 
 static int
-testNWFilterEBIPTablesAllTeardown(const void *opaque ATTRIBUTE_UNUSED)
+testNWFilterEBIPTablesAllTeardown(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     const char *expected =
@@ -109,9 +109,6 @@ testNWFilterEBIPTablesAllTeardown(const void *opaque ATTRIBUTE_UNUSED)
     if (ebiptables_driver.allTeardown("vnet0") < 0)
         goto cleanup;
 
-    if (virBufferError(&buf))
-        goto cleanup;
-
     actual = virBufferContentAndReset(&buf);
     virTestClearCommandPath(actual);
 
@@ -130,7 +127,7 @@ testNWFilterEBIPTablesAllTeardown(const void *opaque ATTRIBUTE_UNUSED)
 
 
 static int
-testNWFilterEBIPTablesTearOldRules(const void *opaque ATTRIBUTE_UNUSED)
+testNWFilterEBIPTablesTearOldRules(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     const char *expected =
@@ -180,9 +177,6 @@ testNWFilterEBIPTablesTearOldRules(const void *opaque ATTRIBUTE_UNUSED)
     if (ebiptables_driver.tearOldRules("vnet0") < 0)
         goto cleanup;
 
-    if (virBufferError(&buf))
-        goto cleanup;
-
     actual = virBufferContentAndReset(&buf);
     virTestClearCommandPath(actual);
 
@@ -201,7 +195,7 @@ testNWFilterEBIPTablesTearOldRules(const void *opaque ATTRIBUTE_UNUSED)
 
 
 static int
-testNWFilterEBIPTablesRemoveBasicRules(const void *opaque ATTRIBUTE_UNUSED)
+testNWFilterEBIPTablesRemoveBasicRules(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     const char *expected =
@@ -229,9 +223,6 @@ testNWFilterEBIPTablesRemoveBasicRules(const void *opaque ATTRIBUTE_UNUSED)
     if (ebiptables_driver.removeBasicRules("vnet0") < 0)
         goto cleanup;
 
-    if (virBufferError(&buf))
-        goto cleanup;
-
     actual = virBufferContentAndReset(&buf);
     virTestClearCommandPath(actual);
 
@@ -250,7 +241,7 @@ testNWFilterEBIPTablesRemoveBasicRules(const void *opaque ATTRIBUTE_UNUSED)
 
 
 static int
-testNWFilterEBIPTablesTearNewRules(const void *opaque ATTRIBUTE_UNUSED)
+testNWFilterEBIPTablesTearNewRules(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     const char *expected =
@@ -263,9 +254,6 @@ testNWFilterEBIPTablesTearNewRules(const void *opaque ATTRIBUTE_UNUSED)
     if (ebiptables_driver.tearNewRules("vnet0") < 0)
         goto cleanup;
 
-    if (virBufferError(&buf))
-        goto cleanup;
-
     actual = virBufferContentAndReset(&buf);
     virTestClearCommandPath(actual);
 
@@ -284,7 +272,7 @@ testNWFilterEBIPTablesTearNewRules(const void *opaque ATTRIBUTE_UNUSED)
 
 
 static int
-testNWFilterEBIPTablesApplyBasicRules(const void *opaque ATTRIBUTE_UNUSED)
+testNWFilterEBIPTablesApplyBasicRules(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     const char *expected =
@@ -335,9 +323,6 @@ testNWFilterEBIPTablesApplyBasicRules(const void *opaque ATTRIBUTE_UNUSED)
     if (ebiptables_driver.applyBasicRules("vnet0", &mac) < 0)
         goto cleanup;
 
-    if (virBufferError(&buf))
-        goto cleanup;
-
     actual = virBufferContentAndReset(&buf);
     virTestClearCommandPath(actual);
 
@@ -356,7 +341,7 @@ testNWFilterEBIPTablesApplyBasicRules(const void *opaque ATTRIBUTE_UNUSED)
 
 
 static int
-testNWFilterEBIPTablesApplyDHCPOnlyRules(const void *opaque ATTRIBUTE_UNUSED)
+testNWFilterEBIPTablesApplyDHCPOnlyRules(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     const char *expected =
@@ -425,9 +410,6 @@ testNWFilterEBIPTablesApplyDHCPOnlyRules(const void *opaque ATTRIBUTE_UNUSED)
     if (ebiptables_driver.applyDHCPOnlyRules("vnet0", &mac, &val, false) < 0)
         goto cleanup;
 
-    if (virBufferError(&buf))
-        goto cleanup;
-
     actual = virBufferContentAndReset(&buf);
     virTestClearCommandPath(actual);
 
@@ -447,7 +429,7 @@ testNWFilterEBIPTablesApplyDHCPOnlyRules(const void *opaque ATTRIBUTE_UNUSED)
 
 
 static int
-testNWFilterEBIPTablesApplyDropAllRules(const void *opaque ATTRIBUTE_UNUSED)
+testNWFilterEBIPTablesApplyDropAllRules(const void *opaque G_GNUC_UNUSED)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
     const char *expected =
@@ -498,9 +480,6 @@ testNWFilterEBIPTablesApplyDropAllRules(const void *opaque ATTRIBUTE_UNUSED)
     if (ebiptables_driver.applyDropAllRules("vnet0") < 0)
         goto cleanup;
 
-    if (virBufferError(&buf))
-        goto cleanup;
-
     actual = virBufferContentAndReset(&buf);
     virTestClearCommandPath(actual);
 
@@ -539,8 +518,7 @@ mymain(void)
             return EXIT_AM_SKIP;
         }
 
-        ret = -1;
-        goto cleanup;
+        return EXIT_FAILURE;
     }
 
     if (virTestRun("ebiptablesAllTeardown",
@@ -578,7 +556,6 @@ mymain(void)
                    NULL) < 0)
         ret = -1;
 
- cleanup:
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

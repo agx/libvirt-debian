@@ -31,9 +31,9 @@
 static const virArch archs[] = { VIR_ARCH_S390, VIR_ARCH_S390X };
 
 static virCPUCompareResult
-virCPUs390Compare(virCPUDefPtr host ATTRIBUTE_UNUSED,
-                  virCPUDefPtr cpu ATTRIBUTE_UNUSED,
-                  bool failMessages ATTRIBUTE_UNUSED)
+virCPUs390Compare(virCPUDefPtr host G_GNUC_UNUSED,
+                  virCPUDefPtr cpu G_GNUC_UNUSED,
+                  bool failMessages G_GNUC_UNUSED)
 {
     /* s390 relies on QEMU to perform all runability checking. Return
      * VIR_CPU_COMPARE_IDENTICAL to bypass Libvirt checking.
@@ -49,15 +49,15 @@ virCPUs390Update(virCPUDefPtr guest,
     int ret = -1;
     size_t i;
 
-    if (guest->match == VIR_CPU_MATCH_MINIMUM) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                       _("match mode %s not supported"),
-                       virCPUMatchTypeToString(guest->match));
-        goto cleanup;
-    }
-
-    if (guest->mode != VIR_CPU_MODE_HOST_MODEL) {
-        ret = 0;
+    if (guest->mode == VIR_CPU_MODE_CUSTOM) {
+        if (guest->match == VIR_CPU_MATCH_MINIMUM) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("match mode %s not supported"),
+                           virCPUMatchTypeToString(guest->match));
+        } else {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("optional CPU features are not supported"));
+        }
         goto cleanup;
     }
 
@@ -114,7 +114,7 @@ virCPUs390ValidateFeatures(virCPUDefPtr cpu)
 struct cpuArchDriver cpuDriverS390 = {
     .name = "s390",
     .arch = archs,
-    .narch = ARRAY_CARDINALITY(archs),
+    .narch = G_N_ELEMENTS(archs),
     .compare    = virCPUs390Compare,
     .decode     = NULL,
     .encode     = NULL,

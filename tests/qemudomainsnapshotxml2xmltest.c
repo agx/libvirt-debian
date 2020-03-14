@@ -38,7 +38,7 @@ testCompareXMLToXMLFiles(const char *inxml,
     unsigned int parseflags = VIR_DOMAIN_SNAPSHOT_PARSE_DISKS;
     unsigned int formatflags = VIR_DOMAIN_SNAPSHOT_FORMAT_SECURE;
     bool cur = false;
-    VIR_AUTOUNREF(virDomainSnapshotDefPtr) def = NULL;
+    g_autoptr(virDomainSnapshotDef) def = NULL;
 
     if (flags & TEST_INTERNAL) {
         parseflags |= VIR_DOMAIN_SNAPSHOT_PARSE_INTERNAL;
@@ -54,8 +54,8 @@ testCompareXMLToXMLFiles(const char *inxml,
     if (virTestLoadFile(outxml, &outXmlData) < 0)
         goto cleanup;
 
-    if (!(def = virDomainSnapshotDefParseString(inXmlData, driver.caps,
-                                                driver.xmlopt, &cur,
+    if (!(def = virDomainSnapshotDefParseString(inXmlData,
+                                                driver.xmlopt, NULL, &cur,
                                                 parseflags)))
         goto cleanup;
     if (cur) {
@@ -69,7 +69,7 @@ testCompareXMLToXMLFiles(const char *inxml,
         def->state = VIR_DOMAIN_RUNNING;
     }
 
-    if (!(actual = virDomainSnapshotDefFormat(uuid, def, driver.caps,
+    if (!(actual = virDomainSnapshotDefFormat(uuid, def,
                                               driver.xmlopt,
                                               formatflags)))
         goto cleanup;
@@ -105,9 +105,8 @@ testSnapshotPostParse(virDomainMomentDefPtr def)
     if (def->creationTime)
         return -1;
     def->creationTime = mocktime;
-    if (!def->name &&
-        virAsprintf(&def->name, "%lld", def->creationTime) < 0)
-        return -1;
+    if (!def->name)
+        def->name = g_strdup_printf("%lld", def->creationTime);
     return 0;
 }
 
@@ -161,7 +160,7 @@ mymain(void)
     /* Unset or set all envvars here that are copied in qemudBuildCommandLine
      * using ADD_ENV_COPY, otherwise these tests may fail due to unexpected
      * values for these envvars */
-    setenv("PATH", "/bin", 1);
+    g_setenv("PATH", "/bin", TRUE);
 
     DO_TEST_OUT("all_parameters", "9d37b878-a7cc-9f9a-b78f-49b3abad25a8",
                 TEST_INTERNAL);

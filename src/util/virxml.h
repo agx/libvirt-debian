@@ -28,7 +28,9 @@
 #include <libxml/relaxng.h>
 
 #include "virbuffer.h"
-#include "virautoclean.h"
+
+xmlXPathContextPtr virXMLXPathContextNew(xmlDocPtr xml)
+    G_GNUC_WARN_UNUSED_RESULT;
 
 int              virXPathBoolean(const char *xpath,
                                  xmlXPathContextPtr ctxt);
@@ -213,12 +215,11 @@ virXMLValidateAgainstSchema(const char *schemafile,
 void
 virXMLValidatorFree(virXMLValidatorPtr validator);
 
-int
+void
 virXMLFormatElement(virBufferPtr buf,
                     const char *name,
                     virBufferPtr attrBuf,
-                    virBufferPtr childBuf)
-    ATTRIBUTE_RETURN_CHECK;
+                    virBufferPtr childBuf);
 
 struct _virXPathContextNodeSave {
     xmlXPathContextPtr ctxt;
@@ -230,7 +231,7 @@ typedef virXPathContextNodeSave *virXPathContextNodeSavePtr;
 void
 virXPathContextNodeRestore(virXPathContextNodeSavePtr save);
 
-VIR_DEFINE_AUTOCLEAN_FUNC(virXPathContextNodeSave, virXPathContextNodeRestore);
+G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(virXPathContextNodeSave, virXPathContextNodeRestore);
 
 /**
  * VIR_XPATH_NODE_AUTORESTORE:
@@ -240,9 +241,31 @@ VIR_DEFINE_AUTOCLEAN_FUNC(virXPathContextNodeSave, virXPathContextNodeRestore);
  * node pointer is reset to the original value when this macro was used.
  */
 #define VIR_XPATH_NODE_AUTORESTORE(_ctxt) \
-    VIR_AUTOCLEAN(virXPathContextNodeSave) _ctxt ## CtxtSave = { .ctxt = _ctxt,\
-                                                                 .node = _ctxt->node}; \
+    g_auto(virXPathContextNodeSave) _ctxt ## CtxtSave = { .ctxt = _ctxt,\
+                                                          .node = _ctxt->node}; \
     ignore_value(&_ctxt ## CtxtSave)
 
-VIR_DEFINE_AUTOPTR_FUNC(xmlDoc, xmlFreeDoc);
-VIR_DEFINE_AUTOPTR_FUNC(xmlXPathContext, xmlXPathFreeContext);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(xmlDoc, xmlFreeDoc);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(xmlXPathContext, xmlXPathFreeContext);
+
+typedef int (*virXMLNamespaceParse)(xmlXPathContextPtr ctxt, void **nsdata);
+typedef void (*virXMLNamespaceFree)(void *nsdata);
+typedef int (*virXMLNamespaceFormat)(virBufferPtr buf, void *nsdata);
+typedef const char *(*virXMLNamespaceHref)(void);
+
+struct _virXMLNamespace {
+    virXMLNamespaceParse parse;
+    virXMLNamespaceFree free;
+    virXMLNamespaceFormat format;
+    const char *prefix;
+    const char *uri;
+};
+typedef struct _virXMLNamespace virXMLNamespace;
+typedef virXMLNamespace *virXMLNamespacePtr;
+
+void
+virXMLNamespaceFormatNS(virBufferPtr buf,
+                        virXMLNamespace const *ns);
+int
+virXMLNamespaceRegister(xmlXPathContextPtr ctxt,
+                        virXMLNamespace const *ns);

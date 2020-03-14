@@ -26,8 +26,6 @@
 #include "virbitmap.h"
 #include "viralloc.h"
 #include "virbuffer.h"
-#include "c-ctype.h"
-#include "count-one-bits.h"
 #include "virstring.h"
 #include "virutil.h"
 #include "virerror.h"
@@ -370,7 +368,6 @@ virBitmapToString(virBitmapPtr bitmap,
                           bitmap->map[sz]);
     }
 
-    virBufferCheckError(&buf);
     ret = virBufferContentAndReset(&buf);
     if (!ret)
         return NULL;
@@ -419,7 +416,7 @@ virBitmapFormat(virBitmapPtr bitmap)
 
     if (!bitmap || (cur = virBitmapNextSetBit(bitmap, -1)) < 0) {
         char *ret;
-        ignore_value(VIR_STRDUP(ret, ""));
+        ret = g_strdup("");
         return ret;
     }
 
@@ -445,12 +442,6 @@ virBitmapFormat(virBitmapPtr bitmap)
             virBufferAsprintf(&buf, "%d-%d", start, prev);
 
         start = prev = cur;
-    }
-
-    if (virBufferError(&buf)) {
-        virBufferFreeAndReset(&buf);
-        virReportOOMError();
-        return NULL;
     }
 
     return virBufferContentAndReset(&buf);
@@ -514,7 +505,7 @@ virBitmapParseSeparator(const char *str,
             neg = true;
         }
 
-        if (!c_isdigit(*cur))
+        if (!g_ascii_isdigit(*cur))
             goto error;
 
         if (virStrToLong_i(cur, &tmp, 10, &start) < 0)
@@ -650,7 +641,7 @@ virBitmapParseUnlimited(const char *str)
             neg = true;
         }
 
-        if (!c_isdigit(*cur))
+        if (!g_ascii_isdigit(*cur))
             goto error;
 
         if (virStrToLong_i(cur, &tmp, 10, &start) < 0)
@@ -1028,7 +1019,7 @@ virBitmapNextSetBit(virBitmapPtr bitmap,
     if (bits == 0)
         return -1;
 
-    return ffsl(bits) - 1 + nl * VIR_BITMAP_BITS_PER_UNIT;
+    return __builtin_ffsl(bits) - 1 + nl * VIR_BITMAP_BITS_PER_UNIT;
 }
 
 
@@ -1127,7 +1118,7 @@ virBitmapNextClearBit(virBitmapPtr bitmap,
     if (bits == 0)
         return -1;
 
-    return ffsl(bits) - 1 + nl * VIR_BITMAP_BITS_PER_UNIT;
+    return __builtin_ffsl(bits) - 1 + nl * VIR_BITMAP_BITS_PER_UNIT;
 }
 
 
@@ -1144,7 +1135,7 @@ virBitmapCountBits(virBitmapPtr bitmap)
     size_t ret = 0;
 
     for (i = 0; i < bitmap->map_len; i++)
-        ret += count_one_bits_l(bitmap->map[i]);
+        ret += __builtin_popcountl(bitmap->map[i]);
 
     return ret;
 }
@@ -1200,7 +1191,7 @@ char *
 virBitmapDataFormat(const void *data,
                     int len)
 {
-    VIR_AUTOPTR(virBitmap) map = NULL;
+    g_autoptr(virBitmap) map = NULL;
 
     if (!(map = virBitmapNewData(data, len)))
         return NULL;

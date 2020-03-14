@@ -21,7 +21,6 @@
 #pragma once
 
 #include "internal.h"
-#include "virautoclean.h"
 
 #define VIR_MAC_BUFLEN 6
 #define VIR_MAC_HEXLEN (VIR_MAC_BUFLEN * 2)
@@ -52,15 +51,15 @@ void virMacAddrGetRaw(const virMacAddr *src, unsigned char dst[VIR_MAC_BUFLEN]);
 const char *virMacAddrFormat(const virMacAddr *addr,
                              char *str);
 void virMacAddrGenerate(const unsigned char prefix[VIR_MAC_PREFIX_BUFLEN],
-                        virMacAddrPtr addr) ATTRIBUTE_NOINLINE;
+                        virMacAddrPtr addr) G_GNUC_NO_INLINE;
 int virMacAddrParse(const char* str,
-                    virMacAddrPtr addr) ATTRIBUTE_RETURN_CHECK;
+                    virMacAddrPtr addr) G_GNUC_WARN_UNUSED_RESULT;
 int virMacAddrParseHex(const char* str,
                        virMacAddrPtr addr)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 bool virMacAddrIsUnicast(const virMacAddr *addr);
 bool virMacAddrIsMulticast(const virMacAddr *addr);
 bool virMacAddrIsBroadcastRaw(const unsigned char s[VIR_MAC_BUFLEN]);
 void virMacAddrFree(virMacAddrPtr addr);
 
-VIR_DEFINE_AUTOPTR_FUNC(virMacAddr, virMacAddrFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virMacAddr, virMacAddrFree);

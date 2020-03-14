@@ -63,13 +63,13 @@ virStorageBackendISCSIPortal(virStoragePoolSourcePtr source)
         source->hosts[0].port = ISCSI_DEFAULT_TARGET_PORT;
 
     if (strchr(source->hosts[0].name, ':')) {
-        ignore_value(virAsprintf(&portal, "[%s]:%d,1",
+        portal = g_strdup_printf("[%s]:%d,1",
                                  source->hosts[0].name,
-                                 source->hosts[0].port));
+                                 source->hosts[0].port);
     } else {
-        ignore_value(virAsprintf(&portal, "%s:%d,1",
+        portal = g_strdup_printf("%s:%d,1",
                                  source->hosts[0].name,
-                                 source->hosts[0].port));
+                                 source->hosts[0].port);
     }
 
     return portal;
@@ -131,11 +131,10 @@ virStorageBackendISCSIFindLUs(virStoragePoolObjPtr pool,
                               const char *session)
 {
     uint32_t host;
-    VIR_AUTOFREE(char *) sysfs_path = NULL;
+    g_autofree char *sysfs_path = NULL;
 
-    if (virAsprintf(&sysfs_path,
-                    "/sys/class/iscsi_session/session%s/device", session) < 0)
-        return -1;
+    sysfs_path = g_strdup_printf("/sys/class/iscsi_session/session%s/device",
+                                 session);
 
     if (virStorageBackendISCSIGetHostNumber(sysfs_path, &host) < 0)
         return -1;
@@ -160,8 +159,8 @@ virStorageBackendISCSIFindPoolSources(const char *srcSpec,
         .nsources = 0,
         .sources = NULL
     };
-    VIR_AUTOFREE(char *) portal = NULL;
-    VIR_AUTOPTR(virStoragePoolSource) source = NULL;
+    g_autofree char *portal = NULL;
+    g_autoptr(virStoragePoolSource) source = NULL;
 
     virCheckFlags(0, NULL);
 
@@ -227,8 +226,7 @@ virStorageBackendISCSICheckPool(virStoragePoolObjPtr pool,
                                 bool *isActive)
 {
     virStoragePoolDefPtr def = virStoragePoolObjGetDef(pool);
-    int ret = -1;
-    VIR_AUTOFREE(char *) session = NULL;
+    g_autofree char *session = NULL;
 
     *isActive = false;
 
@@ -253,9 +251,7 @@ virStorageBackendISCSICheckPool(virStoragePoolObjPtr pool,
 
     if ((session = virStorageBackendISCSISession(pool, true)))
         *isActive = true;
-    ret = 0;
-
-    return ret;
+    return 0;
 }
 
 
@@ -320,8 +316,8 @@ static int
 virStorageBackendISCSIStartPool(virStoragePoolObjPtr pool)
 {
     virStoragePoolDefPtr def = virStoragePoolObjGetDef(pool);
-    VIR_AUTOFREE(char *) portal = NULL;
-    VIR_AUTOFREE(char *) session = NULL;
+    g_autofree char *portal = NULL;
+    g_autofree char *session = NULL;
 
     if (def->source.nhost != 1) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
@@ -366,7 +362,7 @@ static int
 virStorageBackendISCSIRefreshPool(virStoragePoolObjPtr pool)
 {
     virStoragePoolDefPtr def = virStoragePoolObjGetDef(pool);
-    VIR_AUTOFREE(char *) session = NULL;
+    g_autofree char *session = NULL;
 
     def->allocation = def->capacity = def->available = 0;
 
@@ -385,8 +381,8 @@ static int
 virStorageBackendISCSIStopPool(virStoragePoolObjPtr pool)
 {
     virStoragePoolDefPtr def = virStoragePoolObjGetDef(pool);
-    VIR_AUTOFREE(char *) portal = NULL;
-    VIR_AUTOFREE(char *) session = NULL;
+    g_autofree char *portal = NULL;
+    g_autofree char *session = NULL;
 
     if ((session = virStorageBackendISCSISession(pool, true)) == NULL)
         return 0;

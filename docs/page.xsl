@@ -7,6 +7,8 @@
   exclude-result-prefixes="xsl exsl html"
   version="1.0">
 
+  <xsl:param name="builddir" select="'..'"/>
+
   <xsl:template match="node() | @*" mode="content">
     <xsl:copy>
       <xsl:apply-templates select="node() | @*" mode="content"/>
@@ -95,9 +97,9 @@
         <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"/>
         <link rel="manifest" href="/manifest.json"/>
         <meta name="theme-color" content="#ffffff"/>
-        <title>libvirt: <xsl:value-of select="html:html/html:body/html:h1"/></title>
+        <title>libvirt: <xsl:value-of select="html:html/html:body//html:h1"/></title>
         <meta name="description" content="libvirt, virtualization, virtualization API"/>
-        <xsl:apply-templates select="/html:html/html:head/*" mode="content"/>
+        <xsl:apply-templates select="/html:html/html:head/html:script" mode="content"/>
 
         <script type="text/javascript" src="{$href_base}js/main.js">
           <xsl:comment>// forces non-empty element</xsl:comment>
@@ -168,17 +170,20 @@
 
   <xsl:template name="include">
     <xsl:variable name="inchtml">
-      <xsl:copy-of select="document(@filename)"/>
+      <xsl:copy-of select="document(concat($builddir, '/docs/', @filename))"/>
     </xsl:variable>
 
     <xsl:apply-templates select="exsl:node-set($inchtml)/html:html/html:body/*" mode="content"/>
   </xsl:template>
 
-  <xsl:template match="html:h2 | html:h3 | html:h4 | html:h5 | html:h6" mode="content">
+  <xsl:template match="html:h1 | html:h2 | html:h3 | html:h4 | html:h5 | html:h6" mode="content">
     <xsl:element name="{name()}">
       <xsl:apply-templates mode="copy" />
       <xsl:if test="./html:a/@id">
         <a class="headerlink" href="#{html:a/@id}" title="Permalink to this headline">&#xb6;</a>
+      </xsl:if>
+      <xsl:if test="./html:a[@class='toc-backref']">
+        <a class="headerlink" href="#{../@id}" title="Permalink to this headline">&#xb6;</a>
       </xsl:if>
     </xsl:element>
   </xsl:template>

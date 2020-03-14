@@ -54,7 +54,7 @@ static int auditfd = -1;
 #endif
 static bool auditlog;
 
-int virAuditOpen(unsigned int audit_level ATTRIBUTE_UNUSED)
+int virAuditOpen(unsigned int audit_level G_GNUC_UNUSED)
 {
 #if WITH_AUDIT
     if ((auditfd = audit_open()) < 0) {
@@ -91,12 +91,12 @@ void virAuditSend(virLogSourcePtr source,
                   const char *filename,
                   size_t linenr,
                   const char *funcname,
-                  const char *clienttty ATTRIBUTE_UNUSED,
-                  const char *clientaddr ATTRIBUTE_UNUSED,
-                  virAuditRecordType type ATTRIBUTE_UNUSED, bool success,
+                  const char *clienttty G_GNUC_UNUSED,
+                  const char *clientaddr G_GNUC_UNUSED,
+                  virAuditRecordType type G_GNUC_UNUSED, bool success,
                   const char *fmt, ...)
 {
-    VIR_AUTOFREE(char *) str = NULL;
+    g_autofree char *str = NULL;
     va_list args;
 
     /* Duplicate later checks, to short circuit & avoid printf overhead
@@ -110,8 +110,7 @@ void virAuditSend(virLogSourcePtr source,
 #endif
 
     va_start(args, fmt);
-    if (virVasprintf(&str, fmt, args) < 0)
-        VIR_WARN("Out of memory while formatting audit message");
+    str = g_strdup_vprintf(fmt, args);
     va_end(args);
 
     if (auditlog && str) {
@@ -133,7 +132,7 @@ void virAuditSend(virLogSourcePtr source,
             [VIR_AUDIT_RECORD_RESOURCE] = AUDIT_VIRT_RESOURCE,
         };
 
-        if (type >= ARRAY_CARDINALITY(record_types) || record_types[type] == 0)
+        if (type >= G_N_ELEMENTS(record_types) || record_types[type] == 0)
             VIR_WARN("Unknown audit record type %d", type);
         else if (audit_log_user_message(auditfd, record_types[type], str, NULL,
                                         clientaddr, clienttty, success) < 0) {
@@ -158,8 +157,7 @@ char *virAuditEncode(const char *key, const char *value)
     return audit_encode_nv_string(key, value, 0);
 #else
     char *str;
-    if (virAsprintf(&str, "%s=%s", key, value) < 0)
-        return NULL;
+    str = g_strdup_printf("%s=%s", key, value);
     return str;
 #endif
 }

@@ -100,7 +100,7 @@ static char *
 virFileCacheGetFileName(virFileCachePtr cache,
                         const char *name)
 {
-    VIR_AUTOFREE(char *) namehash = NULL;
+    g_autofree char *namehash = NULL;
     virBuffer buf = VIR_BUFFER_INITIALIZER;
 
     if (virCryptoHashString(VIR_CRYPTO_HASH_SHA256, name, &namehash) < 0)
@@ -118,9 +118,6 @@ virFileCacheGetFileName(virFileCachePtr cache,
     if (cache->suffix)
         virBufferAsprintf(&buf, ".%s", cache->suffix);
 
-    if (virBufferCheckError(&buf) < 0)
-        return NULL;
-
     return virBufferContentAndReset(&buf);
 }
 
@@ -130,7 +127,7 @@ virFileCacheLoad(virFileCachePtr cache,
                  const char *name,
                  void **data)
 {
-    VIR_AUTOFREE(char *) file = NULL;
+    g_autofree char *file = NULL;
     int ret = -1;
     void *loadData = NULL;
 
@@ -169,7 +166,7 @@ virFileCacheLoad(virFileCachePtr cache,
     VIR_DEBUG("Loaded cached data '%s' for '%s'", file, name);
 
     ret = 1;
-    VIR_STEAL_PTR(*data, loadData);
+    *data = g_steal_pointer(&loadData);
 
  cleanup:
     virObjectUnref(loadData);
@@ -182,7 +179,7 @@ virFileCacheSave(virFileCachePtr cache,
                  const char *name,
                  void *data)
 {
-    VIR_AUTOFREE(char *) file = NULL;
+    g_autofree char *file = NULL;
 
     if (!(file = virFileCacheGetFileName(cache, name)))
         return -1;
@@ -245,11 +242,9 @@ virFileCacheNew(const char *dir,
     if (!(cache->table = virHashCreate(10, virObjectFreeHashData)))
         goto cleanup;
 
-    if (VIR_STRDUP(cache->dir, dir) < 0)
-        goto cleanup;
+    cache->dir = g_strdup(dir);
 
-    if (VIR_STRDUP(cache->suffix, suffix) < 0)
-        goto cleanup;
+    cache->suffix = g_strdup(suffix);
 
     cache->handlers = *handlers;
 
@@ -335,7 +330,7 @@ virFileCacheLookupByFunc(virFileCachePtr cache,
                          const void *iterData)
 {
     void *data = NULL;
-    VIR_AUTOFREE(char *) name = NULL;
+    g_autofree char *name = NULL;
 
     virObjectLock(cache);
 

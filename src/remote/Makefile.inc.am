@@ -15,16 +15,15 @@ REMOTE_DRIVER_GENERATED = \
 REMOTE_DRIVER_SOURCES = \
 	remote/remote_driver.c \
 	remote/remote_driver.h \
-	$(REMOTE_DRIVER_GENERATED) \
 	$(NULL)
 
-LIBVIRTD_GENERATED = \
+REMOTE_DAEMON_GENERATED = \
 	remote/remote_daemon_dispatch_stubs.h \
-	remote/remote_daemon_dispatch_lxc_stubs.h \
-	remote/remote_daemon_dispatch_qemu_stubs.h \
+	remote/lxc_daemon_dispatch_stubs.h \
+	remote/qemu_daemon_dispatch_stubs.h \
 	$(NULL)
 
-LIBVIRTD_SOURCES = \
+REMOTE_DAEMON_SOURCES = \
 	remote/remote_daemon.c \
 	remote/remote_daemon.h \
 	remote/remote_daemon_config.c \
@@ -33,9 +32,55 @@ LIBVIRTD_SOURCES = \
 	remote/remote_daemon_dispatch.h \
 	remote/remote_daemon_stream.c \
 	remote/remote_daemon_stream.h \
-	$(LIBVIRTD_GENERATED) \
 	$(NULL)
 
+REMOTE_DAEMON_CFLAGS = \
+	$(LIBXML_CFLAGS) \
+	$(GLIB_CFLAGS) \
+	$(GNUTLS_CFLAGS) \
+	$(SASL_CFLAGS) \
+	$(XDR_CFLAGS) \
+	$(DBUS_CFLAGS) \
+	$(LIBNL_CFLAGS) \
+	$(WARN_CFLAGS) \
+	$(PIE_CFLAGS) \
+	$(COVERAGE_CFLAGS) \
+	-I$(srcdir)/access \
+	-I$(builddir)/access \
+	-I$(srcdir)/conf \
+	-I$(srcdir)/rpc \
+	-I$(builddir)/rpc \
+	-I$(builddir)/remote \
+	$(NULL)
+
+REMOTE_DAEMON_LD_FLAGS = \
+	$(RELRO_LDFLAGS) \
+	$(PIE_LDFLAGS) \
+	$(NO_INDIRECT_LDFLAGS) \
+	$(NO_UNDEFINED_LDFLAGS) \
+	$(COVERAGE_LDFLAGS) \
+	$(NULL)
+
+REMOTE_DAEMON_LD_ADD = \
+	libvirt_driver_admin.la \
+	libvirt-lxc.la \
+	libvirt-qemu.la \
+	libvirt.la \
+	$(LIBXML_LIBS) \
+	$(GNUTLS_LIBS) \
+	$(SASL_LIBS) \
+	$(DBUS_LIBS) \
+	$(LIBNL_LIBS) \
+	$(NULL)
+
+if WITH_DTRACE_PROBES
+REMOTE_DAEMON_LD_ADD += ../src/libvirt_probes.lo
+endif WITH_DTRACE_PROBES
+
+REMOTE_DAEMON_LD_ADD += \
+	$(GLIB_LIBS) \
+	../gnulib/lib/libgnu.la \
+	$(NULL)
 
 LOGROTATE_FILES_IN += \
 	remote/libvirtd.qemu.logrotate.in \
@@ -46,17 +91,52 @@ LOGROTATE_FILES_IN += \
 
 SYSCONF_FILES += remote/libvirtd.sysconf
 
-PODFILES += remote/libvirtd.pod
-MANINFILES += libvirtd.8.in
-
-SYSTEMD_UNIT_FILES_IN += \
-	remote/libvirtd.service.in \
+LIBVIRTD_SOCKET_UNIT_FILES_IN = \
 	remote/libvirtd.socket.in \
 	remote/libvirtd-ro.socket.in \
 	remote/libvirtd-admin.socket.in \
 	remote/libvirtd-tcp.socket.in \
 	remote/libvirtd-tls.socket.in \
+	$(NULL)
+
+LIBVIRTD_SOCKET_UNIT_FILES = $(notdir $(LIBVIRTD_SOCKET_UNIT_FILES_IN:%.in=%))
+
+LIBVIRTD_UNIT_FILES_IN = \
+	remote/libvirtd.service.in \
+	$(LIBVIRTD_SOCKET_UNIT_FILES_IN) \
+	$(NULL)
+
+VIRTPROXYD_UNIT_FILES_IN = \
+	remote/virtproxyd.service.in \
+	$(NULL)
+
+GUEST_UNIT_FILES_IN = \
 	remote/virt-guest-shutdown.target.in \
+	$(NULL)
+
+
+SYSTEMD_UNIT_FILES += \
+	$(notdir $(LIBVIRTD_UNIT_FILES_IN:%.in=%)) \
+	$(notdir $(LIBVIRTD_UNIT_FILES_IN:remote/libvirtd%.in=remote/virtproxyd%)) \
+	$(notdir $(GUEST_UNIT_FILES_IN:%.in=%)) \
+	$(NULL)
+SYSTEMD_UNIT_FILES_IN += \
+	$(LIBVIRTD_UNIT_FILES_IN) \
+	$(VIRTPROXYD_UNIT_FILES_IN) \
+	$(GUEST_UNIT_FILES_IN) \
+	$(NULL)
+
+OPENRC_INIT_FILES += \
+	libvirtd.init \
+	virtproxyd.init \
+	$(NULL)
+OPENRC_INIT_FILES_IN += \
+	remote/libvirtd.init.in \
+	remote/virtproxyd.init.in \
+	$(NULL)
+OPENRC_CONF_FILES += \
+	remote/libvirtd.confd \
+	remote/virtproxyd.confd \
 	$(NULL)
 
 REMOTE_PROTOCOL = $(srcdir)/remote/remote_protocol.x
@@ -68,15 +148,17 @@ REMOTE_DRIVER_PROTOCOL = \
 	$(LXC_PROTOCOL) \
 	$(NULL)
 
-DRIVER_SOURCE_FILES += $(REMOTE_DRIVER_SOURCES)
+DRIVER_SOURCE_FILES += \
+	$(REMOTE_DRIVER_GENERATED) \
+	$(addprefix $(srcdir)/,$(REMOTE_DRIVER_SOURCES))
 
 EXTRA_DIST += \
 	$(REMOTE_DRIVER_PROTOCOL) \
 	$(REMOTE_DRIVER_SOURCES) \
-	$(LIBVIRTD_SOURCES) \
+	$(REMOTE_DAEMON_SOURCES) \
 	remote/test_libvirtd.aug.in \
-	remote/libvirtd.aug \
-	remote/libvirtd.conf \
+	remote/libvirtd.aug.in \
+	remote/libvirtd.conf.in \
 	remote/libvirtd.policy \
 	remote/libvirtd.rules \
 	remote/libvirtd.sasl \
@@ -87,11 +169,13 @@ EXTRA_DIST += \
 # the WITH_REMOTE/WITH_LIBVIRTD conditionals
 BUILT_SOURCES += \
 	$(REMOTE_DRIVER_GENERATED) \
-	$(LIBVIRTD_GENERATED) \
+	$(REMOTE_DAEMON_GENERATED) \
 	$(NULL)
-MAINTAINERCLEANFILES += \
+CLEANFILES += \
 	$(REMOTE_DRIVER_GENERATED) \
-	$(LIBVIRTD_GENERATED) \
+	$(REMOTE_DAEMON_GENERATED) \
+	remote/libvirtd.conf \
+	remote/virtproxyd.conf \
 	$(NULL)
 
 if WITH_REMOTE
@@ -101,10 +185,19 @@ libvirt_driver_remote_la_CFLAGS = \
 	$(XDR_CFLAGS) \
 	-I$(srcdir)/conf \
 	-I$(srcdir)/rpc \
+	-I$(builddir)/rpc \
+	-I$(builddir)/remote \
 	$(AM_CFLAGS) \
 	$(NULL)
 libvirt_driver_remote_la_LDFLAGS = $(AM_LDFLAGS)
-libvirt_driver_remote_la_SOURCES = $(REMOTE_DRIVER_SOURCES)
+libvirt_driver_remote_la_SOURCES = \
+	$(REMOTE_DRIVER_SOURCES)
+nodist_libvirt_driver_remote_la_SOURCES = \
+	$(REMOTE_DRIVER_GENERATED)
+
+if WITH_DTRACE_PROBES
+nodist_libvirt_driver_remote_la_SOURCES += libvirt_probes.h
+endif WITH_DTRACE_PROBES
 
 if WITH_SASL
 libvirt_driver_remote_la_CFLAGS += \
@@ -122,61 +215,72 @@ endif ! WITH_REMOTE
 
 if WITH_LIBVIRTD
 
-sbin_PROGRAMS += libvirtd
+sbin_PROGRAMS += libvirtd virtproxyd
 
-augeas_DATA += remote/libvirtd.aug
+augeas_DATA += \
+	remote/libvirtd.aug \
+	remote/virtproxyd.aug \
+	$(NULL)
 
-augeastest_DATA += test_libvirtd.aug
+augeastest_DATA += \
+	remote/test_libvirtd.aug \
+	remote/test_virtproxyd.aug \
+	$(NULL)
 
-conf_DATA += remote/libvirtd.conf
+nodist_conf_DATA += \
+	remote/libvirtd.conf \
+	remote/virtproxyd.conf \
+	$(NULL)
 
-CLEANFILES += test_libvirtd.aug
+CLEANFILES += \
+	remote/libvirtd.aug \
+	remote/virtproxyd.aug \
+	$(NULL)
 
-man8_MANS += libvirtd.8
+libvirtd_SOURCES = $(REMOTE_DAEMON_SOURCES)
 
-libvirtd_SOURCES = $(LIBVIRTD_SOURCES)
+nodist_libvirtd_SOURCES = $(REMOTE_DAEMON_GENERATED)
 
 libvirtd_CFLAGS = \
-	$(LIBXML_CFLAGS) \
-	$(GNUTLS_CFLAGS) \
-	$(SASL_CFLAGS) \
-	$(XDR_CFLAGS) \
-	$(DBUS_CFLAGS) \
-	$(LIBNL_CFLAGS) \
-	$(WARN_CFLAGS) \
-	$(PIE_CFLAGS) \
-	-I$(srcdir)/access \
-	-I$(srcdir)/conf \
-	-I$(srcdir)/rpc \
+	$(REMOTE_DAEMON_CFLAGS) \
+	-DSOCK_PREFIX="\"libvirt\"" \
+	-DDAEMON_NAME="\"libvirtd\"" \
+	-DWITH_IP \
+	-DLIBVIRTD \
 	$(NULL)
 
-libvirtd_LDFLAGS = \
-	$(RELRO_LDFLAGS) \
-	$(PIE_LDFLAGS) \
-	$(NO_INDIRECT_LDFLAGS) \
-	$(NO_UNDEFINED_LDFLAGS) \
-	$(NULL)
+libvirtd_LDFLAGS = $(REMOTE_DAEMON_LD_FLAGS)
 
-libvirtd_LDADD = \
-	libvirt_driver_admin.la \
-	libvirt-lxc.la \
-	libvirt-qemu.la \
-	libvirt.la \
-	$(LIBXML_LIBS) \
-	$(GNUTLS_LIBS) \
-	$(SASL_LIBS) \
-	$(DBUS_LIBS) \
-	$(LIBNL_LIBS) \
-	$(NULL)
+libvirtd_LDADD = $(REMOTE_DAEMON_LD_ADD)
 
-if WITH_DTRACE_PROBES
-libvirtd_LDADD += ../src/libvirt_probes.lo
-endif WITH_DTRACE_PROBES
-
-libvirtd_LDADD += \
-	../gnulib/lib/libgnu.la \
-	$(LIBSOCKET) \
+virtproxyd_SOURCES = $(REMOTE_DAEMON_SOURCES)
+nodist_virtproxyd_SOURCES = $(REMOTE_DAEMON_GENERATED)
+virtproxyd_CFLAGS = \
+	$(REMOTE_DAEMON_CFLAGS) \
+	-DSOCK_PREFIX="\"libvirt\"" \
+	-DDAEMON_NAME="\"virtproxyd\"" \
+	-DWITH_IP \
+	-DVIRTPROXYD \
 	$(NULL)
+virtproxyd_LDFLAGS = $(REMOTE_DAEMON_LD_FLAGS)
+virtproxyd_LDADD = $(REMOTE_DAEMON_LD_ADD)
+
+remote/libvirtd.conf: remote/libvirtd.conf.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/d' \
+		-e '/[@]END[@]/d' \
+		-e 's|[@]sysconfdir[@]|@sysconfdir@|' \
+		-e 's|[@]runstatedir[@]|@runstatedir@|' \
+		-e 's|[@]DAEMON_NAME[@]|libvirtd|' \
+		$< > $@
+
+remote/virtproxyd.conf: remote/libvirtd.conf.in
+	$(AM_V_GEN)sed \
+		-e '/[@]CUT_ENABLE_IP[@]/d' \
+		-e '/[@]END[@]/d' \
+		-e 's|[@]runstatedir[@]|@runstatedir@|' \
+		-e 's/[@]DAEMON_NAME[@]/virtproxyd/' \
+		$< > $@
 
 INSTALL_DATA_DIRS += remote
 
@@ -186,16 +290,47 @@ install-data-remote:
 uninstall-data-remote:
 	rmdir "$(DESTDIR)$(localstatedir)/log/libvirt" ||:
 
-AUGEAS_DIRS += remote
+remote/libvirtd.aug: remote/libvirtd.aug.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/d' \
+		-e '/[@]END[@]/d' \
+		-e 's|[@]sysconfdir[@]|@sysconfdir@|' \
+		-e 's|[@]DAEMON_NAME[@]|libvirtd|' \
+		-e 's|[@]DAEMON_NAME_UC[@]|Libvirtd|' \
+		$< > $@
 
-test_libvirtd.aug: remote/test_libvirtd.aug.in \
-		remote/libvirtd.conf $(AUG_GENTEST)
-	$(AM_V_GEN)$(AUG_GENTEST) $(srcdir)/remote/libvirtd.conf $< $@
+remote/virtproxyd.aug: remote/libvirtd.aug.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/d' \
+		-e '/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtproxyd/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtproxyd/' \
+		$< > $@
 
-check-augeas-remote: test_libvirtd.aug
-	$(AM_V_GEN)if test -x '$(AUGPARSE)'; then \
-	    '$(AUGPARSE)' -I $(srcdir)/remote test_libvirtd.aug; \
-	fi
+remote/test_libvirtd.aug: remote/test_libvirtd.aug.in \
+		remote/libvirtd.conf $(AUG_GENTEST_SCRIPT)
+	$(AM_V_GEN)$(AUG_GENTEST) remote/libvirtd.conf \
+		$(srcdir)/remote/test_libvirtd.aug.in | \
+		$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/d' \
+		-e '/[@]END[@]/d' \
+		-e 's|[@]sysconfdir[@]|@sysconfdir@|' \
+		-e 's|[@]runstatedir[@]|@runstatedir@|' \
+		-e 's|[@]DAEMON_NAME[@]|libvirtd|' \
+		-e 's|[@]DAEMON_NAME_UC[@]|Libvirtd|' \
+		> $@ || rm -f $@
+
+remote/test_virtproxyd.aug: remote/test_libvirtd.aug.in \
+		remote/virtproxyd.conf $(AUG_GENTEST_SCRIPT)
+	$(AM_V_GEN)$(AUG_GENTEST) remote/virtproxyd.conf \
+		$(srcdir)/remote/test_libvirtd.aug.in | \
+		$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/d' \
+		-e '/[@]END[@]/d' \
+		-e 's|[@]runstatedir[@]|@runstatedir@|' \
+		-e 's/[@]DAEMON_NAME[@]/virtproxyd/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtproxyd/' \
+		> $@ || rm -f $@
 
 if WITH_SYSCTL
 # Use $(prefix)/lib rather than $(libdir), since man sysctl.d insists on
@@ -243,7 +378,6 @@ endif WITH_LIBVIRTD
 .PHONY: \
 	install-data-remote \
 	uninstall-data-remote \
-	check-augeas-remote \
 	$(NULL)
 
 # This is needed for clients too, so can't wrap in
@@ -264,43 +398,54 @@ INSTALL_DATA_LOCAL += install-sasl
 UNINSTALL_LOCAL += uninstall-sasl
 endif WITH_SASL
 
+LIBVIRTD_UNIT_VARS = \
+	$(COMMON_UNIT_VARS) \
+	-e 's|[@]name[@]|Libvirt|g' \
+	-e 's|[@]service[@]|libvirtd|g' \
+	-e 's|[@]sockprefix[@]|libvirt|g' \
+	-e 's|[@]deps[@]||g' \
+	$(NULL)
+
+LIBVIRTD_INIT_VARS = \
+	$(COMMON_UNIT_VARS)
+
+if WITH_FIREWALLD
+LIBVIRTD_INIT_VARS += \
+	-e 's|[@]NEED_FIREWALLD[@]|need firewalld|g'
+else ! WITH_FIREWALLD
+LIBVIRTD_INIT_VARS += \
+	-e 's|[@]NEED_FIREWALLD[@]||g'
+endif ! WITH_FIREWALLD
+
+VIRTD_UNIT_VARS = \
+	$(COMMON_UNIT_VARS) \
+	-e 's|[@]deps[@]|Conflicts=$(LIBVIRTD_SOCKET_UNIT_FILES)|g' \
+	$(NULL)
+
+VIRTPROXYD_UNIT_VARS = \
+	$(VIRTD_UNIT_VARS) \
+	-e 's|[@]name[@]|Libvirt proxy|g' \
+	-e 's|[@]service[@]|virtproxyd|g' \
+	-e 's|[@]sockprefix[@]|libvirt|g' \
+	$(NULL)
+
+libvirtd.init: remote/libvirtd.init.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(LIBVIRTD_INIT_VARS) $< > $@-t && mv $@-t $@
+
+virtproxyd.init: remote/virtproxyd.init.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(LIBVIRTD_INIT_VARS) $< > $@-t && mv $@-t $@
+
 libvirtd.service: remote/libvirtd.service.in $(top_builddir)/config.status
-	$(AM_V_GEN)sed \
-	    -e 's|[@]localstatedir[@]|$(localstatedir)|g' \
-	    -e 's|[@]sbindir[@]|$(sbindir)|g' \
-	    -e 's|[@]sysconfdir[@]|$(sysconfdir)|g' \
-	    < $< > $@-t && \
-	    mv $@-t $@
+	$(AM_V_GEN)$(SED) $(LIBVIRTD_UNIT_VARS) $< > $@-t && mv $@-t $@
 
-libvirtd.socket: remote/libvirtd.socket.in $(top_builddir)/config.status
-	$(AM_V_GEN)sed \
-	    -e 's|[@]localstatedir[@]|$(localstatedir)|g' \
-	    < $< > $@-t && \
-	    mv $@-t $@
+libvirt%.socket: remote/libvirt%.socket.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(LIBVIRTD_UNIT_VARS) $< > $@-t && mv $@-t $@
 
-libvirtd-ro.socket: remote/libvirtd-ro.socket.in $(top_builddir)/config.status
-	$(AM_V_GEN)sed \
-	    -e 's|[@]localstatedir[@]|$(localstatedir)|g' \
-	    < $< > $@-t && \
-	    mv $@-t $@
+virtproxyd.service: remote/virtproxyd.service.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(VIRTPROXYD_UNIT_VARS) $< > $@-t && mv $@-t $@
 
-libvirtd-admin.socket: remote/libvirtd-admin.socket.in $(top_builddir)/config.status
-	$(AM_V_GEN)sed \
-	    -e 's|[@]localstatedir[@]|$(localstatedir)|g' \
-	    < $< > $@-t && \
-	    mv $@-t $@
-
-libvirtd-tcp.socket: remote/libvirtd-tcp.socket.in $(top_builddir)/config.status
-	$(AM_V_GEN)sed \
-	    -e 's|[@]localstatedir[@]|$(localstatedir)|g' \
-	    < $< > $@-t && \
-	    mv $@-t $@
-
-libvirtd-tls.socket: remote/libvirtd-tls.socket.in $(top_builddir)/config.status
-	$(AM_V_GEN)sed \
-	    -e 's|[@]localstatedir[@]|$(localstatedir)|g' \
-	    < $< > $@-t && \
-	    mv $@-t $@
+virtproxy%.socket: remote/libvirt%.socket.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(VIRTPROXYD_UNIT_VARS) $< > $@-t && mv $@-t $@
 
 virt-guest-shutdown.target: remote/virt-guest-shutdown.target.in \
 			$(top_builddir)/config.status
@@ -311,44 +456,34 @@ remote/remote_client_bodies.h: $(srcdir)/rpc/gendispatch.pl \
 		$(REMOTE_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=client \
 	  remote REMOTE $(REMOTE_PROTOCOL) \
-	  > $(srcdir)/remote/remote_client_bodies.h
+	  > remote/remote_client_bodies.h
 
 remote/lxc_client_bodies.h: $(srcdir)/rpc/gendispatch.pl \
 		$(LXC_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=client \
 	  lxc LXC $(LXC_PROTOCOL) \
-	  > $(srcdir)/remote/lxc_client_bodies.h
+	  > remote/lxc_client_bodies.h
 
 remote/qemu_client_bodies.h: $(srcdir)/rpc/gendispatch.pl \
 		$(QEMU_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gendispatch.pl --mode=client \
 	  qemu QEMU $(QEMU_PROTOCOL) \
-	  > $(srcdir)/remote/qemu_client_bodies.h
+	  > remote/qemu_client_bodies.h
 
 remote/remote_daemon_dispatch_stubs.h: $(srcdir)/rpc/gendispatch.pl \
 		$(REMOTE_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(top_srcdir)/src/rpc/gendispatch.pl \
 	  --mode=server remote REMOTE $(REMOTE_PROTOCOL) \
-	  > $(srcdir)/remote/remote_daemon_dispatch_stubs.h
+	  > remote/remote_daemon_dispatch_stubs.h
 
-remote/remote_daemon_dispatch_lxc_stubs.h: $(srcdir)/rpc/gendispatch.pl \
+remote/lxc_daemon_dispatch_stubs.h: $(srcdir)/rpc/gendispatch.pl \
 		$(LXC_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(top_srcdir)/src/rpc/gendispatch.pl \
 	  --mode=server lxc LXC $(LXC_PROTOCOL) \
-	  > $(srcdir)/remote/remote_daemon_dispatch_lxc_stubs.h
+	  > remote/lxc_daemon_dispatch_stubs.h
 
-remote/remote_daemon_dispatch_qemu_stubs.h: $(srcdir)/rpc/gendispatch.pl \
+remote/qemu_daemon_dispatch_stubs.h: $(srcdir)/rpc/gendispatch.pl \
 		$(QEMU_PROTOCOL) Makefile.am
 	$(AM_V_GEN)$(PERL) -w $(top_srcdir)/src/rpc/gendispatch.pl \
 	  --mode=server qemu QEMU $(QEMU_PROTOCOL) \
-	  > $(srcdir)/remote/remote_daemon_dispatch_qemu_stubs.h
-
-libvirtd.8.in: remote/libvirtd.pod
-	$(AM_V_GEN)$(POD2MAN) --section=8 $< $@-t1 && \
-	if grep 'POD ERROR' $@-t1; then rm $@-t1; exit 1; fi && \
-	sed \
-		-e 's|SYSCONFDIR|\@sysconfdir\@|g' \
-		-e 's|LOCALSTATEDIR|\@localstatedir\@|g' \
-		< $@-t1 > $@-t2 && \
-	rm -f $@-t1 && \
-	mv $@-t2 $@
+	  > remote/qemu_daemon_dispatch_stubs.h

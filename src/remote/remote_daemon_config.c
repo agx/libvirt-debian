@@ -77,41 +77,37 @@ int
 daemonConfigFilePath(bool privileged, char **configfile)
 {
     if (privileged) {
-        if (VIR_STRDUP(*configfile, SYSCONFDIR "/libvirt/libvirtd.conf") < 0)
-            goto error;
+        *configfile = g_strdup(SYSCONFDIR "/libvirt/" DAEMON_NAME ".conf");
     } else {
-        char *configdir = NULL;
+        g_autofree char *configdir = NULL;
 
-        if (!(configdir = virGetUserConfigDirectory()))
-            goto error;
+        configdir = virGetUserConfigDirectory();
 
-        if (virAsprintf(configfile, "%s/libvirtd.conf", configdir) < 0) {
-            VIR_FREE(configdir);
-            goto error;
-        }
-        VIR_FREE(configdir);
+        *configfile = g_strdup_printf("%s/%s.conf", configdir, DAEMON_NAME);
     }
 
     return 0;
-
- error:
-    return -1;
 }
 
 struct daemonConfig*
-daemonConfigNew(bool privileged ATTRIBUTE_UNUSED)
+daemonConfigNew(bool privileged G_GNUC_UNUSED)
 {
     struct daemonConfig *data;
 
     if (VIR_ALLOC(data) < 0)
         return NULL;
 
-    data->listen_tls = 1;
+#ifdef WITH_IP
+# ifdef LIBVIRTD
+    data->listen_tls = 1; /* Only honoured if --listen is set */
+# else /* ! LIBVIRTD */
+    data->listen_tls = 0; /* Always honoured, --listen doesn't exist. */
+# endif /* ! LIBVIRTD */
     data->listen_tcp = 0;
 
-    if (VIR_STRDUP(data->tls_port, LIBVIRTD_TLS_PORT) < 0 ||
-        VIR_STRDUP(data->tcp_port, LIBVIRTD_TCP_PORT) < 0)
-        goto error;
+    data->tls_port = g_strdup(LIBVIRTD_TLS_PORT);
+    data->tcp_port = g_strdup(LIBVIRTD_TCP_PORT);
+#endif /* !WITH_IP */
 
     /* Only default to PolicyKit if running as root */
 #if WITH_POLKIT
@@ -126,18 +122,18 @@ daemonConfigNew(bool privileged ATTRIBUTE_UNUSED)
     }
 #endif
 
-    if (VIR_STRDUP(data->unix_sock_rw_perms,
-                   data->auth_unix_rw == REMOTE_AUTH_POLKIT ? "0777" : "0700") < 0 ||
-        VIR_STRDUP(data->unix_sock_ro_perms, "0777") < 0 ||
-        VIR_STRDUP(data->unix_sock_admin_perms, "0700") < 0)
-        goto error;
+    data->unix_sock_rw_perms = g_strdup(data->auth_unix_rw == REMOTE_AUTH_POLKIT ? "0777" : "0700");
+    data->unix_sock_ro_perms = g_strdup("0777");
+    data->unix_sock_admin_perms = g_strdup("0700");
 
-#if WITH_SASL
+#ifdef WITH_IP
+# if WITH_SASL
     data->auth_tcp = REMOTE_AUTH_SASL;
-#else
+# else
     data->auth_tcp = REMOTE_AUTH_NONE;
-#endif
+# endif
     data->auth_tls = REMOTE_AUTH_NONE;
+#endif /* ! WITH_IP */
 
     data->min_workers = 5;
     data->max_workers = 20;
@@ -167,10 +163,6 @@ daemonConfigNew(bool privileged ATTRIBUTE_UNUSED)
     data->ovs_timeout = VIR_NETDEV_OVS_DEFAULT_TIMEOUT;
 
     return data;
-
- error:
-    daemonConfigFree(data);
-    return NULL;
 }
 
 void
@@ -181,9 +173,12 @@ daemonConfigFree(struct daemonConfig *data)
     if (!data)
         return;
 
+#ifdef WITH_IP
     VIR_FREE(data->listen_addr);
     VIR_FREE(data->tls_port);
     VIR_FREE(data->tcp_port);
+#endif /* ! WITH_IP */
+
     tmp = data->access_drivers;
     while (tmp && *tmp) {
         VIR_FREE(*tmp);
@@ -197,6 +192,14 @@ daemonConfigFree(struct daemonConfig *data)
     VIR_FREE(data->unix_sock_group);
     VIR_FREE(data->unix_sock_dir);
 
+    tmp = data->sasl_allowed_username_list;
+    while (tmp && *tmp) {
+        VIR_FREE(*tmp);
+        tmp++;
+    }
+    VIR_FREE(data->sasl_allowed_username_list);
+
+#ifdef WITH_IP
     tmp = data->tls_allowed_dn_list;
     while (tmp && *tmp) {
         VIR_FREE(*tmp);
@@ -204,18 +207,13 @@ daemonConfigFree(struct daemonConfig *data)
     }
     VIR_FREE(data->tls_allowed_dn_list);
 
-    tmp = data->sasl_allowed_username_list;
-    while (tmp && *tmp) {
-        VIR_FREE(*tmp);
-        tmp++;
-    }
-    VIR_FREE(data->sasl_allowed_username_list);
     VIR_FREE(data->tls_priority);
 
     VIR_FREE(data->key_file);
     VIR_FREE(data->ca_file);
     VIR_FREE(data->cert_file);
     VIR_FREE(data->crl_file);
+#endif /* ! WITH_IP */
 
     VIR_FREE(data->host_uuid);
     VIR_FREE(data->host_uuid_source);
@@ -230,145 +228,147 @@ daemonConfigLoadOptions(struct daemonConfig *data,
                         const char *filename,
                         virConfPtr conf)
 {
+#ifdef WITH_IP
     if (virConfGetValueBool(conf, "listen_tcp", &data->listen_tcp) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueBool(conf, "listen_tls", &data->listen_tls) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "tls_port", &data->tls_port) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "tcp_port", &data->tcp_port) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "listen_addr", &data->listen_addr) < 0)
-        goto error;
+        return -1;
+#endif /* !WITH_IP */
 
     if (remoteConfigGetAuth(conf, filename, "auth_unix_rw", &data->auth_unix_rw) < 0)
-        goto error;
+        return -1;
 #if WITH_POLKIT
     /* Change default perms to be wide-open if PolicyKit is enabled.
      * Admin can always override in config file
      */
     if (data->auth_unix_rw == REMOTE_AUTH_POLKIT) {
         VIR_FREE(data->unix_sock_rw_perms);
-        if (VIR_STRDUP(data->unix_sock_rw_perms, "0777") < 0)
-            goto error;
+        data->unix_sock_rw_perms = g_strdup("0777");
     }
 #endif
     if (remoteConfigGetAuth(conf, filename, "auth_unix_ro", &data->auth_unix_ro) < 0)
-        goto error;
+        return -1;
+
+#ifdef WITH_IP
     if (remoteConfigGetAuth(conf, filename, "auth_tcp", &data->auth_tcp) < 0)
-        goto error;
+        return -1;
     if (remoteConfigGetAuth(conf, filename, "auth_tls", &data->auth_tls) < 0)
-        goto error;
+        return -1;
+#endif /* ! WITH_IP */
 
     if (virConfGetValueStringList(conf, "access_drivers", false,
                                   &data->access_drivers) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueString(conf, "unix_sock_group", &data->unix_sock_group) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "unix_sock_admin_perms", &data->unix_sock_admin_perms) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "unix_sock_ro_perms", &data->unix_sock_ro_perms) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "unix_sock_rw_perms", &data->unix_sock_rw_perms) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueString(conf, "unix_sock_dir", &data->unix_sock_dir) < 0)
-        goto error;
+        return -1;
 
+#ifdef WITH_IP
     if (virConfGetValueBool(conf, "tls_no_sanity_certificate", &data->tls_no_sanity_certificate) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueBool(conf, "tls_no_verify_certificate", &data->tls_no_verify_certificate) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueString(conf, "key_file", &data->key_file) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "cert_file", &data->cert_file) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "ca_file", &data->ca_file) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "crl_file", &data->crl_file) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueStringList(conf, "tls_allowed_dn_list", false,
                                   &data->tls_allowed_dn_list) < 0)
-        goto error;
+        return -1;
 
+    if (virConfGetValueString(conf, "tls_priority", &data->tls_priority) < 0)
+        return -1;
+#endif /* ! WITH_IP */
 
     if (virConfGetValueStringList(conf, "sasl_allowed_username_list", false,
                                   &data->sasl_allowed_username_list) < 0)
-        goto error;
-
-    if (virConfGetValueString(conf, "tls_priority", &data->tls_priority) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueUInt(conf, "min_workers", &data->min_workers) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueUInt(conf, "max_workers", &data->max_workers) < 0)
-        goto error;
+        return -1;
     if (data->max_workers < 1) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                        _("'max_workers' must be greater than 0"));
-        goto error;
+        return -1;
     }
     if (virConfGetValueUInt(conf, "max_clients", &data->max_clients) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueUInt(conf, "max_queued_clients", &data->max_queued_clients) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueUInt(conf, "max_anonymous_clients", &data->max_anonymous_clients) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueUInt(conf, "prio_workers", &data->prio_workers) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueUInt(conf, "max_client_requests", &data->max_client_requests) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueUInt(conf, "admin_min_workers", &data->admin_min_workers) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueUInt(conf, "admin_max_workers", &data->admin_max_workers) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueUInt(conf, "admin_max_clients", &data->admin_max_clients) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueUInt(conf, "admin_max_queued_clients", &data->admin_max_queued_clients) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueUInt(conf, "admin_max_client_requests", &data->admin_max_client_requests) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueUInt(conf, "audit_level", &data->audit_level) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueBool(conf, "audit_logging", &data->audit_logging) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueString(conf, "host_uuid", &data->host_uuid) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "host_uuid_source", &data->host_uuid_source) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueUInt(conf, "log_level", &data->log_level) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "log_filters", &data->log_filters) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueString(conf, "log_outputs", &data->log_outputs) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueInt(conf, "keepalive_interval", &data->keepalive_interval) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueUInt(conf, "keepalive_count", &data->keepalive_count) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueInt(conf, "admin_keepalive_interval", &data->admin_keepalive_interval) < 0)
-        goto error;
+        return -1;
     if (virConfGetValueUInt(conf, "admin_keepalive_count", &data->admin_keepalive_count) < 0)
-        goto error;
+        return -1;
 
     if (virConfGetValueUInt(conf, "ovs_timeout", &data->ovs_timeout) < 0)
-        goto error;
+        return -1;
 
     return 0;
-
- error:
-    return -1;
 }
 
 
@@ -380,8 +380,7 @@ daemonConfigLoadFile(struct daemonConfig *data,
                      const char *filename,
                      bool allow_missing)
 {
-    virConfPtr conf;
-    int ret;
+    g_autoptr(virConf) conf = NULL;
 
     if (allow_missing &&
         access(filename, R_OK) == -1 &&
@@ -392,23 +391,18 @@ daemonConfigLoadFile(struct daemonConfig *data,
     if (!conf)
         return -1;
 
-    ret = daemonConfigLoadOptions(data, filename, conf);
-    virConfFree(conf);
-    return ret;
+    return daemonConfigLoadOptions(data, filename, conf);
 }
 
 int daemonConfigLoadData(struct daemonConfig *data,
                          const char *filename,
                          const char *filedata)
 {
-    virConfPtr conf;
-    int ret;
+    g_autoptr(virConf) conf = NULL;
 
     conf = virConfReadString(filedata, 0);
     if (!conf)
         return -1;
 
-    ret = daemonConfigLoadOptions(data, filename, conf);
-    virConfFree(conf);
-    return ret;
+    return daemonConfigLoadOptions(data, filename, conf);
 }

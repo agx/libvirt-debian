@@ -20,8 +20,6 @@
 
 #include <config.h>
 
-#include <fnmatch.h>
-
 #include "virnetsaslcontext.h"
 #include "virnetmessage.h"
 
@@ -155,16 +153,9 @@ int virNetSASLContextCheckIdentity(virNetSASLContextPtr ctxt,
     }
 
     while (*wildcards) {
-        int rv = fnmatch(*wildcards, identity, 0);
-        if (rv == 0) {
+        if (g_pattern_match_simple(*wildcards, identity)) {
             ret = 1;
             goto cleanup; /* Successful match */
-        }
-        if (rv != FNM_NOMATCH) {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("Malformed TLS whitelist regular expression '%s'"),
-                           *wildcards);
-            goto cleanup;
         }
 
         wildcards++;
@@ -184,7 +175,7 @@ int virNetSASLContextCheckIdentity(virNetSASLContextPtr ctxt,
 }
 
 
-virNetSASLSessionPtr virNetSASLSessionNewClient(virNetSASLContextPtr ctxt ATTRIBUTE_UNUSED,
+virNetSASLSessionPtr virNetSASLSessionNewClient(virNetSASLContextPtr ctxt G_GNUC_UNUSED,
                                                 const char *service,
                                                 const char *hostname,
                                                 const char *localAddr,
@@ -222,7 +213,7 @@ virNetSASLSessionPtr virNetSASLSessionNewClient(virNetSASLContextPtr ctxt ATTRIB
     return NULL;
 }
 
-virNetSASLSessionPtr virNetSASLSessionNewServer(virNetSASLContextPtr ctxt ATTRIBUTE_UNUSED,
+virNetSASLSessionPtr virNetSASLSessionNewServer(virNetSASLContextPtr ctxt G_GNUC_UNUSED,
                                                 const char *service,
                                                 const char *localAddr,
                                                 const char *remoteAddr)
@@ -415,7 +406,7 @@ char *virNetSASLSessionListMechanisms(virNetSASLSessionPtr sasl)
                        _("no SASL mechanisms are available"));
         goto cleanup;
     }
-    ignore_value(VIR_STRDUP(ret, mechlist));
+    ret = g_strdup(mechlist);
 
  cleanup:
     virObjectUnlock(sasl);
@@ -697,7 +688,7 @@ ssize_t virNetSASLSessionDecode(virNetSASLSessionPtr sasl,
     return ret;
 }
 
-void virNetSASLContextDispose(void *obj ATTRIBUTE_UNUSED)
+void virNetSASLContextDispose(void *obj G_GNUC_UNUSED)
 {
     return;
 }

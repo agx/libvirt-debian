@@ -1,3 +1,95 @@
+libvirt (6.0.0-1) experimental; urgency=medium
+
+  [ Guido Günther ]
+  * [33890b9] New upstream version 6.0.0
+    (Closes: #939552) 
+  * [c9f82be] gitlab-ci: Run autopkgtests
+
+  [ Christian Ehrhardt ]
+  * [fa167bc] d/libnss-libvirt.lintian-overrides: accept having two nss so
+    files
+  * [bf48357] d/libvirt-daemon-system-sysv.lintian-overrides: not shipping
+    systemd files.  Packages are split intentionally, ignore this lintian
+    warning.
+  * [2278598] d/rules: also check build time self test results on all
+    architectures
+  * [c1be36a] d/rules: drop doc binary cleanup.
+  * [6d60c3c] d/rules: don't ship split daemons just yet
+  * [33f8dc4] d/p/skip-qemuhotplugtest.patch: fix qemuhotplugtest.
+    Skip some elements of qemuhotplugtest that for now break in
+    Debian/Ubuntu build environments.
+  * [a1734f7] d/rules: add libvirt-guests.default to libvirt-daemon-system
+    instead of libvirt-daemon-system-sysv
+  * [69f6cfe] d/rules: install /etc/default/* files that are shared between
+    sysv and systemd packages
+  * [31be682] d/rules: install virtlockd for sysv
+    (Closes: #880970)
+
+  [ Andrea Bolognani ]
+  * [070d158] Install virt-login-shell-helper.
+    This new binary was introduced in libvirt 5.7.0 and is necessary for
+    virt-login-shell to work.
+  * [143dafb] Install augeas lenses for all drivers.
+    These slipped through the cracks when we moved from picking up the
+    corresponding directories as a whole to listing the specific files we're
+    interested in.
+  * [efa4cfe] Remove all mentions of Devhelp.
+    As of libvirt 5.8.0, the corresponding files are no longer
+    generated.
+  * [8ebd427] not-installed: Remove obsolete entries.
+    Now that upstream's build system has been fixed and we're picking up the
+    documentation from the install location rather than the source directory,
+    the corresponding files will no longer be flagged by dh_missing.
+  * [ce54aef] not-installed: List all split daemons files.
+    Since we're not shipping split daemons yet, the corresponding
+    binaries as well as systemd units and augeas lenses will be
+    flagged by dh_missing if we don't list them here.
+  * [391e39d] symbols: Drop LIBVIRT_5.9.0
+    libvirt 5.9.0 didn't introduce any new public symbols.
+
+ -- Guido Günther <agx@sigxcpu.org>  Wed, 12 Feb 2020 13:06:33 +0100
+
+libvirt (6.0.0~rc1-1) experimental; urgency=medium
+
+  [ Guido Günther ]
+  * [443fae0] New upstream version 6.0.0~rc1
+  * [70c5676] Bump symbol versions
+  * [eb6c6c1] gitlab-ci: Build package.
+    We unfortunately can't use salsa-ci's prebuilt pipeline since
+    that hangs on large jobs:
+    https://salsa.debian.org/salsa/support/issues/180
+    We redirct output to a file to work around:
+    https://salsa.debian.org/salsa/support/issues/191
+
+  [ Christian Ehrhardt ]
+  * [cc6b955] refresh d/p/* for v6.0.0
+  * [5639ffb] d/control: bump build dep to python3
+  * [dc99d35] d/rules: set enable-dependency-tracking to avoid FTBFS.
+  * [af131c7] d/rules: drop the no more existing xen configure option
+  * [84367d9] d/control: add python3-docutils as build dependency
+  * [37f0a5c] d/libvirt-doc.doc: install rendered docs
+  * [880f00e] d/libvirt-daemon-system.examples: Drop examples that are now
+    conf files
+  * [671aeca] d/libvirt-doc.doc-base.libvirt-doc: adapt doc base to new file
+    placement
+
+ -- Guido Günther <agx@sigxcpu.org>  Sat, 18 Jan 2020 18:16:20 +0100
+
+libvirt (5.6.0-4) experimental; urgency=medium
+
+  * [d88536d] Introduce libvirt-daemon-system-{systemd,sysv} Move init scripts
+    to separate package that allows people to experiment with alternative init
+    systems while avoiding the problems that mixed init scripts and systemd
+    units have in the current packaging.
+    Thanks to Christian Ehrhardt for all the input regarding upgrade
+    problems seen in Ubuntu and possible solutions.
+    (Closes: #887911, #905772)
+  * [c19d230] autopkg tests: Use isolation-machine.
+    This avoids running under debian ci since libvirt-lxc in lxc
+    doesn't work there. (Closes: #947006)
+
+ -- Guido Günther <agx@sigxcpu.org>  Sun, 12 Jan 2020 13:51:05 +0100
+
 libvirt (5.6.0-3) unstable; urgency=medium
 
   * Team upload.

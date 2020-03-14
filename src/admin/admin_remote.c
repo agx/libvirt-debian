@@ -76,7 +76,7 @@ make_nonnull_client(admin_nonnull_client *client_dst,
 }
 
 static int
-callFull(virAdmConnectPtr conn ATTRIBUTE_UNUSED,
+callFull(virAdmConnectPtr conn G_GNUC_UNUSED,
          remoteAdminPrivPtr priv,
          int *fdin,
          size_t fdinlen,
@@ -130,7 +130,7 @@ call(virAdmConnectPtr conn,
 #include "admin_client.h"
 
 static void
-remoteAdminClientCloseFunc(virNetClientPtr client ATTRIBUTE_UNUSED,
+remoteAdminClientCloseFunc(virNetClientPtr client G_GNUC_UNUSED,
                            int reason,
                            void *opaque)
 {
@@ -294,6 +294,7 @@ remoteAdminServerSetThreadPoolParameters(virAdmServerPtr srv,
     virObjectLock(priv);
 
     if (virTypedParamsSerialize(params, nparams,
+                                ADMIN_SERVER_THREADPOOL_PARAMETERS_MAX,
                                 (virTypedParameterRemotePtr *) &args.params.params_val,
                                 &args.params.params_len,
                                 0) < 0)
@@ -405,6 +406,7 @@ remoteAdminServerSetClientLimits(virAdmServerPtr srv,
     virObjectLock(priv);
 
     if (virTypedParamsSerialize(params, nparams,
+                                ADMIN_SERVER_CLIENT_LIMITS_MAX,
                                 (virTypedParameterRemotePtr *) &args.params.params_val,
                                 &args.params.params_len,
                                 0) < 0)
@@ -449,7 +451,7 @@ remoteAdminConnectGetLoggingOutputs(virAdmConnectPtr conn,
         goto done;
 
     if (outputs)
-        VIR_STEAL_PTR(*outputs, ret.outputs);
+        *outputs = g_steal_pointer(&ret.outputs);
 
     rv = ret.noutputs;
     xdr_free((xdrproc_t) xdr_admin_connect_get_logging_outputs_ret, (char *) &ret);

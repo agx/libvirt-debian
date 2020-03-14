@@ -39,7 +39,6 @@ struct testStreqData {
 static int testStreq(const void *args)
 {
     const struct testStreqData *data = args;
-    int ret = -1;
     bool equal = true;
     bool streq_rv, strneq_rv;
     size_t i;
@@ -63,19 +62,17 @@ static int testStreq(const void *args)
         virFilePrintf(stderr,
                       "STREQ not working correctly. Expected %d got %d",
                       (int) equal, (int) streq_rv);
-        goto cleanup;
+        return -1;
     }
 
     if (strneq_rv == equal) {
         virFilePrintf(stderr,
                       "STRNEQ not working correctly. Expected %d got %d",
                       (int) equal, (int) strneq_rv);
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 struct testSplitData {
@@ -236,138 +233,8 @@ static int testRemove(const void *args)
 }
 
 
-static bool fail;
-
-static const char *
-testStrdupLookup1(size_t i)
-{
-    switch (i) {
-    case 0:
-        return "hello";
-    case 1:
-        return NULL;
-    default:
-        fail = true;
-        return "oops";
-    }
-}
-
-static size_t
-testStrdupLookup2(size_t i)
-{
-    if (i)
-        fail = true;
-    return 5;
-}
-
 static int
-testStrdup(const void *data ATTRIBUTE_UNUSED)
-{
-    char *array[] = { NULL, NULL };
-    size_t i = 0;
-    size_t j = 0;
-    size_t k = 0;
-    int ret = -1;
-    int value;
-
-    value = VIR_STRDUP(array[i++], testStrdupLookup1(j++));
-    if (value != 1) {
-        virFilePrintf(stderr, "unexpected strdup result %d, expected 1\n", value);
-        goto cleanup;
-    }
-    /* coverity[dead_error_begin] */
-    if (i != 1) {
-        virFilePrintf(stderr, "unexpected side effects i=%zu, expected 1\n", i);
-        goto cleanup;
-    }
-    /* coverity[dead_error_begin] */
-    if (j != 1) {
-        virFilePrintf(stderr, "unexpected side effects j=%zu, expected 1\n", j);
-        goto cleanup;
-    }
-    if (STRNEQ_NULLABLE(array[0], "hello") || array[1]) {
-        virFilePrintf(stderr, "incorrect array contents '%s' '%s'\n",
-                      NULLSTR(array[0]), NULLSTR(array[1]));
-        goto cleanup;
-    }
-
-    value = VIR_STRNDUP(array[i++], testStrdupLookup1(j++),
-                        testStrdupLookup2(k++));
-    if (value != 0) {
-        virFilePrintf(stderr, "unexpected strdup result %d, expected 0\n", value);
-        goto cleanup;
-    }
-    /* coverity[dead_error_begin] */
-    if (i != 2) {
-        virFilePrintf(stderr, "unexpected side effects i=%zu, expected 2\n", i);
-        goto cleanup;
-    }
-    /* coverity[dead_error_begin] */
-    if (j != 2) {
-        virFilePrintf(stderr, "unexpected side effects j=%zu, expected 2\n", j);
-        goto cleanup;
-    }
-    /* coverity[dead_error_begin] */
-    if (k != 1) {
-        virFilePrintf(stderr, "unexpected side effects k=%zu, expected 1\n", k);
-        goto cleanup;
-    }
-    if (STRNEQ_NULLABLE(array[0], "hello") || array[1]) {
-        virFilePrintf(stderr, "incorrect array contents '%s' '%s'\n",
-                      NULLSTR(array[0]), NULLSTR(array[1]));
-        goto cleanup;
-    }
-
-    if (fail) {
-        virFilePrintf(stderr, "side effects failed\n");
-        goto cleanup;
-    }
-
-    ret = 0;
- cleanup:
-    for (i = 0; i < ARRAY_CARDINALITY(array); i++)
-        VIR_FREE(array[i]);
-    return ret;
-}
-
-static int
-testStrndupNegative(const void *opaque ATTRIBUTE_UNUSED)
-{
-    int ret = -1;
-    char *dst;
-    const char *src = "Hello world";
-    int value;
-
-    if ((value = VIR_STRNDUP(dst, src, 5)) != 1) {
-        fprintf(stderr, "unexpected virStrndup result %d, expected 1\n", value);
-        goto cleanup;
-    }
-
-    if (STRNEQ_NULLABLE(dst, "Hello")) {
-        fprintf(stderr, "unexpected content '%s'", dst);
-        goto cleanup;
-    }
-
-    VIR_FREE(dst);
-    if ((value = VIR_STRNDUP(dst, src, -1)) != 1) {
-        fprintf(stderr, "unexpected virStrndup result %d, expected 1\n", value);
-        goto cleanup;
-    }
-
-    if (STRNEQ_NULLABLE(dst, src)) {
-        fprintf(stderr, "unexpected content '%s'", dst);
-        goto cleanup;
-    }
-
-    ret = 0;
- cleanup:
-    VIR_FREE(dst);
-    return ret;
-}
-
-
-static int
-testStringSortCompare(const void *opaque ATTRIBUTE_UNUSED)
+testStringSortCompare(const void *opaque G_GNUC_UNUSED)
 {
     const char *randlist[] = {
         "tasty", "astro", "goat", "chicken", "turducken",
@@ -381,30 +248,27 @@ testStringSortCompare(const void *opaque ATTRIBUTE_UNUSED)
     const char *sortrlist[] = {
         "turducken", "tasty", "goat", "chicken", "astro",
     };
-    int ret = -1;
     size_t i;
 
-    qsort(randlist, ARRAY_CARDINALITY(randlist), sizeof(randlist[0]),
+    qsort(randlist, G_N_ELEMENTS(randlist), sizeof(randlist[0]),
           virStringSortCompare);
-    qsort(randrlist, ARRAY_CARDINALITY(randrlist), sizeof(randrlist[0]),
+    qsort(randrlist, G_N_ELEMENTS(randrlist), sizeof(randrlist[0]),
           virStringSortRevCompare);
 
-    for (i = 0; i < ARRAY_CARDINALITY(randlist); i++) {
+    for (i = 0; i < G_N_ELEMENTS(randlist); i++) {
         if (STRNEQ(randlist[i], sortlist[i])) {
             fprintf(stderr, "sortlist[%zu] '%s' != randlist[%zu] '%s'\n",
                     i, sortlist[i], i, randlist[i]);
-            goto cleanup;
+            return -1;
         }
         if (STRNEQ(randrlist[i], sortrlist[i])) {
             fprintf(stderr, "sortrlist[%zu] '%s' != randrlist[%zu] '%s'\n",
                     i, sortrlist[i], i, randrlist[i]);
-            goto cleanup;
+            return -1;
         }
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -513,7 +377,7 @@ struct stringReplaceData {
 };
 
 static int
-testStringReplace(const void *opaque ATTRIBUTE_UNUSED)
+testStringReplace(const void *opaque G_GNUC_UNUSED)
 {
     const struct stringReplaceData *data = opaque;
     char *result;
@@ -690,16 +554,16 @@ testStringToDouble(const void *opaque)
 /* The point of this test is to check whether all members of the array are
  * freed. The test has to be checked using valgrind. */
 static int
-testVirStringListFreeCount(const void *opaque ATTRIBUTE_UNUSED)
+testVirStringListFreeCount(const void *opaque G_GNUC_UNUSED)
 {
     char **list;
 
     if (VIR_ALLOC_N(list, 4) < 0)
         return -1;
 
-    ignore_value(VIR_STRDUP(list[0], "test1"));
-    ignore_value(VIR_STRDUP(list[2], "test2"));
-    ignore_value(VIR_STRDUP(list[3], "test3"));
+    list[0] = g_strdup("test1");
+    list[2] = g_strdup("test2");
+    list[3] = g_strdup("test3");
 
     virStringListFreeCount(list, 4);
 
@@ -718,8 +582,7 @@ static int testStripIPv6Brackets(const void *args)
     int ret = -1;
     char *res = NULL;
 
-    if (VIR_STRDUP(res, data->string) < 0)
-        goto cleanup;
+    res = g_strdup(data->string);
 
     virStringStripIPv6Brackets(res);
 
@@ -742,8 +605,7 @@ static int testStripControlChars(const void *args)
     int ret = -1;
     char *res = NULL;
 
-    if (VIR_STRDUP(res, data->string) < 0)
-        goto cleanup;
+    res = g_strdup(data->string);
 
     virStringStripControlChars(res);
 
@@ -772,8 +634,7 @@ static int testFilterChars(const void *args)
     int ret = -1;
     char *res = NULL;
 
-    if (VIR_STRDUP(res, data->string) < 0)
-        goto cleanup;
+    res = g_strdup(data->string);
 
     virStringFilterChars(res, data->valid);
 
@@ -855,12 +716,6 @@ mymain(void)
 
     const char *tokens8[] = { "gluster", "rdma", NULL };
     TEST_SPLIT("gluster+rdma", "+", 2, tokens8);
-
-    if (virTestRun("strdup", testStrdup, NULL) < 0)
-        ret = -1;
-
-    if (virTestRun("strdup", testStrndupNegative, NULL) < 0)
-        ret = -1;
 
     if (virTestRun("virStringSortCompare", testStringSortCompare, NULL) < 0)
         ret = -1;

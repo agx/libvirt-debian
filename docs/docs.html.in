@@ -9,6 +9,9 @@
         <dt><a href="apps.html">Applications</a></dt>
         <dd>Applications known to use libvirt</dd>
 
+        <dt><a href="manpages/index.html">Manual pages</a></dt>
+        <dd>Manual pages for libvirt tools / daemons</dd>
+
         <dt><a href="windows.html">Windows</a></dt>
         <dd>Downloads for Windows</dd>
 
@@ -17,6 +20,9 @@
 
         <dt><a href="remote.html">Remote access</a></dt>
         <dd>Enable remote access over TCP</dd>
+
+        <dt><a href="tlscerts.html">TLS certs</a></dt>
+        <dd>Generate and deploy x509 certificates for TLS</dd>
 
         <dt><a href="auth.html">Authentication</a></dt>
         <dd>Configure authentication for the libvirt daemon</dd>
@@ -48,11 +54,27 @@
     <div class="panel">
       <h2>Application development</h2>
       <dl>
-        <dt><a href="devguide.html">Development Guide</a></dt>
-        <dd>A guide and reference for developing with libvirt</dd>
-
-        <dt><a href="virshcmdref.html">Virsh Commands</a></dt>
-        <dd>Command reference for virsh</dd>
+        <dt><a href="html/index.html">API reference</a></dt>
+        <dd>Reference manual for the C public API, split in
+          <a href="html/libvirt-libvirt-common.html">common</a>,
+          <a href="html/libvirt-libvirt-domain.html">domain</a>,
+          <a href="html/libvirt-libvirt-domain-checkpoint.html">domain checkpoint</a>,
+          <a href="html/libvirt-libvirt-domain-snapshot.html">domain snapshot</a>,
+          <a href="html/libvirt-virterror.html">error</a>,
+          <a href="html/libvirt-libvirt-event.html">event</a>,
+          <a href="html/libvirt-libvirt-host.html">host</a>,
+          <a href="html/libvirt-libvirt-interface.html">interface</a>,
+          <a href="html/libvirt-libvirt-network.html">network</a>,
+          <a href="html/libvirt-libvirt-nodedev.html">node device</a>,
+          <a href="html/libvirt-libvirt-nwfilter.html">network filter</a>,
+          <a href="html/libvirt-libvirt-secret.html">secret</a>,
+          <a href="html/libvirt-libvirt-storage.html">storage</a>,
+          <a href="html/libvirt-libvirt-stream.html">stream</a>
+          and
+          <a href="html/index-admin.html">admin</a>,
+          <a href="html/index-qemu.html">QEMU</a>,
+          <a href="html/index-lxc.html">LXC</a> libs
+        </dd>
 
         <dt><a href="bindings.html">Language bindings and API modules</a></dt>
         <dd>Bindings of the libvirt API for
@@ -82,31 +104,14 @@
           <a href="formatnode.html">node devices</a>,
           <a href="formatsecret.html">secrets</a>,
           <a href="formatsnapshot.html">snapshots</a>,
-          <a href="formatcheckpoint.html">checkpoints</a></dd>
+          <a href="formatcheckpoint.html">checkpoints</a>,
+          <a href="formatbackup.html">backup jobs</a></dd>
 
         <dt><a href="uri.html">URI format</a></dt>
         <dd>The URI formats used for connecting to libvirt</dd>
 
         <dt><a href="cgroups.html">CGroups</a></dt>
         <dd>Control groups integration</dd>
-
-        <dt><a href="html/index.html">API reference</a></dt>
-        <dd>Reference manual for the C public API, split in
-          <a href="html/libvirt-libvirt-common.html">common</a>,
-          <a href="html/libvirt-libvirt-domain.html">domain</a>,
-          <a href="html/libvirt-libvirt-domain-checkpoint.html">domain checkpoint</a>,
-          <a href="html/libvirt-libvirt-domain-snapshot.html">domain snapshot</a>,
-          <a href="html/libvirt-virterror.html">error</a>,
-          <a href="html/libvirt-libvirt-event.html">event</a>,
-          <a href="html/libvirt-libvirt-host.html">host</a>,
-          <a href="html/libvirt-libvirt-interface.html">interface</a>,
-          <a href="html/libvirt-libvirt-network.html">network</a>,
-          <a href="html/libvirt-libvirt-nodedev.html">node device</a>,
-          <a href="html/libvirt-libvirt-nwfilter.html">network filter</a>,
-          <a href="html/libvirt-libvirt-secret.html">secret</a>,
-          <a href="html/libvirt-libvirt-storage.html">storage</a>,
-          <a href="html/libvirt-libvirt-stream.html">stream</a>
-        </dd>
 
         <dt><a href="drivers.html">Drivers</a></dt>
         <dd>Hypervisor specific driver information</dd>
@@ -127,6 +132,12 @@
       <dl>
         <dt><a href="hacking.html">Contributor guidelines</a></dt>
         <dd>General hacking guidelines for contributors</dd>
+
+        <dt><a href="styleguide.html">Docs style guide</a></dt>
+        <dd>Style guidelines for reStructuredText docs</dd>
+
+        <dt><a href="strategy.html">Project strategy</a></dt>
+        <dd>Sets a vision for future direction &amp; technical choices</dd>
 
         <dt><a href="bugs.html">Bug reports</a></dt>
         <dd>How and where to report bugs and request features</dd>
@@ -154,9 +165,6 @@
 
         <dt><a href="internals/locking.html">Lock managers</a></dt>
         <dd>Use lock managers to protect disk content</dd>
-
-        <dt><a href="internals/oomtesting.html">Out of memory testing</a></dt>
-        <dd>Simulating OOM conditions in the test suite</dd>
 
         <dt><a href="testsuites.html">Functional testing</a></dt>
         <dd>Testing libvirt with <a href="testtck.html">TCK test suite</a> and

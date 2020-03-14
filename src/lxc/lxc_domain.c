@@ -26,7 +26,6 @@
 #include "viralloc.h"
 #include "virlog.h"
 #include "virerror.h"
-#include <libxml/xpathInternals.h>
 #include "virstring.h"
 #include "virutil.h"
 #include "virfile.h"
@@ -35,7 +34,6 @@
 #include "virinitctl.h"
 
 #define VIR_FROM_THIS VIR_FROM_LXC
-#define LXC_NAMESPACE_HREF "http://libvirt.org/schemas/domain/lxc/1.0"
 
 VIR_ENUM_IMPL(virLXCDomainJob,
               LXC_JOB_LAST,
@@ -86,7 +84,7 @@ virLXCDomainObjFreeJob(virLXCDomainObjPrivatePtr priv)
  * Successful calls must be followed by EndJob eventually.
  */
 int
-virLXCDomainObjBeginJob(virLXCDriverPtr driver ATTRIBUTE_UNUSED,
+virLXCDomainObjBeginJob(virLXCDriverPtr driver G_GNUC_UNUSED,
                        virDomainObjPtr obj,
                        enum virLXCDomainJob job)
 {
@@ -138,7 +136,7 @@ virLXCDomainObjBeginJob(virLXCDriverPtr driver ATTRIBUTE_UNUSED,
  * earlier virLXCDomainBeginJob() call
  */
 void
-virLXCDomainObjEndJob(virLXCDriverPtr driver ATTRIBUTE_UNUSED,
+virLXCDomainObjEndJob(virLXCDriverPtr driver G_GNUC_UNUSED,
                      virDomainObjPtr obj)
 {
     virLXCDomainObjPrivatePtr priv = obj->privateData;
@@ -153,7 +151,7 @@ virLXCDomainObjEndJob(virLXCDriverPtr driver ATTRIBUTE_UNUSED,
 
 
 static void *
-virLXCDomainObjPrivateAlloc(void *opaque ATTRIBUTE_UNUSED)
+virLXCDomainObjPrivateAlloc(void *opaque G_GNUC_UNUSED)
 {
     virLXCDomainObjPrivatePtr priv;
 
@@ -207,9 +205,7 @@ lxcDomainDefNamespaceFree(void *nsdata)
 }
 
 static int
-lxcDomainDefNamespaceParse(xmlDocPtr xml ATTRIBUTE_UNUSED,
-                           xmlNodePtr root ATTRIBUTE_UNUSED,
-                           xmlXPathContextPtr ctxt,
+lxcDomainDefNamespaceParse(xmlXPathContextPtr ctxt,
                            void **data)
 {
     lxcDomainDefPtr lxcDef = NULL;
@@ -220,13 +216,6 @@ lxcDomainDefNamespaceParse(xmlDocPtr xml ATTRIBUTE_UNUSED,
     int n;
     char *tmp = NULL;
     size_t i;
-
-    if (xmlXPathRegisterNs(ctxt, BAD_CAST "lxc", BAD_CAST LXC_NAMESPACE_HREF) < 0) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("Failed to register xml namespace '%s'"),
-                       LXC_NAMESPACE_HREF);
-        return -1;
-    }
 
     if (VIR_ALLOC(lxcDef) < 0)
         return -1;
@@ -312,18 +301,13 @@ lxcDomainDefNamespaceFormatXML(virBufferPtr buf,
     return 0;
 }
 
-static const char *
-lxcDomainDefNamespaceHref(void)
-{
-    return "xmlns:lxc='" LXC_NAMESPACE_HREF "'";
-}
 
-
-virDomainXMLNamespace virLXCDriverDomainXMLNamespace = {
+virXMLNamespace virLXCDriverDomainXMLNamespace = {
     .parse = lxcDomainDefNamespaceParse,
     .free = lxcDomainDefNamespaceFree,
     .format = lxcDomainDefNamespaceFormatXML,
-    .href = lxcDomainDefNamespaceHref,
+    .prefix = "lxc",
+    .uri = "http://libvirt.org/schemas/domain/lxc/1.0",
 };
 
 
@@ -342,7 +326,7 @@ virLXCDomainObjPrivateXMLFormat(virBufferPtr buf,
 static int
 virLXCDomainObjPrivateXMLParse(xmlXPathContextPtr ctxt,
                                virDomainObjPtr vm,
-                               virDomainDefParserConfigPtr config ATTRIBUTE_UNUSED)
+                               virDomainDefParserConfigPtr config G_GNUC_UNUSED)
 {
     virLXCDomainObjPrivatePtr priv = vm->privateData;
     long long thepid;
@@ -367,11 +351,19 @@ virDomainXMLPrivateDataCallbacks virLXCDriverPrivateDataCallbacks = {
 
 static int
 virLXCDomainDefPostParse(virDomainDefPtr def,
-                         virCapsPtr caps,
-                         unsigned int parseFlags ATTRIBUTE_UNUSED,
-                         void *opaque ATTRIBUTE_UNUSED,
-                         void *parseOpaque ATTRIBUTE_UNUSED)
+                         unsigned int parseFlags G_GNUC_UNUSED,
+                         void *opaque,
+                         void *parseOpaque G_GNUC_UNUSED)
 {
+    virLXCDriverPtr driver = opaque;
+    g_autoptr(virCaps) caps = virLXCDriverGetCapabilities(driver, false);
+    if (!caps)
+        return -1;
+    if (!virCapabilitiesDomainSupported(caps, def->os.type,
+                                        def->os.arch,
+                                        def->virtType))
+        return -1;
+
     /* check for emulator and create a default one if needed */
     if (!def->emulator &&
         !(def->emulator = virDomainDefGetDefaultEmulator(def, caps)))
@@ -383,11 +375,10 @@ virLXCDomainDefPostParse(virDomainDefPtr def,
 
 static int
 virLXCDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
-                               const virDomainDef *def ATTRIBUTE_UNUSED,
-                               virCapsPtr caps ATTRIBUTE_UNUSED,
-                               unsigned int parseFlags ATTRIBUTE_UNUSED,
-                               void *opaque ATTRIBUTE_UNUSED,
-                               void *parseOpaque ATTRIBUTE_UNUSED)
+                               const virDomainDef *def G_GNUC_UNUSED,
+                               unsigned int parseFlags G_GNUC_UNUSED,
+                               void *opaque G_GNUC_UNUSED,
+                               void *parseOpaque G_GNUC_UNUSED)
 {
     if (dev->type == VIR_DOMAIN_DEVICE_CHR &&
         dev->data.chr->deviceType == VIR_DOMAIN_CHR_DEVICE_TYPE_CONSOLE &&
@@ -431,7 +422,7 @@ struct _lxcDomainInitctlCallbackData {
 
 
 static int
-lxcDomainInitctlCallback(pid_t pid ATTRIBUTE_UNUSED,
+lxcDomainInitctlCallback(pid_t pid G_GNUC_UNUSED,
                          void *opaque)
 {
     lxcDomainInitctlCallbackData *data = opaque;

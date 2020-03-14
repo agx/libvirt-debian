@@ -179,8 +179,8 @@ struct virDBusWatch
     DBusConnection *bus;
 };
 
-static void virDBusWatchCallback(int fdatch ATTRIBUTE_UNUSED,
-                                 int fd ATTRIBUTE_UNUSED,
+static void virDBusWatchCallback(int fdatch G_GNUC_UNUSED,
+                                 int fd G_GNUC_UNUSED,
                                  int events, void *opaque)
 {
     DBusWatch *watch = opaque;
@@ -262,7 +262,7 @@ static dbus_bool_t virDBusAddWatch(DBusWatch *watch,
 
 
 static void virDBusRemoveWatch(DBusWatch *watch,
-                               void *data ATTRIBUTE_UNUSED)
+                               void *data G_GNUC_UNUSED)
 {
     struct virDBusWatch *info;
 
@@ -273,7 +273,7 @@ static void virDBusRemoveWatch(DBusWatch *watch,
 
 
 static void virDBusToggleWatch(DBusWatch *watch,
-                               void *data ATTRIBUTE_UNUSED)
+                               void *data G_GNUC_UNUSED)
 {
     int flags = 0;
     struct virDBusWatch *info;
@@ -305,7 +305,7 @@ static const char virDBusBasicTypes[] = {
 
 static bool virDBusIsBasicType(char c)
 {
-    return !!memchr(virDBusBasicTypes, c, ARRAY_CARDINALITY(virDBusBasicTypes));
+    return !!memchr(virDBusBasicTypes, c, G_N_ELEMENTS(virDBusBasicTypes));
 }
 
 /*
@@ -762,7 +762,7 @@ virDBusMessageIterEncode(DBusMessageIter *rootiter,
                 goto cleanup;
             }
             VIR_FREE(contsig);
-            VIR_STEAL_PTR(iter, newiter);
+            iter = g_steal_pointer(&newiter);
             types = t + 1;
             nstruct = skiplen;
             narray = (size_t)va_arg(args, int);
@@ -788,7 +788,7 @@ virDBusMessageIterEncode(DBusMessageIter *rootiter,
                 VIR_FREE(newiter);
                 goto cleanup;
             }
-            VIR_STEAL_PTR(iter, newiter);
+            iter = g_steal_pointer(&newiter);
             types = vsig;
             nstruct = strlen(types);
             narray = (size_t)-1;
@@ -819,7 +819,7 @@ virDBusMessageIterEncode(DBusMessageIter *rootiter,
                 goto cleanup;
             }
             VIR_FREE(contsig);
-            VIR_STEAL_PTR(iter, newiter);
+            iter = g_steal_pointer(&newiter);
             types = t + 1;
             nstruct = skiplen - 2;
             narray = (size_t)-1;
@@ -1010,8 +1010,7 @@ virDBusMessageIterDecode(DBusMessageIter *rootiter,
                 }
                 char *s;
                 dbus_message_iter_get_basic(iter, &s);
-                if (VIR_STRDUP(*x, s) < 0)
-                    goto cleanup;
+                *x = g_strdup(s);
                 VIR_DEBUG("Read basic type 'char *' varg 'char **'"
                           "' val '%s'", *x);
             } while (0);
@@ -1056,7 +1055,7 @@ virDBusMessageIterDecode(DBusMessageIter *rootiter,
                                      nstruct, narray) < 0)
                 goto cleanup;
             VIR_FREE(contsig);
-            VIR_STEAL_PTR(iter, newiter);
+            iter = g_steal_pointer(&newiter);
             types = t + 1;
             nstruct = skiplen;
             if (arrayref) {
@@ -1086,7 +1085,7 @@ virDBusMessageIterDecode(DBusMessageIter *rootiter,
                 VIR_DEBUG("Push failed");
                 goto cleanup;
             }
-            VIR_STEAL_PTR(iter, newiter);
+            iter = g_steal_pointer(&newiter);
             types = vsig;
             nstruct = strlen(types);
             narray = (size_t)-1;
@@ -1113,7 +1112,7 @@ virDBusMessageIterDecode(DBusMessageIter *rootiter,
                                      nstruct, narray) < 0)
                 goto cleanup;
             VIR_FREE(contsig);
-            VIR_STEAL_PTR(iter, newiter);
+            iter = g_steal_pointer(&newiter);
             types = t + 1;
             nstruct = skiplen - 2;
             narray = (size_t)-1;
@@ -1178,15 +1177,12 @@ virDBusMessageEncodeArgs(DBusMessage* msg,
                          va_list args)
 {
     DBusMessageIter iter;
-    int ret = -1;
 
     memset(&iter, 0, sizeof(iter));
 
     dbus_message_iter_init_append(msg, &iter);
 
-    ret = virDBusMessageIterEncode(&iter, types, args);
-
-    return ret;
+    return virDBusMessageIterEncode(&iter, types, args);
 }
 
 
@@ -1195,7 +1191,6 @@ int virDBusMessageDecodeArgs(DBusMessage* msg,
                              va_list args)
 {
     DBusMessageIter iter;
-    int ret = -1;
 
     if (!dbus_message_iter_init(msg, &iter)) {
         if (*types != '\0') {
@@ -1203,15 +1198,12 @@ int virDBusMessageDecodeArgs(DBusMessage* msg,
                            _("No args present for signature %s"),
                            types);
         } else {
-            ret = 0;
+            return 0;
         }
-        goto cleanup;
+        return -1;
     }
 
-    ret = virDBusMessageIterDecode(&iter, types, args);
-
- cleanup:
-    return ret;
+    return virDBusMessageIterDecode(&iter, types, args);
 }
 
 
@@ -1400,25 +1392,21 @@ int virDBusCreateMethodV(DBusMessage **call,
                          const char *types,
                          va_list args)
 {
-    int ret = -1;
-
     if (!(*call = dbus_message_new_method_call(destination,
                                                path,
                                                iface,
                                                member))) {
         virReportOOMError();
-        goto cleanup;
+        return -1;
     }
 
     if (virDBusMessageEncodeArgs(*call, types, args) < 0) {
         virDBusMessageUnref(*call);
         *call = NULL;
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -1472,22 +1460,18 @@ int virDBusCreateReplyV(DBusMessage **reply,
                         const char *types,
                         va_list args)
 {
-    int ret = -1;
-
     if (!(*reply = dbus_message_new(DBUS_MESSAGE_TYPE_METHOD_RETURN))) {
         virReportOOMError();
-        goto cleanup;
+        return -1;
     }
 
     if (virDBusMessageEncodeArgs(*reply, types, args) < 0) {
         virDBusMessageUnref(*reply);
         *reply = NULL;
-        goto cleanup;
+        return -1;
     }
 
-    ret = 0;
- cleanup:
-    return ret;
+    return 0;
 }
 
 
@@ -1573,10 +1557,8 @@ virDBusCall(DBusConnection *conn,
             error->level = VIR_ERR_ERROR;
             error->code = VIR_ERR_DBUS_SERVICE;
             error->domain = VIR_FROM_DBUS;
-            if (VIR_STRDUP(error->message, localerror.message) < 0)
-                goto cleanup;
-            if (VIR_STRDUP(error->str1, localerror.name) < 0)
-                goto cleanup;
+            error->message = g_strdup(localerror.message);
+            error->str1 = g_strdup(localerror.name);
             ret = 0;
         } else {
             virReportError(VIR_ERR_DBUS_SERVICE, _("%s: %s"), member,
@@ -1754,7 +1736,7 @@ void virDBusMessageUnref(DBusMessage *msg)
 }
 
 #else /* ! WITH_DBUS */
-void virDBusSetSharedBus(bool shared ATTRIBUTE_UNUSED)
+void virDBusSetSharedBus(bool shared G_GNUC_UNUSED)
 {
     /* nothing */
 }
@@ -1786,56 +1768,56 @@ DBusConnection *virDBusGetSessionBus(void)
     return NULL;
 }
 
-int virDBusCreateMethod(DBusMessage **call ATTRIBUTE_UNUSED,
-                        const char *destination ATTRIBUTE_UNUSED,
-                        const char *path ATTRIBUTE_UNUSED,
-                        const char *iface ATTRIBUTE_UNUSED,
-                        const char *member ATTRIBUTE_UNUSED,
-                        const char *types ATTRIBUTE_UNUSED, ...)
+int virDBusCreateMethod(DBusMessage **call G_GNUC_UNUSED,
+                        const char *destination G_GNUC_UNUSED,
+                        const char *path G_GNUC_UNUSED,
+                        const char *iface G_GNUC_UNUSED,
+                        const char *member G_GNUC_UNUSED,
+                        const char *types G_GNUC_UNUSED, ...)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("DBus support not compiled into this binary"));
     return -1;
 }
 
-int virDBusCreateMethodV(DBusMessage **call ATTRIBUTE_UNUSED,
-                         const char *destination ATTRIBUTE_UNUSED,
-                         const char *path ATTRIBUTE_UNUSED,
-                         const char *iface ATTRIBUTE_UNUSED,
-                         const char *member ATTRIBUTE_UNUSED,
-                         const char *types ATTRIBUTE_UNUSED,
-                         va_list args ATTRIBUTE_UNUSED)
+int virDBusCreateMethodV(DBusMessage **call G_GNUC_UNUSED,
+                         const char *destination G_GNUC_UNUSED,
+                         const char *path G_GNUC_UNUSED,
+                         const char *iface G_GNUC_UNUSED,
+                         const char *member G_GNUC_UNUSED,
+                         const char *types G_GNUC_UNUSED,
+                         va_list args G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("DBus support not compiled into this binary"));
     return -1;
 }
 
-int virDBusCreateReplyV(DBusMessage **reply ATTRIBUTE_UNUSED,
-                        const char *types ATTRIBUTE_UNUSED,
-                        va_list args ATTRIBUTE_UNUSED)
+int virDBusCreateReplyV(DBusMessage **reply G_GNUC_UNUSED,
+                        const char *types G_GNUC_UNUSED,
+                        va_list args G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("DBus support not compiled into this binary"));
     return -1;
 }
 
-int virDBusCreateReply(DBusMessage **reply ATTRIBUTE_UNUSED,
-                       const char *types ATTRIBUTE_UNUSED, ...)
+int virDBusCreateReply(DBusMessage **reply G_GNUC_UNUSED,
+                       const char *types G_GNUC_UNUSED, ...)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("DBus support not compiled into this binary"));
     return -1;
 }
 
-int virDBusCallMethod(DBusConnection *conn ATTRIBUTE_UNUSED,
-                      DBusMessage **reply ATTRIBUTE_UNUSED,
-                      virErrorPtr error ATTRIBUTE_UNUSED,
-                      const char *destination ATTRIBUTE_UNUSED,
-                      const char *path ATTRIBUTE_UNUSED,
-                      const char *iface ATTRIBUTE_UNUSED,
-                      const char *member ATTRIBUTE_UNUSED,
-                      const char *types ATTRIBUTE_UNUSED, ...)
+int virDBusCallMethod(DBusConnection *conn G_GNUC_UNUSED,
+                      DBusMessage **reply G_GNUC_UNUSED,
+                      virErrorPtr error G_GNUC_UNUSED,
+                      const char *destination G_GNUC_UNUSED,
+                      const char *path G_GNUC_UNUSED,
+                      const char *iface G_GNUC_UNUSED,
+                      const char *member G_GNUC_UNUSED,
+                      const char *types G_GNUC_UNUSED, ...)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
                    "%s", _("DBus support not compiled into this binary"));
@@ -1843,8 +1825,8 @@ int virDBusCallMethod(DBusConnection *conn ATTRIBUTE_UNUSED,
 }
 
 
-int virDBusMessageEncode(DBusMessage* msg ATTRIBUTE_UNUSED,
-                         const char *types ATTRIBUTE_UNUSED,
+int virDBusMessageEncode(DBusMessage* msg G_GNUC_UNUSED,
+                         const char *types G_GNUC_UNUSED,
                          ...)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
@@ -1852,8 +1834,8 @@ int virDBusMessageEncode(DBusMessage* msg ATTRIBUTE_UNUSED,
     return -1;
 }
 
-int virDBusMessageDecode(DBusMessage* msg ATTRIBUTE_UNUSED,
-                         const char *types ATTRIBUTE_UNUSED,
+int virDBusMessageDecode(DBusMessage* msg G_GNUC_UNUSED,
+                         const char *types G_GNUC_UNUSED,
                          ...)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR,
@@ -1861,19 +1843,19 @@ int virDBusMessageDecode(DBusMessage* msg ATTRIBUTE_UNUSED,
     return -1;
 }
 
-int virDBusIsServiceEnabled(const char *name ATTRIBUTE_UNUSED)
+int virDBusIsServiceEnabled(const char *name G_GNUC_UNUSED)
 {
     VIR_DEBUG("DBus support not compiled into this binary");
     return -2;
 }
 
-int virDBusIsServiceRegistered(const char *name ATTRIBUTE_UNUSED)
+int virDBusIsServiceRegistered(const char *name G_GNUC_UNUSED)
 {
     VIR_DEBUG("DBus support not compiled into this binary");
     return -2;
 }
 
-void virDBusMessageUnref(DBusMessage *msg ATTRIBUTE_UNUSED)
+void virDBusMessageUnref(DBusMessage *msg G_GNUC_UNUSED)
 {
     /* nothing */
 }

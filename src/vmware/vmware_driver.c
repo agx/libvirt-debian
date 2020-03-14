@@ -93,7 +93,7 @@ vmwareDomObjFromDomain(struct vmware_driver *driver,
 
 
 static void *
-vmwareDataAllocFunc(void *opaque ATTRIBUTE_UNUSED)
+vmwareDataAllocFunc(void *opaque G_GNUC_UNUSED)
 {
     vmwareDomainPtr dom;
 
@@ -116,22 +116,26 @@ vmwareDataFreeFunc(void *data)
 }
 
 static int
-vmwareDomainDefPostParse(virDomainDefPtr def ATTRIBUTE_UNUSED,
-                         virCapsPtr caps ATTRIBUTE_UNUSED,
-                         unsigned int parseFlags ATTRIBUTE_UNUSED,
-                         void *opaque ATTRIBUTE_UNUSED,
-                         void *parseOpaque ATTRIBUTE_UNUSED)
+vmwareDomainDefPostParse(virDomainDefPtr def,
+                         unsigned int parseFlags G_GNUC_UNUSED,
+                         void *opaque G_GNUC_UNUSED,
+                         void *parseOpaque G_GNUC_UNUSED)
 {
+    struct vmware_driver *driver = opaque;
+    if (!virCapabilitiesDomainSupported(driver->caps, def->os.type,
+                                        def->os.arch,
+                                        def->virtType))
+        return -1;
+
     return 0;
 }
 
 static int
-vmwareDomainDeviceDefPostParse(virDomainDeviceDefPtr dev ATTRIBUTE_UNUSED,
-                               const virDomainDef *def ATTRIBUTE_UNUSED,
-                               virCapsPtr caps ATTRIBUTE_UNUSED,
-                               unsigned int parseFlags ATTRIBUTE_UNUSED,
-                               void *opaque ATTRIBUTE_UNUSED,
-                               void *parseOpaque ATTRIBUTE_UNUSED)
+vmwareDomainDeviceDefPostParse(virDomainDeviceDefPtr dev G_GNUC_UNUSED,
+                               const virDomainDef *def G_GNUC_UNUSED,
+                               unsigned int parseFlags G_GNUC_UNUSED,
+                               void *opaque G_GNUC_UNUSED,
+                               void *parseOpaque G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -139,22 +143,23 @@ vmwareDomainDeviceDefPostParse(virDomainDeviceDefPtr dev ATTRIBUTE_UNUSED,
 virDomainDefParserConfig vmwareDomainDefParserConfig = {
     .devicesPostParseCallback = vmwareDomainDeviceDefPostParse,
     .domainPostParseCallback = vmwareDomainDefPostParse,
+    .defArch = VIR_ARCH_I686,
 };
 
 static virDomainXMLOptionPtr
-vmwareDomainXMLConfigInit(void)
+vmwareDomainXMLConfigInit(struct vmware_driver *driver)
 {
     virDomainXMLPrivateDataCallbacks priv = { .alloc = vmwareDataAllocFunc,
                                               .free = vmwareDataFreeFunc };
-
+    vmwareDomainDefParserConfig.priv = driver;
     return virDomainXMLOptionNew(&vmwareDomainDefParserConfig, &priv,
                                  NULL, NULL, NULL);
 }
 
 static virDrvOpenStatus
 vmwareConnectOpen(virConnectPtr conn,
-                  virConnectAuthPtr auth ATTRIBUTE_UNUSED,
-                  virConfPtr conf ATTRIBUTE_UNUSED,
+                  virConnectAuthPtr auth G_GNUC_UNUSED,
+                  virConfPtr conf G_GNUC_UNUSED,
                   unsigned int flags)
 {
     struct vmware_driver *driver;
@@ -182,7 +187,7 @@ vmwareConnectOpen(virConnectPtr conn,
      * the VMware hypervisor. We look this up first since we use it
      * for auto detection of the backend
      */
-    for (i = 0; i < ARRAY_CARDINALITY(vmrun_candidates); i++) {
+    for (i = 0; i < G_N_ELEMENTS(vmrun_candidates); i++) {
         vmrun = virFindFileInPath(vmrun_candidates[i]);
         if (vmrun == NULL)
             continue;
@@ -229,7 +234,7 @@ vmwareConnectOpen(virConnectPtr conn,
     if (!(driver->caps = vmwareCapsInit()))
         goto cleanup;
 
-    if (!(driver->xmlopt = vmwareDomainXMLConfigInit()))
+    if (!(driver->xmlopt = vmwareDomainXMLConfigInit(driver)))
         goto cleanup;
 
     if (vmwareLoadDomains(driver) < 0)
@@ -258,7 +263,7 @@ vmwareConnectClose(virConnectPtr conn)
 }
 
 static const char *
-vmwareConnectGetType(virConnectPtr conn ATTRIBUTE_UNUSED)
+vmwareConnectGetType(virConnectPtr conn G_GNUC_UNUSED)
 {
     return "VMware";
 }
@@ -416,7 +421,7 @@ vmwareDomainDefineXMLFlags(virConnectPtr conn, const char *xml, unsigned int fla
     ctx.datacenterPath = NULL;
 
     vmwareDriverLock(driver);
-    if ((vmdef = virDomainDefParseString(xml, driver->caps, driver->xmlopt,
+    if ((vmdef = virDomainDefParseString(xml, driver->xmlopt,
                                          NULL, parse_flags)) == NULL)
         goto cleanup;
 
@@ -447,8 +452,7 @@ vmwareDomainDefineXMLFlags(virConnectPtr conn, const char *xml, unsigned int fla
         goto cleanup;
 
     pDomain = vm->privateData;
-    if (VIR_STRDUP(pDomain->vmxPath, vmxPath) < 0)
-        goto cleanup;
+    pDomain->vmxPath = g_strdup(vmxPath);
 
     vmwareDomainConfigDisplay(pDomain, vmdef);
 
@@ -679,7 +683,7 @@ vmwareDomainCreateXML(virConnectPtr conn, const char *xml,
 
     vmwareDriverLock(driver);
 
-    if ((vmdef = virDomainDefParseString(xml, driver->caps, driver->xmlopt,
+    if ((vmdef = virDomainDefParseString(xml, driver->xmlopt,
                                          NULL, parse_flags)) == NULL)
         goto cleanup;
 
@@ -708,8 +712,7 @@ vmwareDomainCreateXML(virConnectPtr conn, const char *xml,
         goto cleanup;
 
     pDomain = vm->privateData;
-    if (VIR_STRDUP(pDomain->vmxPath, vmxPath) < 0)
-        goto cleanup;
+    pDomain->vmxPath = g_strdup(vmxPath);
 
     vmwareDomainConfigDisplay(pDomain, vmdef);
     vmdef = NULL;
@@ -844,7 +847,7 @@ vmwareDomainGetOSType(virDomainPtr dom)
     if (!(vm = vmwareDomObjFromDomain(driver, dom->uuid)))
         return NULL;
 
-    ignore_value(VIR_STRDUP(ret, virDomainOSTypeToString(vm->def->os.type)));
+    ret = g_strdup(virDomainOSTypeToString(vm->def->os.type));
 
     virDomainObjEndAPI(&vm);
     return ret;
@@ -937,7 +940,7 @@ vmwareDomainGetXMLDesc(virDomainPtr dom, unsigned int flags)
     if (!(vm = vmwareDomObjFromDomain(driver, dom->uuid)))
         return NULL;
 
-    ret = virDomainDefFormat(vm->def, driver->caps,
+    ret = virDomainDefFormat(vm->def, driver->xmlopt,
                              virDomainDefFormatConvertXMLFlags(flags));
 
     virDomainObjEndAPI(&vm);
@@ -970,7 +973,7 @@ vmwareConnectDomainXMLFromNative(virConnectPtr conn, const char *nativeFormat,
     def = virVMXParseConfig(&ctx, driver->xmlopt, driver->caps, nativeConfig);
 
     if (def != NULL)
-        xml = virDomainDefFormat(def, driver->caps,
+        xml = virDomainDefFormat(def, driver->xmlopt,
                                  VIR_DOMAIN_DEF_FORMAT_INACTIVE);
 
     virDomainDefFree(def);
@@ -990,7 +993,7 @@ static int vmwareDomainObjListUpdateDomain(virDomainObjPtr dom, void *data)
 static void
 vmwareDomainObjListUpdateAll(virDomainObjListPtr doms, struct vmware_driver *driver)
 {
-    virDomainObjListForEach(doms, vmwareDomainObjListUpdateDomain, driver);
+    virDomainObjListForEach(doms, false, vmwareDomainObjListUpdateDomain, driver);
 }
 
 static int
@@ -1103,7 +1106,7 @@ vmwareDomainGetState(virDomainPtr dom,
 }
 
 static int
-vmwareConnectIsAlive(virConnectPtr conn ATTRIBUTE_UNUSED)
+vmwareConnectIsAlive(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 1;
 }

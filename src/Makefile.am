@@ -31,14 +31,15 @@ AM_CPPFLAGS =	-I../gnulib/lib \
 		-Dabs_top_srcdir="\"$(abs_top_srcdir)\"" \
 		$(NULL)
 
-WARN_CFLAGS += $(STRICT_FRAME_LIMIT_CFLAGS)
-
 AM_CFLAGS =	$(LIBXML_CFLAGS) \
+		$(GLIB_CFLAGS) \
 		$(WARN_CFLAGS) \
 		$(LOCK_CHECKING_CFLAGS) \
 		$(WIN32_EXTRA_CFLAGS) \
+		$(COVERAGE_CFLAGS) \
 		$(NULL)
 AM_LDFLAGS =	$(DRIVER_MODULES_LDFLAGS) \
+		$(COVERAGE_LDFLAGS) \
 		$(RELRO_LDFLAGS) \
 		$(NO_INDIRECT_LDFLAGS) \
 		$(CYGWIN_EXTRA_LDFLAGS) \
@@ -51,8 +52,6 @@ AM_LDFLAGS_MOD = \
 	$(AM_LDFLAGS)
 AM_LDFLAGS_MOD_NOUNDEF = $(AM_LDFLAGS_MOD) $(NO_UNDEFINED_LDFLAGS)
 
-POD2MAN = pod2man -c "Virtualization Support" -r "$(PACKAGE)-$(VERSION)"
-
 EXTRA_DIST = $(conf_DATA)
 
 BUILT_SOURCES =
@@ -62,6 +61,7 @@ MAINTAINERCLEANFILES =
 nodist_conf_DATA =
 DRIVER_SOURCE_FILES =
 STATEFUL_DRIVER_SOURCE_FILES =
+lib_LTLIBRARIES =
 noinst_LTLIBRARIES =
 mod_LTLIBRARIES =
 INSTALL_DATA_DIRS =
@@ -74,21 +74,30 @@ GENERATED_SYM_FILES =
 augeas_DATA =
 augeastest_DATA =
 conf_DATA =
-AUGEAS_DIRS =
 if WITH_DTRACE_PROBES
 tapset_DATA =
 endif WITH_DTRACE_PROBES
 libexec_PROGRAMS =
 RPC_PROBE_FILES =
 LOGROTATE_FILES_IN =
-PODFILES =
-MANINFILES =
+SYSTEMD_UNIT_FILES =
 SYSTEMD_UNIT_FILES_IN =
+OPENRC_INIT_FILES =
+OPENRC_INIT_FILES_IN =
+OPENRC_CONF_FILES =
 SYSCONF_FILES =
 sbin_PROGRAMS =
-man8_MANS =
 DRIVER_SOURCES =
-man7_MANS =
+
+COMMON_UNIT_VARS = \
+	-e 's|[@]runstatedir[@]|$(runstatedir)|g' \
+	-e 's|[@]sbindir[@]|$(sbindir)|g' \
+	-e 's|[@]sysconfdir[@]|$(sysconfdir)|g' \
+	$(NULL)
+
+# Set these variables before we include any of the subdirs as libvirt-admin.la
+# has to be installed after libvirt.la.
+lib_LTLIBRARIES += libvirt.la libvirt-qemu.la libvirt-lxc.la
 
 include util/Makefile.inc.am
 include conf/Makefile.inc.am
@@ -100,7 +109,6 @@ include logging/Makefile.inc.am
 include locking/Makefile.inc.am
 include admin/Makefile.inc.am
 include rpc/Makefile.inc.am
-include phyp/Makefile.inc.am
 include test/Makefile.inc.am
 include esx/Makefile.inc.am
 include hyperv/Makefile.inc.am
@@ -110,9 +118,7 @@ include vbox/Makefile.inc.am
 include openvz/Makefile.inc.am
 include qemu/Makefile.inc.am
 include bhyve/Makefile.inc.am
-include xenconfig/Makefile.inc.am
 include libxl/Makefile.inc.am
-include xenapi/Makefile.inc.am
 include vz/Makefile.inc.am
 include lxc/Makefile.inc.am
 include interface/Makefile.inc.am
@@ -138,17 +144,19 @@ SECDRIVER_LIBS += $(APPARMOR_LIBS)
 endif WITH_SECDRIVER_APPARMOR
 
 
-lib_LTLIBRARIES = libvirt.la libvirt-qemu.la libvirt-lxc.la
-
 moddir = $(libdir)/libvirt/connection-driver
 
 confdir = $(sysconfdir)/libvirt
-conf_DATA += libvirt.conf libvirt-admin.conf
+conf_DATA += libvirt.conf
+
+CLEANFILES += $(nodist_conf_DATA)
+BUILT_SOURCES += $(nodist_conf_DATA)
 
 augeasdir = $(datadir)/augeas/lenses
 
 augeastestdir = $(datadir)/augeas/lenses/tests
 
+CLEANFILES += $(augeastest_DATA)
 
 # Internal generic driver infrastructure
 DATATYPES_SOURCES = datatypes.h datatypes.c
@@ -182,104 +190,18 @@ DRIVER_SOURCES += \
 
 
 
-# Ensure that we don't change the struct or member names or member ordering
-# in remote_protocol.x  The embedded perl below needs a few comments, and
-# presumes you know what pdwtags output looks like:
-# * use -0777 -n to slurp the entire file into $_.
-# * the "split" splits on the /* DD */ comments, so that $p iterates
-#     through the struct definitions.
-# * process only "struct remote_..." entries
-# * remove comments and preceding TAB throughout
-# * remove empty lines throughout
-# * remove white space at end of buffer
-
-# With pdwtags 1.8, --verbose output includes separators like these:
-# /* 93 */
-# /* <0> (null):0 */
-# with the second line omitted for intrinsic types.
-# Whereas with pdwtags 1.3, they look like this:
-# /* <2d2> /usr/include/libio.h:180 */
-# The alternation of the following regexps matches both cases.
-r1 = /\* \d+ \*/
-r2 = /\* <[[:xdigit:]]+> \S+:\d+ \*/
-libs_prefix = remote_|qemu_|lxc_|admin_
-other_prefix = keepalive|vir(Net|LockSpace|LXCMonitor)
-struct_prefix = ($(libs_prefix)|$(other_prefix))
-
-# Depending on configure options, libtool creates one or both of
-# remote/{,.libs/}libvirt_driver_remote_la-remote_protocol.o.  We want
-# the newest of the two, in case configure options changed and a stale
-# file is left around from an earlier build.
-# The pdwtags output is completely different when building with clang
-# which causes the comparison against expected output to fail, so skip
-# if using clang as CC.
-PDWTAGS = \
-	$(AM_V_GEN)if $(CC) -v 2>&1 | grep -q clang; then \
-	   echo 'WARNING: skipping pdwtags test with Clang' >&2; \
-	   exit 0; \
-	fi; \
-	if (pdwtags --help) > /dev/null 2>&1; then \
-	  o=`ls -t $(<:.lo=.$(OBJEXT)) \
-	     $(subst /,/.libs/,$(<:.lo=.$(OBJEXT))) \
-	    2>/dev/null | sed -n 1p`; \
-	  test -f "$$o" || { echo ".o for $< not found" >&2; exit 1; }; \
-	  pdwtags --verbose $$o > $(@F)-t1 2> $(@F)-t2; \
-	  if test ! -s $(@F)-t1 && test -s $(@F)-t2; then \
-	    rm -rf $(@F)-t?; \
-	    echo 'WARNING: pdwtags appears broken; skipping the $@ test' >&2;\
-	  else \
-	    $(PERL) -0777 -n \
-		-e 'foreach my $$p (split m!\n*(?:$(r1)|$(r2))\n!) {' \
-		-e '  if ($$p =~ /^(struct|enum) $(struct_prefix)/ ||' \
-		-e '      $$p =~ /^enum \{/) {' \
-		-e '    $$p =~ s!\t*/\*.*?\*/!!sg;' \
-		-e '    $$p =~ s!\s+\n!\n!sg;' \
-		-e '    $$p =~ s!\s+$$!!;' \
-		-e '    $$p =~ s!\t!        !g;' \
-		-e '    print "$$p\n";' \
-		-e '    $$n++;' \
-		-e '  }' \
-		-e '}' \
-		-e 'BEGIN {' \
-		-e '  print "/* -*- c -*- */\n";' \
-		-e '}' \
-		-e 'END {' \
-		-e '  if ($$n < 1) {' \
-		-e '    warn "WARNING: your pdwtags program is too old\n";' \
-		-e '    warn "WARNING: skipping the $@ test\n";' \
-		-e '    warn "WARNING: install dwarves-1.3 or newer\n";' \
-		-e '    exit 8;' \
-		-e '  }' \
-		-e '}' \
-		< $(@F)-t1 > $(@F)-t3; \
-	    case $$? in 8) rm -f $(@F)-t?; exit 0;; 0) ;; *) exit 1;; esac;\
-	    diff -u $(@)s $(@F)-t3; st=$$?; rm -f $(@F)-t?; exit $$st; \
-	  fi; \
-	else \
-	  echo 'WARNING: you lack pdwtags; skipping the $@ test' >&2; \
-	  echo 'WARNING: install the dwarves package to get pdwtags' >&2; \
-	fi
-
 # .libs/libvirt.so is built by libtool as a side-effect of the Makefile
 # rule for libvirt.la.  However, checking symbols relies on Linux ELF layout
 if WITH_LINUX
 check-symfile: libvirt.syms libvirt.la
-	$(AM_V_GEN)$(PERL) $(srcdir)/check-symfile.pl libvirt.syms \
-	  .libs/libvirt.so
-check-admin-symfile: libvirt_admin.syms libvirt-admin.la
-	$(AM_V_GEN)$(PERL) $(srcdir)/check-symfile.pl libvirt_admin.syms \
-	  .libs/libvirt-admin.so
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/check-symfile.py \
+		libvirt.syms .libs/libvirt.so
 else ! WITH_LINUX
 check-symfile:
-check-admin-symfile:
 endif ! WITH_LINUX
 check-symsorting:
-	$(AM_V_GEN)$(PERL) $(srcdir)/check-symsorting.pl \
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/check-symsorting.py \
 		$(srcdir) $(SYM_FILES)
-check-admin-symsorting:
-	$(AM_V_GEN)$(PERL) $(srcdir)/check-symsorting.pl \
-		$(srcdir) $(ADMIN_SYM_FILES)
-EXTRA_DIST += check-symfile.pl check-symsorting.pl
 
 # Keep this list synced with RPC_PROBE_FILES
 PROTOCOL_STRUCTS = \
@@ -296,25 +218,38 @@ PROTOCOL_STRUCTS = \
 if WITH_REMOTE
 check-protocol: $(PROTOCOL_STRUCTS) $(PROTOCOL_STRUCTS:structs=struct)
 
+# Ensure that we don't change the struct or member names or member ordering
+# in remote_protocol.x  The check-remote-protocol.py script post-processes
+# output to extract the bits we want.
+
+CHECK_REMOTE_PROTOCOL = $(top_srcdir)/scripts/check-remote-protocol.py
+
 # The .o file that pdwtags parses is created as a side effect of running
 # libtool; but from make's perspective we depend on the .lo file.
 $(srcdir)/remote_protocol-struct \
 	$(srcdir)/qemu_protocol-struct \
 	$(srcdir)/lxc_protocol-struct: \
 		$(srcdir)/%-struct: remote/libvirt_driver_remote_la-%.lo
-	$(PDWTAGS)
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(CHECK_REMOTE_PROTOCOL) \
+		"$(CC)" "$(OBJEXT)" $< $(@)s
 $(srcdir)/virnetprotocol-struct $(srcdir)/virkeepaliveprotocol-struct: \
 		$(srcdir)/%-struct: rpc/libvirt_net_rpc_la-%.lo
-	$(PDWTAGS)
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(CHECK_REMOTE_PROTOCOL) \
+		"$(CC)" "$(OBJEXT)" $< $(@)s
+if WITH_LXC
 $(srcdir)/lxc_monitor_protocol-struct: \
 		$(srcdir)/%-struct: lxc/libvirt_driver_lxc_impl_la-%.lo
-	$(PDWTAGS)
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(CHECK_REMOTE_PROTOCOL) \
+		"$(CC)" "$(OBJEXT)" $< $(@)s
+endif WITH_LXC
 $(srcdir)/lock_protocol-struct: \
 		$(srcdir)/%-struct: locking/lockd_la-%.lo
-	$(PDWTAGS)
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(CHECK_REMOTE_PROTOCOL) \
+		"$(CC)" "$(OBJEXT)" $< $(@)s
 $(srcdir)/admin_protocol-struct: \
 		$(srcdir)/%-struct: admin/libvirt_admin_la-%.lo
-	$(PDWTAGS)
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(CHECK_REMOTE_PROTOCOL) \
+		"$(CC)" "$(OBJEXT)" $< $(@)s
 
 else !WITH_REMOTE
 # The $(PROTOCOL_STRUCTS) files must live in git, because they cannot be
@@ -323,38 +258,42 @@ check-protocol:
 endif !WITH_REMOTE
 EXTRA_DIST += $(PROTOCOL_STRUCTS)
 
+DRIVERS = \
+	$(srcdir)/driver-hypervisor.h \
+	$(srcdir)/driver-interface.h \
+	$(srcdir)/driver-network.h \
+	$(srcdir)/driver-nodedev.h \
+	$(srcdir)/driver-nwfilter.h \
+	$(srcdir)/driver-secret.h \
+	$(srcdir)/driver-state.h \
+	$(srcdir)/driver-storage.h \
+	$(srcdir)/driver-stream.h \
+	$(NULL)
+
 check-drivername:
-	$(AM_V_GEN)$(PERL) $(srcdir)/check-drivername.pl \
-		$(srcdir)/driver.h \
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/check-drivername.py \
+		$(DRIVERS) \
 		$(srcdir)/libvirt_public.syms \
-		$(srcdir)/libvirt_admin_public.syms \
 		$(srcdir)/libvirt_qemu.syms \
 		$(srcdir)/libvirt_lxc.syms
 
-EXTRA_DIST += check-drivername.pl
-
 check-driverimpls:
-	$(AM_V_GEN)$(PERL) $(srcdir)/check-driverimpls.pl \
-		$(filter /%,$(DRIVER_SOURCE_FILES)) \
-		$(filter $(srcdir)/%,$(DRIVER_SOURCE_FILES)) \
-		$(addprefix $(srcdir)/,$(filter-out $(srcdir)/%, \
-			$(filter-out /%,$(DRIVER_SOURCE_FILES))))
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/check-driverimpls.py \
+		$(DRIVER_SOURCE_FILES)
 
 check-aclrules:
-	$(AM_V_GEN)$(PERL) $(srcdir)/check-aclrules.pl \
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/check-aclrules.py \
 		$(REMOTE_PROTOCOL) \
-		$(addprefix $(srcdir)/,$(filter-out /%,$(STATEFUL_DRIVER_SOURCE_FILES)))
+		$(STATEFUL_DRIVER_SOURCE_FILES)
 
 check-aclperms:
-	$(AM_V_GEN)$(PERL) $(srcdir)/check-aclperms.pl \
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/check-aclperms.py \
 		$(srcdir)/access/viraccessperm.h \
 		$(srcdir)/access/viraccessperm.c
 
-EXTRA_DIST += check-driverimpls.pl check-aclrules.pl check-aclperms.pl
-
 check-local: check-protocol check-symfile check-symsorting \
 	check-drivername check-driverimpls check-aclrules \
-	check-aclperms check-admin-symfile check-admin-symsorting
+	check-aclperms check-admin
 .PHONY: check-protocol $(PROTOCOL_STRUCTS:structs=struct)
 
 
@@ -381,30 +320,35 @@ SYM_FILES += $(USED_SYM_FILES)
 USED_SYM_FILES += $(srcdir)/libvirt_private.syms
 GENERATED_SYM_FILES += \
 	libvirt.syms libvirt.def libvirt_qemu.def libvirt_lxc.def \
-	libvirt_admin.syms libvirt_admin.def \
 	$(NULL)
 
 
 
 %protocol.c: %protocol.x %protocol.h $(srcdir)/rpc/genprotocol.pl
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/genprotocol.pl $(RPCGEN) -c \
-	       $< $(srcdir)/$(subst $(srcdir)/,,$@)
+	       $< $(subst $(srcdir)/,,$@)
 
 %protocol.h: %protocol.x $(srcdir)/rpc/genprotocol.pl
 	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/genprotocol.pl $(RPCGEN) -h \
-	       $< $(srcdir)/$(subst $(srcdir)/,,$@)
-
-
-
-
-
-
+	       $< $(subst $(srcdir)/,,$@)
 
 check-local: check-augeas
 
-check-augeas: $(AUGEAS_DIRS:%=check-augeas-%)
+check-augeas: $(augeas_DATA) $(augeastest_DATA)
+	$(AM_V_GEN) \
+	if test -x "$(AUGPARSE)"; then \
+	    for f in $(augeastest_DATA); do \
+		DIR=$$(dirname "$$f"); \
+		FILE=$$(basename "$$f"); \
+		"$(AUGPARSE)" \
+		    -I "$(srcdir)/$$DIR" -I "$(builddir)/$$DIR" \
+		    "$$DIR/$$FILE" || exit 1; \
+	    done; \
+	fi
+.PHONY: check-augeas
 
-AUG_GENTEST = $(PERL) $(top_srcdir)/build-aux/augeas-gentest.pl
+AUG_GENTEST_SCRIPT = $(top_srcdir)/scripts/augeas-gentest.py
+AUG_GENTEST = $(RUNUTF8) $(PYTHON) $(AUG_GENTEST_SCRIPT)
 
 
 #
@@ -462,9 +406,7 @@ EXTRA_DIST += \
 	libvirt_public.syms \
 	libvirt_lxc.syms \
 	libvirt_qemu.syms \
-	libvirt_admin_public.syms \
 	$(SYM_FILES) \
-	$(ADMIN_SYM_FILES) \
 	$(NULL)
 
 BUILT_SOURCES += $(GENERATED_SYM_FILES)
@@ -491,68 +433,6 @@ libvirt.syms: libvirt_public.syms $(USED_SYM_FILES) \
 	chmod a-w $@-tmp && \
 	mv $@-tmp $@
 
-libvirt_admin.syms: libvirt_admin_public.syms $(ADMIN_SYM_FILES) \
-		$(top_builddir)/config.status
-	$(AM_V_GEN)rm -f $@-tmp $@ ; \
-	printf '# WARNING: generated from the following:\n# $^\n\n' >$@-tmp && \
-	cat $(srcdir)/libvirt_admin_public.syms >>$@-tmp && \
-	printf '\n\n# Private symbols\n\n' >>$@-tmp && \
-	printf 'LIBVIRT_ADMIN_PRIVATE_$(VERSION) {\n\n'  >>$@-tmp && \
-	printf 'global:\n\n' >>$@-tmp && \
-	cat $(ADMIN_SYM_FILES) >>$@-tmp && \
-	printf '\n\nlocal:\n*;\n\n};' >>$@-tmp && \
-	chmod a-w $@-tmp && \
-	mv $@-tmp libvirt_admin.syms
-
-
-lib_LTLIBRARIES += libvirt-admin.la
-libvirt_admin_la_SOURCES = \
-		libvirt-admin.c \
-		$(ADMIN_PROTOCOL_GENERATED) \
-		$(DATATYPES_SOURCES)
-
-libvirt_admin_la_LDFLAGS = \
-		$(VERSION_SCRIPT_FLAGS)$(LIBVIRT_ADMIN_SYMBOL_FILE) \
-		-version-info $(LIBVIRT_VERSION_INFO) \
-		$(LIBVIRT_NODELETE) \
-		$(AM_LDFLAGS) \
-		$(NULL)
-
-libvirt_admin_la_LIBADD = \
-		libvirt.la \
-		$(CYGWIN_EXTRA_LIBADD)
-
-libvirt_admin_la_CFLAGS = \
-		$(AM_CFLAGS) \
-		-I$(srcdir)/remote \
-		-I$(srcdir)/rpc \
-		-I$(srcdir)/admin
-
-libvirt_admin_la_CFLAGS += \
-		$(XDR_CFLAGS) \
-		$(CAPNG_CFLAGS) \
-		$(YAJL_CFLAGS) \
-		$(SSH2_CFLAGS) \
-		$(SASL_CFLAGS) \
-		$(GNUTLS_CFLAGS) \
-		$(LIBSSH_CFLAGS)
-
-libvirt_admin_la_LIBADD += \
-		$(CAPNG_LIBS) \
-		$(YAJL_LIBS) \
-		$(DEVMAPPER_LIBS) \
-		$(LIBXML_LIBS) \
-		$(SSH2_LIBS) \
-		$(SASL_LIBS) \
-		$(GNUTLS_LIBS) \
-		$(LIBSSH_LIBS)
-
-ADMIN_SYM_FILES = $(srcdir)/libvirt_admin_private.syms
-
-if WITH_DTRACE_PROBES
-libvirt_admin_la_LIBADD += libvirt_probes.lo
-endif WITH_DTRACE_PROBES
-
 # Empty source list - it merely links a bunch of convenience libs together
 libvirt_la_SOURCES =
 libvirt_la_LDFLAGS = \
@@ -560,8 +440,13 @@ libvirt_la_LDFLAGS = \
 		-version-info $(LIBVIRT_VERSION_INFO) \
 		$(LIBVIRT_NODELETE) \
 		$(NO_UNDEFINED_LDFLAGS) \
-		$(AM_LDFLAGS) \
-		$(NULL)
+		$(AM_LDFLAGS)
+if WITH_MACOS
+# macOS has two-level namespaces by default.
+# Override it to allow symbol replacement with DYLD_INSERT_LIBRARIES
+libvirt_la_LDFLAGS += -Wl,-flat_namespace
+endif WITH_MACOS
+libvirt_la_LDFLAGS += $(NULL)
 libvirt_la_BUILT_LIBADD += ../gnulib/lib/libgnu.la
 libvirt_la_LIBADD += \
 		    $(DRIVER_MODULES_LIBS) \
@@ -578,10 +463,6 @@ if WITH_DTRACE_PROBES
 libvirt_la_BUILT_LIBADD += libvirt_probes.lo
 libvirt_la_DEPENDENCIES += libvirt_probes.lo libvirt_probes.o
 nodist_libvirt_la_SOURCES = libvirt_probes.h
-if WITH_REMOTE
-nodist_libvirt_driver_remote_la_SOURCES = libvirt_probes.h
-endif WITH_REMOTE
-DTRACE2SYSTEMTAP_FLAGS = --with-modules
 
 BUILT_SOURCES += libvirt_probes.h libvirt_probes.stp libvirt_functions.stp
 
@@ -613,13 +494,14 @@ RPC_PROBE_FILES += $(srcdir)/rpc/virnetprotocol.x \
 		  $(srcdir)/remote/qemu_protocol.x \
 		  $(srcdir)/admin/admin_protocol.x
 
-libvirt_functions.stp: $(RPC_PROBE_FILES) $(srcdir)/rpc/gensystemtap.pl
-	$(AM_V_GEN)$(PERL) -w $(srcdir)/rpc/gensystemtap.pl $(RPC_PROBE_FILES) > $@
+libvirt_functions.stp: $(RPC_PROBE_FILES) $(top_srcdir)/scripts/gensystemtap.py
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/gensystemtap.py \
+	  $(RPC_PROBE_FILES) > $@
 
-%_probes.stp: %_probes.d $(srcdir)/dtrace2systemtap.pl \
+%_probes.stp: %_probes.d $(top_srcdir)/scripts/dtrace2systemtap.py \
 		$(top_builddir)/config.status
-	$(AM_V_GEN)$(PERL) -w $(srcdir)/dtrace2systemtap.pl \
-	  $(DTRACE2SYSTEMTAP_FLAGS) $(bindir) $(sbindir) $(libdir) $< > $@
+	$(AM_V_GEN)$(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/dtrace2systemtap.py \
+	  $(bindir) $(sbindir) $(libdir) $< > $@
 
 CLEANFILES += libvirt_probes.h libvirt_probes.o libvirt_probes.lo \
               libvirt_functions.stp libvirt_probes.stp
@@ -647,108 +529,9 @@ libvirt_lxc_la_LDFLAGS = \
 libvirt_lxc_la_CFLAGS = $(AM_CFLAGS)
 libvirt_lxc_la_LIBADD = libvirt.la $(CYGWIN_EXTRA_LIBADD)
 
-# Since virt-login-shell will be setuid, we must do everything
-# we can to avoid linking to other libraries. Many of them do
-# unsafe things in functions marked __attribute__((constructor)).
-# This library is built to include the bare minimum required to
-# have a RPC client for local UNIX socket access only. We use
-# the ../config-post.h header to disable all external deps that
-# we don't want
-if WITH_SETUID_RPC_CLIENT
-noinst_LTLIBRARIES += libvirt-setuid-rpc-client.la
-
-libvirt_setuid_rpc_client_la_SOURCES = \
-		util/viralloc.c \
-		util/virarch.c \
-		util/viratomic.c \
-		util/viratomic.h \
-		util/virautoclean.h \
-		util/virbitmap.c \
-		util/virbuffer.c \
-		util/vircgroup.c \
-		util/vircgroupbackend.c \
-		util/vircgroupv1.c \
-		util/vircgroupv2.c \
-		util/vircommand.c \
-		util/virconf.c \
-		util/virdbus.c \
-		util/virenum.c \
-		util/virerror.c \
-		util/virevent.c \
-		util/vireventpoll.c \
-		util/virfile.c \
-		util/virgettext.c \
-		util/virhash.c \
-		util/virhashcode.c \
-		util/virhostcpu.c \
-		util/virjson.c \
-		util/virlog.c \
-		util/virobject.c \
-		util/virpidfile.c \
-		util/virprocess.c \
-		util/virrandom.c \
-		util/virsocketaddr.c \
-		util/virstring.c \
-		util/virsystemd.c \
-		util/virtime.c \
-		util/virthread.c \
-		util/virthreadjob.c \
-		util/virtypedparam.c \
-		util/viruri.c \
-		util/virutil.c \
-		util/viruuid.c \
-		conf/domain_event.c \
-		conf/network_event.c \
-		conf/object_event.c \
-		conf/storage_event.c \
-		conf/node_device_event.c \
-		conf/secret_event.c \
-		rpc/virnetsocket.c \
-		rpc/virnetsocket.h \
-		rpc/virnetmessage.h \
-		rpc/virnetmessage.c \
-		rpc/virkeepalive.c \
-		rpc/virkeepalive.h \
-		rpc/virnetclient.c \
-		rpc/virnetclientprogram.c \
-		rpc/virnetclientstream.c \
-		rpc/virnetprotocol.c \
-		remote/remote_driver.c \
-		remote/remote_protocol.c \
-		remote/qemu_protocol.c \
-		remote/lxc_protocol.c \
-		datatypes.c \
-		libvirt.c \
-		libvirt-domain.c \
-		libvirt-domain-checkpoint.c \
-		libvirt-domain-snapshot.c \
-		libvirt-host.c \
-		libvirt-interface.c \
-		libvirt-network.c \
-		libvirt-nodedev.c \
-		libvirt-nwfilter.c \
-		libvirt-secret.c \
-		libvirt-storage.c \
-		libvirt-stream.c \
-		libvirt-lxc.c \
-		$(NULL)
-
-libvirt_setuid_rpc_client_la_LDFLAGS = \
-		$(AM_LDFLAGS) \
-		$(LIBXML_LIBS) \
-		$(SECDRIVER_LIBS) \
-		$(NULL)
-libvirt_setuid_rpc_client_la_CFLAGS = \
-		-DLIBVIRT_SETUID_RPC_CLIENT \
-		-I$(srcdir)/conf \
-		-I$(srcdir)/rpc \
-		$(AM_CFLAGS) \
-		$(SECDRIVER_CFLAGS) \
-		$(XDR_CFLAGS) \
-		$(NULL)
-endif WITH_SETUID_RPC_CLIENT
-
-EXTRA_DIST += $(SYSCONF_FILES)
+EXTRA_DIST += \
+	$(SYSCONF_FILES) \
+	$(OPENRC_CONF_FILES)
 
 install-sysconfig:
 	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/sysconfig
@@ -766,6 +549,25 @@ uninstall-sysconfig:
 	  rm -f $(DESTDIR)$(sysconfdir)/sysconfig/$$tgt; \
 	done
 	rmdir $(DESTDIR)$(sysconfdir)/sysconfig || :
+
+OPENRC_CONF_DIR = $(sysconfdir)/conf.d
+
+install-openrc-conf:
+	$(MKDIR_P) $(DESTDIR)$(OPENRC_CONF_DIR)
+	for f in $(OPENRC_CONF_FILES:%.confd=%) ; \
+	do \
+		tgt=`basename $$f`; \
+		$(INSTALL_DATA) $(srcdir)/$$f.confd \
+			$(DESTDIR)$(OPENRC_CONF_DIR)/$$tgt; \
+	done
+
+uninstall-openrc-conf:
+	for f in $(OPENRC_CONF_FILES:%.confd=%) ; \
+	do \
+		tgt=`basename $$f`; \
+		rm -f $(DESTDIR)$(OPENRC_CONF_DIR)/$$tgt; \
+	done
+	rmdir $(DESTDIR)$(OPENRC_CONF_DIR) || :
 
 LOGROTATE_FILES := $(LOGROTATE_FILES_IN:remote/%.in=%)
 
@@ -799,20 +601,9 @@ UNINSTALL_LOCAL += uninstall-logrotate
 endif WITH_LIBVIRTD
 
 
-%.8: %.8.in $(top_srcdir)/configure.ac
-	$(AM_V_GEN)sed \
-		-e 's|[@]sysconfdir[@]|$(sysconfdir)|g' \
-		-e 's|[@]localstatedir[@]|$(localstatedir)|g' \
-		< $< > $@-t && \
-	mv $@-t $@
-
-CLEANFILES += $(man8_MANS)
-MAINTAINERCLEANFILES += $(MANINFILES)
-
 EXTRA_DIST += \
         $(SYSTEMD_UNIT_FILES_IN) \
-        $(PODFILES) \
-        $(MANINFILES) \
+        $(OPENRC_INIT_FILES_IN) \
         $(NULL)
 
 
@@ -820,7 +611,6 @@ if WITH_LIBVIRTD
 if LIBVIRT_INIT_SCRIPT_SYSTEMD
 
 SYSTEMD_UNIT_DIR = $(prefix)/lib/systemd/system
-SYSTEMD_UNIT_FILES = $(notdir $(SYSTEMD_UNIT_FILES_IN:%.in=%))
 
 BUILT_SOURCES += $(SYSTEMD_UNIT_FILES)
 DISTCLEANFILES += $(SYSTEMD_UNIT_FILES)
@@ -839,10 +629,36 @@ uninstall-systemd: uninstall-sysconfig
 INSTALL_DATA_LOCAL += install-systemd
 UNINSTALL_LOCAL += uninstall-systemd
 endif LIBVIRT_INIT_SCRIPT_SYSTEMD
+
+if LIBVIRT_INIT_SCRIPT_OPENRC
+
+OPENRC_INIT_DIR = $(sysconfdir)/init.d
+
+BUILT_SOURCES += $(OPENRC_INIT_FILES)
+DISTCLEANFILES += $(OPENRC_INIT_FILES)
+
+install-openrc: $(OPENRC_INIT_FILES) install-openrc-conf
+	$(MKDIR_P) $(DESTDIR)$(OPENRC_INIT_DIR)
+	for f in $(OPENRC_INIT_FILES:%.init=%) ; \
+	do \
+		tgt=`basename $$f`; \
+		$(INSTALL_SCRIPT) $$f.init \
+		$(DESTDIR)$(OPENRC_INIT_DIR)/$$tgt ; \
+	done
+
+uninstall-openrc: uninstall-openrc-conf
+	for f in $(OPENRC_INIT_FILES:%.init=%) ; \
+	do \
+		tgt=`basename $$f`; \
+		rm -f $(DESTDIR)$(OPENRC_INIT_DIR)/$$tgt ; \
+	done
+	rmdir $(DESTDIR)$(OPENRC_INIT_DIR) || :
+
+INSTALL_DATA_LOCAL += install-openrc
+UNINSTALL_LOCAL += uninstall-openrc
+endif LIBVIRT_INIT_SCRIPT_OPENRC
+
 endif WITH_LIBVIRTD
-
-
-EXTRA_DIST += dtrace2systemtap.pl
 
 
 if WITH_LIBVIRTD
@@ -854,6 +670,7 @@ libvirt_iohelper_LDFLAGS = \
 		$(NULL)
 libvirt_iohelper_LDADD = \
 		libvirt.la \
+		$(GLIB_LIBS) \
 		../gnulib/lib/libgnu.la
 if WITH_DTRACE_PROBES
 libvirt_iohelper_LDADD += libvirt_probes.lo
@@ -868,77 +685,7 @@ libvirt_iohelper_CFLAGS = \
 endif WITH_LIBVIRTD
 
 
-
-if WITH_NSS
-noinst_LTLIBRARIES += libvirt-nss.la
-
-libvirt_nss_la_SOURCES = \
-		util/viralloc.c \
-		util/viralloc.h \
-		util/viratomic.c \
-		util/viratomic.h \
-		util/virautoclean.h \
-		util/virbitmap.c \
-		util/virbitmap.h \
-		util/virbuffer.c \
-		util/virbuffer.h \
-		util/vircommand.c \
-		util/vircommand.h \
-		util/virenum.c \
-		util/virenum.h \
-		util/virerror.c \
-		util/virerror.h \
-		util/virfile.c \
-		util/virfile.h \
-		util/virhash.c \
-		util/virhash.h \
-		util/virhashcode.c \
-		util/virhashcode.h \
-		util/virjson.c \
-		util/virjson.h \
-		util/virkmod.c \
-		util/virkmod.h \
-		util/virlease.c \
-		util/virlease.h \
-		util/virlog.c \
-		util/virlog.h \
-		util/virmacmap.c \
-		util/virmacmap.h \
-		util/virobject.c \
-		util/virobject.h \
-		util/virpidfile.c \
-		util/virpidfile.h \
-		util/virprocess.c \
-		util/virprocess.h \
-		util/virrandom.c \
-		util/virrandom.h \
-		util/virsocketaddr.c \
-		util/virsocketaddr.h \
-		util/virstring.c \
-		util/virstring.h \
-		util/virthread.c \
-		util/virthread.h \
-		util/virthreadjob.c \
-		util/virthreadjob.h \
-		util/virtime.c \
-		util/virtime.h \
-		util/virutil.c \
-		util/virutil.h \
-		$(NULL)
-
-libvirt_nss_la_CFLAGS = \
-		-DLIBVIRT_NSS \
-		$(AM_CFLAGS) \
-		$(YAJL_CFLAGS) \
-		$(NULL)
-libvirt_nss_la_LDFLAGS = \
-		$(AM_LDFLAGS) \
-		$(NULL)
-
-libvirt_nss_la_LIBADD = \
-		$(YAJL_LIBS) \
-		$(NULL)
-endif WITH_NSS
+generated-sources: $(BUILT_SOURCES)
 
 
 install-data-local: $(INSTALL_DATA_LOCAL) \

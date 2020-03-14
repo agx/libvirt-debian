@@ -25,7 +25,6 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <sys/time.h>
-#include "c-ctype.h"
 #include <fcntl.h>
 #include <time.h>
 #include <sys/stat.h>
@@ -63,17 +62,6 @@ vshControl *autoCompleteOpaque;
  */
 const vshCmdGrp *cmdGroups;
 const vshCmdDef *cmdSet;
-
-
-/* simple handler for oom conditions */
-static void
-vshErrorOOM(void)
-{
-    fflush(stdout);
-    fputs(_("error: Out of memory\n"), stderr);
-    fflush(stderr);
-    exit(EXIT_FAILURE);
-}
 
 
 double
@@ -129,29 +117,9 @@ _vshMalloc(vshControl *ctl, size_t size, const char *filename, int line)
 }
 
 void *
-_vshCalloc(vshControl *ctl, size_t nmemb, size_t size, const char *filename,
-           int line)
+vshCalloc(vshControl *ctl G_GNUC_UNUSED, size_t nmemb, size_t size)
 {
-    char *x;
-
-    if (!xalloc_oversized(nmemb, size) &&
-        VIR_ALLOC_N(x, nmemb * size) == 0)
-        return x;
-    vshError(ctl, _("%s: %d: failed to allocate %d bytes"),
-             filename, line, (int) (size*nmemb));
-    exit(EXIT_FAILURE);
-}
-
-char *
-_vshStrdup(vshControl *ctl, const char *s, const char *filename, int line)
-{
-    char *x;
-
-    if (VIR_STRDUP(x, s) >= 0)
-        return x;
-    vshError(ctl, _("%s: %d: failed to allocate %lu bytes"),
-             filename, line, (unsigned long)strlen(s));
-    exit(EXIT_FAILURE);
+    return g_malloc0_n(nmemb, size);
 }
 
 int
@@ -176,7 +144,7 @@ int
 vshStringToArray(const char *str,
                  char ***array)
 {
-    char *str_copied = vshStrdup(NULL, str);
+    char *str_copied = g_strdup(str);
     char *str_tok = NULL;
     char *tmp;
     unsigned int nstr_tokens = 0;
@@ -214,10 +182,10 @@ vshStringToArray(const char *str,
             continue;
         }
         *tmp++ = '\0';
-        arr[nstr_tokens++] = vshStrdup(NULL, str_tok);
+        arr[nstr_tokens++] = g_strdup(str_tok);
         str_tok = tmp;
     }
-    arr[nstr_tokens++] = vshStrdup(NULL, str_tok);
+    arr[nstr_tokens++] = g_strdup(str_tok);
 
     *array = arr;
     VIR_FREE(str_copied);
@@ -230,8 +198,8 @@ virErrorPtr last_error;
  * Quieten libvirt until we're done with the command.
  */
 void
-vshErrorHandler(void *opaque ATTRIBUTE_UNUSED,
-                virErrorPtr error ATTRIBUTE_UNUSED)
+vshErrorHandler(void *opaque G_GNUC_UNUSED,
+                virErrorPtr error G_GNUC_UNUSED)
 {
     virFreeError(last_error);
     last_error = virSaveLastError();
@@ -380,9 +348,8 @@ vshCmddefCheckInternals(vshControl *ctl,
                          cmd->name);
                 return -1; /* alias options are tracked by the original name */
             }
-            if ((p = strchr(name, '=')) &&
-                VIR_STRNDUP(name, name, p - name) < 0)
-                vshErrorOOM();
+            if ((p = strchr(name, '=')))
+                name = g_strndup(name, p - name);
             for (j = i + 1; cmd->opts[j].name; j++) {
                 if (STREQ(name, cmd->opts[j].name) &&
                     cmd->opts[j].type != VSH_OT_ALIAS)
@@ -507,8 +474,7 @@ vshCmddefGetOption(vshControl *ctl, const vshCmdDef *cmd, const char *name,
                    opt->help = "string=value": treat boolean flag as
                    alias of option and its default value */
                 sa_assert(!alias);
-                if (VIR_STRDUP(alias, opt->help) < 0)
-                    goto cleanup;
+                alias = g_strdup(opt->help);
                 name = alias;
                 if ((value = strchr(name, '='))) {
                     *value = '\0';
@@ -518,8 +484,7 @@ vshCmddefGetOption(vshControl *ctl, const vshCmdDef *cmd, const char *name,
                                      opt->name);
                         goto cleanup;
                     }
-                    if (VIR_STRDUP(*optstr, value + 1) < 0)
-                        goto cleanup;
+                    *optstr = g_strdup(value + 1);
                 }
                 continue;
             }
@@ -555,7 +520,7 @@ vshCmddefGetData(const vshCmdDef *cmd, uint64_t *opts_need_arg,
         return NULL;
 
     /* Grab least-significant set bit */
-    i = ffsl(*opts_need_arg) - 1;
+    i = __builtin_ffsl(*opts_need_arg) - 1;
     opt = &cmd->opts[i];
     if (opt->type != VSH_OT_ARGV)
         *opts_need_arg &= ~(1ULL << i);
@@ -741,24 +706,24 @@ vshCmddefHelp(vshControl *ctl, const vshCmdDef *def)
         for (opt = def->opts; opt->name; opt++) {
             switch (opt->type) {
             case VSH_OT_BOOL:
-                snprintf(buf, sizeof(buf), "--%s", opt->name);
+                g_snprintf(buf, sizeof(buf), "--%s", opt->name);
                 break;
             case VSH_OT_INT:
-                snprintf(buf, sizeof(buf),
-                         (opt->flags & VSH_OFLAG_REQ) ? _("[--%s] <number>")
-                         : _("--%s <number>"), opt->name);
+                g_snprintf(buf, sizeof(buf),
+                           (opt->flags & VSH_OFLAG_REQ) ? _("[--%s] <number>")
+                           : _("--%s <number>"), opt->name);
                 break;
             case VSH_OT_STRING:
-                snprintf(buf, sizeof(buf), _("--%s <string>"), opt->name);
+                g_snprintf(buf, sizeof(buf), _("--%s <string>"), opt->name);
                 break;
             case VSH_OT_DATA:
-                snprintf(buf, sizeof(buf), _("[--%s] <string>"),
-                         opt->name);
+                g_snprintf(buf, sizeof(buf), _("[--%s] <string>"),
+                           opt->name);
                 break;
             case VSH_OT_ARGV:
-                snprintf(buf, sizeof(buf),
-                         shortopt ? _("[--%s] <string>") : _("<%s>"),
-                         opt->name);
+                g_snprintf(buf, sizeof(buf),
+                           shortopt ? _("[--%s] <string>") : _("<%s>"),
+                           opt->name);
                 break;
             case VSH_OT_ALIAS:
                 continue;
@@ -1026,7 +991,7 @@ vshCommandOptULWrap(vshControl *ctl, const vshCmd *cmd,
  * <0 in all other cases (@value untouched)
  */
 int
-vshCommandOptStringQuiet(vshControl *ctl ATTRIBUTE_UNUSED, const vshCmd *cmd,
+vshCommandOptStringQuiet(vshControl *ctl G_GNUC_UNUSED, const vshCmd *cmd,
                          const char *name, const char **value)
 {
     vshCmdOpt *arg;
@@ -1245,7 +1210,7 @@ vshCommandOptBool(const vshCmd *cmd, const char *name)
  * list of supported options in CMD->def->opts.
  */
 const vshCmdOpt *
-vshCommandOptArgv(vshControl *ctl ATTRIBUTE_UNUSED, const vshCmd *cmd,
+vshCommandOptArgv(vshControl *ctl G_GNUC_UNUSED, const vshCmd *cmd,
                   const vshCmdOpt *opt)
 {
     opt = opt ? opt->next : cmd->opts;
@@ -1321,11 +1286,10 @@ vshCommandRun(vshControl *ctl, const vshCmd *cmd)
     bool ret = true;
 
     while (cmd) {
-        struct timeval before, after;
+        gint64 before, after;
         bool enable_timing = ctl->timing;
 
-        if (enable_timing)
-            GETTIMEOFDAY(&before);
+        before = g_get_real_time();
 
         if ((cmd->def->flags & VSH_CMD_FLAG_NOCONNECT) ||
             (hooks && hooks->connHandler && hooks->connHandler(ctl))) {
@@ -1335,8 +1299,7 @@ vshCommandRun(vshControl *ctl, const vshCmd *cmd)
             ret = false;
         }
 
-        if (enable_timing)
-            GETTIMEOFDAY(&after);
+        after = g_get_real_time();
 
         /* try to automatically catch disconnections */
         if (!ret &&
@@ -1356,8 +1319,7 @@ vshCommandRun(vshControl *ctl, const vshCmd *cmd)
             return ret;
 
         if (enable_timing) {
-            double diff_ms = (((after.tv_sec - before.tv_sec) * 1000.0) +
-                              ((after.tv_usec - before.tv_usec) / 1000.0));
+            double diff_ms = (after - before) / 1000.0;
 
             vshPrint(ctl, _("\n(Time: %.3f ms)\n\n"), diff_ms);
         } else {
@@ -1451,7 +1413,7 @@ vshCommandParse(vshControl *ctl, vshCommandParser *parser, vshCmd **partial)
                 /* aliases need to be resolved to the actual commands */
                 if (cmd->flags & VSH_CMD_FLAG_ALIAS) {
                     VIR_FREE(tkdata);
-                    tkdata = vshStrdup(ctl, cmd->alias);
+                    tkdata = g_strdup(cmd->alias);
                     cmd = vshCmddefSearch(tkdata);
                 }
                 if (vshCmddefOptParse(cmd, &opts_need_arg,
@@ -1466,13 +1428,13 @@ vshCommandParse(vshControl *ctl, vshCommandParser *parser, vshCmd **partial)
             } else if (data_only) {
                 goto get_data;
             } else if (tkdata[0] == '-' && tkdata[1] == '-' &&
-                       c_isalnum(tkdata[2])) {
+                       g_ascii_isalnum(tkdata[2])) {
                 char *optstr = strchr(tkdata + 2, '=');
                 size_t opt_index = 0;
 
                 if (optstr) {
                     *optstr = '\0'; /* convert the '=' to '\0' */
-                    optstr = vshStrdup(ctl, optstr + 1);
+                    optstr = g_strdup(optstr + 1);
                 }
                 /* Special case 'help' to ignore all spurious options */
                 if (!(opt = vshCmddefGetOption(ctl, cmd, tkdata + 2,
@@ -1582,7 +1544,7 @@ vshCommandParse(vshControl *ctl, vshCommandParser *parser, vshCmd **partial)
                 vshCommandOptFree(first);
                 first = vshMalloc(ctl, sizeof(vshCmdOpt));
                 first->def = help->opts;
-                first->data = vshStrdup(ctl, cmd->name);
+                first->data = g_strdup(cmd->name);
                 first->next = NULL;
 
                 cmd = help;
@@ -1644,15 +1606,17 @@ vshCommandParse(vshControl *ctl, vshCommandParser *parser, vshCmd **partial)
  */
 
 static vshCommandToken ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(3)
-vshCommandArgvGetArg(vshControl *ctl, vshCommandParser *parser, char **res,
-                     bool report ATTRIBUTE_UNUSED)
+vshCommandArgvGetArg(vshControl *ctl G_GNUC_UNUSED,
+                     vshCommandParser *parser,
+                     char **res,
+                     bool report G_GNUC_UNUSED)
 {
     if (parser->arg_pos == parser->arg_end) {
         *res = NULL;
         return VSH_TK_END;
     }
 
-    *res = vshStrdup(ctl, *parser->arg_pos);
+    *res = g_strdup(*parser->arg_pos);
     parser->arg_pos++;
     return VSH_TK_ARG;
 }
@@ -1684,7 +1648,7 @@ vshCommandStringGetArg(vshControl *ctl, vshCommandParser *parser, char **res,
     bool double_quote = false;
     int sz = 0;
     char *p = parser->pos;
-    char *q = vshStrdup(ctl, p);
+    char *q = g_strdup(p);
 
     *res = q;
 
@@ -1807,43 +1771,42 @@ vshCommandOptTimeoutToMs(vshControl *ctl, const vshCmd *cmd, int *timeout)
 char *
 vshGetTypedParamValue(vshControl *ctl, virTypedParameterPtr item)
 {
-    int ret = 0;
     char *str = NULL;
 
     switch (item->type) {
     case VIR_TYPED_PARAM_INT:
-        ret = virAsprintf(&str, "%d", item->value.i);
+        str = g_strdup_printf("%d", item->value.i);
         break;
 
     case VIR_TYPED_PARAM_UINT:
-        ret = virAsprintf(&str, "%u", item->value.ui);
+        str = g_strdup_printf("%u", item->value.ui);
         break;
 
     case VIR_TYPED_PARAM_LLONG:
-        ret = virAsprintf(&str, "%lld", item->value.l);
+        str = g_strdup_printf("%lld", item->value.l);
         break;
 
     case VIR_TYPED_PARAM_ULLONG:
-        ret = virAsprintf(&str, "%llu", item->value.ul);
+        str = g_strdup_printf("%llu", item->value.ul);
         break;
 
     case VIR_TYPED_PARAM_DOUBLE:
-        ret = virAsprintf(&str, "%f", item->value.d);
+        str = g_strdup_printf("%f", item->value.d);
         break;
 
     case VIR_TYPED_PARAM_BOOLEAN:
-        str = vshStrdup(ctl, item->value.b ? _("yes") : _("no"));
+        str = g_strdup(item->value.b ? _("yes") : _("no"));
         break;
 
     case VIR_TYPED_PARAM_STRING:
-        str = vshStrdup(ctl, item->value.s);
+        str = g_strdup(item->value.s);
         break;
 
     default:
         vshError(ctl, _("unimplemented parameter type %d"), item->type);
     }
 
-    if (ret < 0) {
+    if (!str) {
         vshError(ctl, "%s", _("Out of memory"));
         exit(EXIT_FAILURE);
     }
@@ -1868,11 +1831,7 @@ vshDebug(vshControl *ctl, int level, const char *format, ...)
     va_end(ap);
 
     va_start(ap, format);
-    if (virVasprintf(&str, format, ap) < 0) {
-        /* Skip debug messages on low memory */
-        va_end(ap);
-        return;
-    }
+    str = g_strdup_vprintf(format, ap);
     va_end(ap);
     fputs(str, stdout);
     VIR_FREE(str);
@@ -1888,8 +1847,7 @@ vshPrintExtra(vshControl *ctl, const char *format, ...)
         return;
 
     va_start(ap, format);
-    if (virVasprintfQuiet(&str, format, ap) < 0)
-        vshErrorOOM();
+    str = g_strdup_vprintf(format, ap);
     va_end(ap);
     fputs(str, stdout);
     VIR_FREE(str);
@@ -1897,14 +1855,13 @@ vshPrintExtra(vshControl *ctl, const char *format, ...)
 
 
 void
-vshPrint(vshControl *ctl ATTRIBUTE_UNUSED, const char *format, ...)
+vshPrint(vshControl *ctl G_GNUC_UNUSED, const char *format, ...)
 {
     va_list ap;
     char *str;
 
     va_start(ap, format);
-    if (virVasprintfQuiet(&str, format, ap) < 0)
-        vshErrorOOM();
+    str = g_strdup_vprintf(format, ap);
     va_end(ap);
     fputs(str, stdout);
     VIR_FREE(str);
@@ -1912,8 +1869,8 @@ vshPrint(vshControl *ctl ATTRIBUTE_UNUSED, const char *format, ...)
 
 
 bool
-vshTTYIsInterruptCharacter(vshControl *ctl ATTRIBUTE_UNUSED,
-                           const char chr ATTRIBUTE_UNUSED)
+vshTTYIsInterruptCharacter(vshControl *ctl G_GNUC_UNUSED,
+                           const char chr G_GNUC_UNUSED)
 {
 #ifndef WIN32
     if (ctl->istty &&
@@ -1933,7 +1890,7 @@ vshTTYAvailable(vshControl *ctl)
 
 
 int
-vshTTYDisableInterrupt(vshControl *ctl ATTRIBUTE_UNUSED)
+vshTTYDisableInterrupt(vshControl *ctl G_GNUC_UNUSED)
 {
 #ifndef WIN32
     struct termios termset = ctl->termattr;
@@ -1957,7 +1914,7 @@ vshTTYDisableInterrupt(vshControl *ctl ATTRIBUTE_UNUSED)
 
 
 int
-vshTTYRestore(vshControl *ctl ATTRIBUTE_UNUSED)
+vshTTYRestore(vshControl *ctl G_GNUC_UNUSED)
 {
 #ifndef WIN32
     if (!ctl->istty)
@@ -1987,8 +1944,8 @@ cfmakeraw(struct termios *attr)
 
 
 int
-vshTTYMakeRaw(vshControl *ctl ATTRIBUTE_UNUSED,
-              bool report_errors ATTRIBUTE_UNUSED)
+vshTTYMakeRaw(vshControl *ctl G_GNUC_UNUSED,
+              bool report_errors G_GNUC_UNUSED)
 {
 #ifndef WIN32
     struct termios rawattr = ctl->termattr;
@@ -2036,9 +1993,7 @@ vshError(vshControl *ctl, const char *format, ...)
     fputs(_("error: "), stderr);
 
     va_start(ap, format);
-    /* We can't recursively call vshError on an OOM situation, so ignore
-       failure here. */
-    ignore_value(virVasprintf(&str, format, ap));
+    str = g_strdup_vprintf(format, ap);
     va_end(ap);
 
     fprintf(stderr, "%s\n", NULLSTR(str));
@@ -2079,9 +2034,9 @@ static struct sigaction vshEventOldAction;
 
 /* Signal handler installed in vshEventStart, removed in vshEventCleanup.  */
 static void
-vshEventInt(int sig ATTRIBUTE_UNUSED,
-            siginfo_t *siginfo ATTRIBUTE_UNUSED,
-            void *context ATTRIBUTE_UNUSED)
+vshEventInt(int sig G_GNUC_UNUSED,
+            siginfo_t *siginfo G_GNUC_UNUSED,
+            void *context G_GNUC_UNUSED)
 {
     char reason = VSH_EVENT_INTERRUPT;
     if (vshEventFd >= 0)
@@ -2091,7 +2046,7 @@ vshEventInt(int sig ATTRIBUTE_UNUSED,
 
 /* Event loop handler used to limit length of waiting for any other event. */
 void
-vshEventTimeout(int timer ATTRIBUTE_UNUSED,
+vshEventTimeout(int timer G_GNUC_UNUSED,
                 void *opaque)
 {
     vshControl *ctl = opaque;
@@ -2289,9 +2244,6 @@ vshOutputLogFile(vshControl *ctl, int log_level, const char *msg_format,
     virBufferTrim(&buf, "\n", -1);
     virBufferAddChar(&buf, '\n');
 
-    if (virBufferError(&buf))
-        goto error;
-
     str = virBufferContentAndReset(&buf);
     len = strlen(str);
 
@@ -2375,7 +2327,7 @@ vshAskReedit(vshControl *ctl, const char *msg, bool relax_avail)
     while (true) {
         vshPrint(ctl, "\r%s %s %s: ", msg, _("Try again?"),
                  relax_avail ? "[y,n,i,f,?]" : "[y,n,f,?]");
-        c = c_tolower(getchar());
+        c = g_ascii_tolower(getchar());
 
         if (c == '?') {
             vshPrintRaw(ctl,
@@ -2410,8 +2362,8 @@ vshAskReedit(vshControl *ctl, const char *msg, bool relax_avail)
 #else /* WIN32 */
 int
 vshAskReedit(vshControl *ctl,
-             const char *msg ATTRIBUTE_UNUSED,
-             bool relax_avail ATTRIBUTE_UNUSED)
+             const char *msg G_GNUC_UNUSED,
+             bool relax_avail G_GNUC_UNUSED)
 {
     vshDebug(ctl, VSH_ERR_WARNING, "%s", _("This function is not "
                                            "supported on WIN32 platform"));
@@ -2429,15 +2381,12 @@ vshEditWriteToTempFile(vshControl *ctl, const char *doc)
     int fd;
     char ebuf[1024];
 
-    tmpdir = virGetEnvBlockSUID("TMPDIR");
+    tmpdir = getenv("TMPDIR");
     if (!tmpdir) tmpdir = "/tmp";
-    if (virAsprintf(&ret, "%s/virshXXXXXX.xml", tmpdir) < 0) {
-        vshError(ctl, "%s", _("out of memory"));
-        return NULL;
-    }
-    fd = mkostemps(ret, 4, O_CLOEXEC);
+    ret = g_strdup_printf("%s/virshXXXXXX.xml", tmpdir);
+    fd = g_mkstemp_full(ret, O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR);
     if (fd == -1) {
-        vshError(ctl, _("mkostemps: failed to create temporary file: %s"),
+        vshError(ctl, _("g_mkstemp_full: failed to create temporary file: %s"),
                  virStrerror(errno, ebuf, sizeof(ebuf)));
         VIR_FREE(ret);
         return NULL;
@@ -2476,9 +2425,9 @@ vshEditFile(vshControl *ctl, const char *filename)
     int outfd = STDOUT_FILENO;
     int errfd = STDERR_FILENO;
 
-    editor = virGetEnvBlockSUID("VISUAL");
+    editor = getenv("VISUAL");
     if (!editor)
-        editor = virGetEnvBlockSUID("EDITOR");
+        editor = getenv("EDITOR");
     if (!editor)
         editor = DEFAULT_EDITOR;
 
@@ -2549,11 +2498,7 @@ vshTreePrintInternal(vshControl *ctl,
 {
     size_t i;
     int nextlastdev = -1;
-    int ret = -1;
     const char *dev = (lookup)(devid, false, opaque);
-
-    if (virBufferError(indent))
-        goto cleanup;
 
     /* Print this device, with indent if not at root */
     vshPrint(ctl, "%s%s%s\n", virBufferCurrentContent(indent),
@@ -2563,8 +2508,6 @@ vshTreePrintInternal(vshControl *ctl,
     if (!root) {
         virBufferAddChar(indent, devid == lastdev ? ' ' : '|');
         virBufferAddChar(indent, ' ');
-        if (virBufferError(indent))
-            goto cleanup;
     }
 
     /* Determine the index of the last child device */
@@ -2581,8 +2524,6 @@ vshTreePrintInternal(vshControl *ctl,
 
     /* Finally print all children */
     virBufferAddLit(indent, "  ");
-    if (virBufferError(indent))
-        goto cleanup;
     for (i = 0; i < num_devices; i++) {
         const char *parent = (lookup)(i, true, opaque);
 
@@ -2590,7 +2531,7 @@ vshTreePrintInternal(vshControl *ctl,
             vshTreePrintInternal(ctl, lookup, opaque,
                                  num_devices, i, nextlastdev,
                                  false, indent) < 0)
-            goto cleanup;
+            return -1;
     }
     virBufferTrim(indent, "  ", -1);
 
@@ -2601,9 +2542,8 @@ vshTreePrintInternal(vshControl *ctl,
 
     if (!root)
         virBufferTrim(indent, NULL, 2);
-    ret = 0;
- cleanup:
-    return ret;
+
+    return 0;
 }
 
 int
@@ -2666,7 +2606,7 @@ vshReadlineCommandGenerator(const char *text)
                         virStringListFree(ret);
                         return NULL;
                     }
-                    ret[ret_size] = vshStrdup(NULL, name);
+                    ret[ret_size] = g_strdup(name);
                     ret_size++;
                     /* Terminate the string list properly. */
                     ret[ret_size] = NULL;
@@ -2734,7 +2674,7 @@ vshReadlineOptionsGenerator(const char *text,
 
         name_len = strlen(name);
         ret[ret_size] = vshMalloc(NULL, name_len + 3);
-        snprintf(ret[ret_size], name_len + 3,  "--%s", name);
+        g_snprintf(ret[ret_size], name_len + 3,  "--%s", name);
         ret_size++;
         /* Terminate the string list properly. */
         ret[ret_size] = NULL;
@@ -2796,7 +2736,7 @@ vshCompleterFilter(char ***list,
             continue;
         }
 
-        VIR_STEAL_PTR(newList[newList_len], (*list)[i]);
+        newList[newList_len] = g_steal_pointer(&(*list)[i]);
         newList_len++;
     }
 
@@ -2818,7 +2758,7 @@ vshReadlineParse(const char *text, int state)
     char *ret = NULL;
 
     if (!state) {
-        char *buf = vshStrdup(NULL, rl_line_buffer);
+        char *buf = g_strdup(rl_line_buffer);
 
         vshCommandFree(partial);
         partial = NULL;
@@ -2880,7 +2820,7 @@ vshReadlineParse(const char *text, int state)
     }
 
     if (list) {
-        ret = vshStrdup(NULL, list[list_index]);
+        ret = g_strdup(list[list_index]);
         list_index++;
     }
 
@@ -2907,13 +2847,10 @@ vshReadlineParse(const char *text, int state)
 
 static char **
 vshReadlineCompletion(const char *text,
-                      int start ATTRIBUTE_UNUSED,
-                      int end ATTRIBUTE_UNUSED)
+                      int start G_GNUC_UNUSED,
+                      int end G_GNUC_UNUSED)
 {
-    char **matches = (char **) NULL;
-
-    matches = rl_completion_matches(text, vshReadlineParse);
-    return matches;
+    return rl_completion_matches(text, vshReadlineParse);
 }
 
 
@@ -2952,11 +2889,10 @@ vshReadlineInit(vshControl *ctl)
     rl_completer_quote_characters = quote_characters;
     rl_char_is_quoted_p = vshReadlineCharIsQuoted;
 
-    if (virAsprintf(&histsize_env, "%s_HISTSIZE", ctl->env_prefix) < 0)
-        goto cleanup;
+    histsize_env = g_strdup_printf("%s_HISTSIZE", ctl->env_prefix);
 
     /* Limit the total size of the history buffer */
-    if ((histsize_str = virGetEnvBlockSUID(histsize_env))) {
+    if ((histsize_str = getenv(histsize_env))) {
         if (virStrToLong_i(histsize_str, NULL, 10, &max_history) < 0) {
             vshError(ctl, _("Bad $%s value."), histsize_env);
             goto cleanup;
@@ -2974,20 +2910,9 @@ vshReadlineInit(vshControl *ctl)
      */
     userdir = virGetUserCacheDirectory();
 
-    if (userdir == NULL) {
-        vshError(ctl, "%s", _("Could not determine home directory"));
-        goto cleanup;
-    }
+    ctl->historydir = g_strdup_printf("%s/%s", userdir, ctl->name);
 
-    if (virAsprintf(&ctl->historydir, "%s/%s", userdir, ctl->name) < 0) {
-        vshError(ctl, "%s", _("Out of memory"));
-        goto cleanup;
-    }
-
-    if (virAsprintf(&ctl->historyfile, "%s/history", ctl->historydir) < 0) {
-        vshError(ctl, "%s", _("Out of memory"));
-        goto cleanup;
-    }
+    ctl->historyfile = g_strdup_printf("%s/history", ctl->historydir);
 
     read_history(ctl->historyfile);
     ret = 0;
@@ -3017,7 +2942,7 @@ vshReadlineDeinit(vshControl *ctl)
 }
 
 char *
-vshReadline(vshControl *ctl ATTRIBUTE_UNUSED, const char *prompt)
+vshReadline(vshControl *ctl G_GNUC_UNUSED, const char *prompt)
 {
     return readline(prompt);
 }
@@ -3025,20 +2950,21 @@ vshReadline(vshControl *ctl ATTRIBUTE_UNUSED, const char *prompt)
 #else /* !WITH_READLINE */
 
 static int
-vshReadlineInit(vshControl *ctl ATTRIBUTE_UNUSED)
+vshReadlineInit(vshControl *ctl G_GNUC_UNUSED)
 {
     /* empty */
     return 0;
 }
 
 static void
-vshReadlineDeinit(vshControl *ctl ATTRIBUTE_UNUSED)
+vshReadlineDeinit(vshControl *ctl G_GNUC_UNUSED)
 {
     /* empty */
 }
 
 char *
-vshReadline(vshControl *ctl, const char *prompt)
+vshReadline(vshControl *ctl G_GNUC_UNUSED,
+            const char *prompt)
 {
     char line[1024];
     char *r;
@@ -3053,7 +2979,7 @@ vshReadline(vshControl *ctl, const char *prompt)
     if (len > 0 && r[len-1] == '\n')
         r[len-1] = '\0';
 
-    return vshStrdup(ctl, r);
+    return g_strdup(r);
 }
 
 #endif /* !WITH_READLINE */
@@ -3068,11 +2994,10 @@ vshInitDebug(vshControl *ctl)
     char *env = NULL;
 
     if (ctl->debug == VSH_DEBUG_DEFAULT) {
-        if (virAsprintf(&env, "%s_DEBUG", ctl->env_prefix) < 0)
-            return -1;
+        env = g_strdup_printf("%s_DEBUG", ctl->env_prefix);
 
         /* log level not set from commandline, check env variable */
-        debugEnv = virGetEnvAllowSUID(env);
+        debugEnv = getenv(env);
         if (debugEnv) {
             int debug;
             if (virStrToLong_i(debugEnv, NULL, 10, &debug) < 0 ||
@@ -3087,13 +3012,12 @@ vshInitDebug(vshControl *ctl)
     }
 
     if (ctl->logfile == NULL) {
-        if (virAsprintf(&env, "%s_LOG_FILE", ctl->env_prefix) < 0)
-            return -1;
+        env = g_strdup_printf("%s_LOG_FILE", ctl->env_prefix);
 
         /* log file not set from cmdline */
-        debugEnv = virGetEnvBlockSUID(env);
+        debugEnv = getenv(env);
         if (debugEnv && *debugEnv) {
-            ctl->logfile = vshStrdup(ctl, debugEnv);
+            ctl->logfile = g_strdup(debugEnv);
             vshOpenLogFile(ctl);
         }
         VIR_FREE(env);
@@ -3243,8 +3167,7 @@ bool
 cmdCd(vshControl *ctl, const vshCmd *cmd)
 {
     const char *dir = NULL;
-    char *dir_malloced = NULL;
-    bool ret = true;
+    g_autofree char *dir_malloced = NULL;
     char ebuf[1024];
 
     if (!ctl->imode) {
@@ -3260,11 +3183,10 @@ cmdCd(vshControl *ctl, const vshCmd *cmd)
     if (chdir(dir) == -1) {
         vshError(ctl, _("cd: %s: %s"),
                  virStrerror(errno, ebuf, sizeof(ebuf)), dir);
-        ret = false;
+        return false;
     }
 
-    VIR_FREE(dir_malloced);
-    return ret;
+    return true;
 }
 
 const vshCmdOptDef opts_echo[] = {
@@ -3337,13 +3259,9 @@ cmdEcho(vshControl *ctl, const vshCmd *cmd)
 
         if (xml) {
             virBufferEscapeString(&xmlbuf, "%s", arg);
-            if (virBufferError(&xmlbuf)) {
-                vshError(ctl, "%s", _("Failed to allocate XML buffer"));
-                return false;
-            }
             str = virBufferContentAndReset(&xmlbuf);
         } else {
-            str = vshStrdup(ctl, arg);
+            str = g_strdup(arg);
         }
 
         if (shell)
@@ -3354,10 +3272,6 @@ cmdEcho(vshControl *ctl, const vshCmd *cmd)
         VIR_FREE(str);
     }
 
-    if (virBufferError(&buf)) {
-        vshError(ctl, "%s", _("Failed to allocate XML buffer"));
-        return false;
-    }
     arg = virBufferContentAndReset(&buf);
     if (arg) {
         if (err)
@@ -3380,23 +3294,13 @@ const vshCmdInfo info_pwd[] = {
 };
 
 bool
-cmdPwd(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
+cmdPwd(vshControl *ctl, const vshCmd *cmd G_GNUC_UNUSED)
 {
-    char *cwd;
-    bool ret = true;
-    char ebuf[1024];
+    g_autofree char *cwd = g_get_current_dir();
 
-    cwd = getcwd(NULL, 0);
-    if (!cwd) {
-        vshError(ctl, _("pwd: cannot get current directory: %s"),
-                 virStrerror(errno, ebuf, sizeof(ebuf)));
-        ret = false;
-    } else {
-        vshPrint(ctl, _("%s\n"), cwd);
-        VIR_FREE(cwd);
-    }
+    vshPrint(ctl, _("%s\n"), cwd);
 
-    return ret;
+    return true;
 }
 
 const vshCmdInfo info_quit[] = {
@@ -3410,7 +3314,7 @@ const vshCmdInfo info_quit[] = {
 };
 
 bool
-cmdQuit(vshControl *ctl, const vshCmd *cmd ATTRIBUTE_UNUSED)
+cmdQuit(vshControl *ctl, const vshCmd *cmd G_GNUC_UNUSED)
 {
     ctl->imode = false;
     return true;
@@ -3435,7 +3339,7 @@ const vshCmdInfo info_selftest[] = {
  * the per-command options structure. */
 bool
 cmdSelfTest(vshControl *ctl,
-            const vshCmd *cmd ATTRIBUTE_UNUSED)
+            const vshCmd *cmd G_GNUC_UNUSED)
 {
     const vshCmdGrp *grp;
     const vshCmdDef *def;
@@ -3504,14 +3408,10 @@ cmdComplete(vshControl *ctl, const vshCmd *cmd)
         arg = opt->data;
     }
 
-    if (virBufferCheckError(&buf) < 0)
-        goto cleanup;
-
     vshReadlineInit(ctl);
 
-    if (!(rl_line_buffer = virBufferContentAndReset(&buf)) &&
-        VIR_STRDUP(rl_line_buffer, "") < 0)
-        goto cleanup;
+    if (!(rl_line_buffer = virBufferContentAndReset(&buf)))
+        rl_line_buffer = g_strdup("");
 
     /* rl_point is current cursor position in rl_line_buffer.
      * In our case it's at the end of the whole line. */
@@ -3538,8 +3438,8 @@ cmdComplete(vshControl *ctl, const vshCmd *cmd)
 
 
 bool
-cmdComplete(vshControl *ctl ATTRIBUTE_UNUSED,
-            const vshCmd *cmd ATTRIBUTE_UNUSED)
+cmdComplete(vshControl *ctl G_GNUC_UNUSED,
+            const vshCmd *cmd G_GNUC_UNUSED)
 {
     return false;
 }

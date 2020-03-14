@@ -19,7 +19,6 @@
 #pragma once
 
 #include "virsocketaddr.h"
-#include "virautoclean.h"
 
 typedef struct _virNetDevIPAddr virNetDevIPAddr;
 typedef virNetDevIPAddr *virNetDevIPAddrPtr;
@@ -63,20 +62,20 @@ int virNetDevIPAddrAdd(const char *ifname,
                        virSocketAddr *addr,
                        virSocketAddr *peer,
                        unsigned int prefix)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK ATTRIBUTE_NOINLINE;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT G_GNUC_NO_INLINE;
 int virNetDevIPRouteAdd(const char *ifname,
                         virSocketAddrPtr addr,
                         unsigned int prefix,
                         virSocketAddrPtr gateway,
                         unsigned int metric)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(4)
-    ATTRIBUTE_RETURN_CHECK;
+    G_GNUC_WARN_UNUSED_RESULT;
 int virNetDevIPAddrDel(const char *ifname,
                        virSocketAddr *addr,
                        unsigned int prefix)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 int virNetDevIPAddrGet(const char *ifname, virSocketAddrPtr addr)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) ATTRIBUTE_RETURN_CHECK;
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2) G_GNUC_WARN_UNUSED_RESULT;
 int virNetDevIPWaitDadFinish(virSocketAddrPtr *addrs, size_t count)
     ATTRIBUTE_NONNULL(1);
 bool virNetDevIPCheckIPv6Forwarding(void);
@@ -94,5 +93,5 @@ void virNetDevIPInfoClear(virNetDevIPInfoPtr ip);
 int virNetDevIPInfoAddToDev(const char *ifname,
                             virNetDevIPInfo const *ipInfo);
 
-VIR_DEFINE_AUTOPTR_FUNC(virNetDevIPAddr, virNetDevIPAddrFree);
-VIR_DEFINE_AUTOPTR_FUNC(virNetDevIPRoute, virNetDevIPRouteFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virNetDevIPAddr, virNetDevIPAddrFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virNetDevIPRoute, virNetDevIPRouteFree);

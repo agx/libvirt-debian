@@ -80,9 +80,9 @@ static void nwfilterDriverUnlock(void)
 #ifdef WITH_FIREWALLD
 
 static DBusHandlerResult
-nwfilterFirewalldDBusFilter(DBusConnection *connection ATTRIBUTE_UNUSED,
+nwfilterFirewalldDBusFilter(DBusConnection *connection G_GNUC_UNUSED,
                             DBusMessage *message,
-                            void *user_data ATTRIBUTE_UNUSED)
+                            void *user_data G_GNUC_UNUSED)
 {
     if (dbus_message_is_signal(message, DBUS_INTERFACE_DBUS,
                                "NameOwnerChanged") ||
@@ -154,7 +154,7 @@ nwfilterDriverRemoveDBusMatches(void)
 }
 
 static int
-nwfilterDriverInstallDBusMatches(DBusConnection *sysbus ATTRIBUTE_UNUSED)
+nwfilterDriverInstallDBusMatches(DBusConnection *sysbus G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -177,17 +177,17 @@ virNWFilterTriggerRebuildImpl(void *opaque)
  */
 static int
 nwfilterStateInitialize(bool privileged,
-                        virStateInhibitCallback callback ATTRIBUTE_UNUSED,
-                        void *opaque ATTRIBUTE_UNUSED)
+                        virStateInhibitCallback callback G_GNUC_UNUSED,
+                        void *opaque G_GNUC_UNUSED)
 {
     DBusConnection *sysbus = NULL;
 
     if (virDBusHasSystemBus() &&
         !(sysbus = virDBusGetSystemBus()))
-        return -1;
+        return VIR_DRV_STATE_INIT_ERROR;
 
     if (VIR_ALLOC(driver) < 0)
-        return -1;
+        return VIR_DRV_STATE_INIT_ERROR;
 
     driver->lockFD = -1;
     if (virMutexInit(&driver->lock) < 0)
@@ -201,12 +201,11 @@ nwfilterStateInitialize(bool privileged,
         goto error;
 
     if (!privileged)
-        return 0;
+        return VIR_DRV_STATE_INIT_SKIPPED;
 
     nwfilterDriverLock();
 
-    if (VIR_STRDUP(driver->stateDir, LOCALSTATEDIR "/run/libvirt/nwfilter") < 0)
-        goto error;
+    driver->stateDir = g_strdup(RUNSTATEDIR "/libvirt/nwfilter");
 
     if (virFileMakePathWithMode(driver->stateDir, S_IRWXU) < 0) {
         virReportSystemError(errno, _("cannot create state directory '%s'"),
@@ -252,8 +251,7 @@ nwfilterStateInitialize(bool privileged,
         goto error;
     }
 
-    if (VIR_STRDUP(driver->configDir, SYSCONFDIR "/libvirt/nwfilter") < 0)
-        goto error;
+    driver->configDir = g_strdup(SYSCONFDIR "/libvirt/nwfilter");
 
     if (virFileMakePathWithMode(driver->configDir, S_IRWXU) < 0) {
         virReportSystemError(errno, _("cannot create config directory '%s'"),
@@ -261,8 +259,7 @@ nwfilterStateInitialize(bool privileged,
         goto error;
     }
 
-    if (VIR_STRDUP(driver->bindingDir, LOCALSTATEDIR "/run/libvirt/nwfilter-binding") < 0)
-        goto error;
+    driver->bindingDir = g_strdup(RUNSTATEDIR "/libvirt/nwfilter-binding");
 
     if (virFileMakePathWithMode(driver->bindingDir, S_IRWXU) < 0) {
         virReportSystemError(errno, _("cannot create config directory '%s'"),
@@ -281,13 +278,13 @@ nwfilterStateInitialize(bool privileged,
 
     nwfilterDriverUnlock();
 
-    return 0;
+    return VIR_DRV_STATE_INIT_COMPLETE;
 
  error:
     nwfilterDriverUnlock();
     nwfilterStateCleanup();
 
-    return -1;
+    return VIR_DRV_STATE_INIT_ERROR;
 
  err_techdrivers_shutdown:
     virNWFilterTechDriversShutdown();
@@ -302,7 +299,7 @@ nwfilterStateInitialize(bool privileged,
     virNWFilterObjListFree(driver->nwfilters);
     VIR_FREE(driver);
 
-    return -1;
+    return VIR_DRV_STATE_INIT_ERROR;
 }
 
 /**
@@ -384,8 +381,8 @@ nwfilterStateCleanup(void)
 
 static virDrvOpenStatus
 nwfilterConnectOpen(virConnectPtr conn,
-                    virConnectAuthPtr auth ATTRIBUTE_UNUSED,
-                    virConfPtr conf ATTRIBUTE_UNUSED,
+                    virConnectAuthPtr auth G_GNUC_UNUSED,
+                    virConfPtr conf G_GNUC_UNUSED,
                     unsigned int flags)
 {
     virCheckFlags(VIR_CONNECT_RO, VIR_DRV_OPEN_ERROR);
@@ -409,27 +406,27 @@ nwfilterConnectOpen(virConnectPtr conn,
     return VIR_DRV_OPEN_SUCCESS;
 }
 
-static int nwfilterConnectClose(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int nwfilterConnectClose(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 0;
 }
 
 
-static int nwfilterConnectIsSecure(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int nwfilterConnectIsSecure(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* Trivially secure, since always inside the daemon */
     return 1;
 }
 
 
-static int nwfilterConnectIsEncrypted(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int nwfilterConnectIsEncrypted(virConnectPtr conn G_GNUC_UNUSED)
 {
     /* Not encrypted, but remote driver takes care of that */
     return 0;
 }
 
 
-static int nwfilterConnectIsAlive(virConnectPtr conn ATTRIBUTE_UNUSED)
+static int nwfilterConnectIsAlive(virConnectPtr conn G_GNUC_UNUSED)
 {
     return 1;
 }
@@ -707,19 +704,13 @@ nwfilterConnectListAllNWFilterBindings(virConnectPtr conn,
                                        virNWFilterBindingPtr **bindings,
                                        unsigned int flags)
 {
-    int ret;
-
     virCheckFlags(0, -1);
 
     if (virConnectListAllNWFilterBindingsEnsureACL(conn) < 0)
         return -1;
 
-    ret = virNWFilterBindingObjListExport(driver->bindings,
-                                          conn,
-                                          bindings,
-                                          virConnectListAllNWFilterBindingsCheckACL);
-
-    return ret;
+    return virNWFilterBindingObjListExport(driver->bindings, conn, bindings,
+                                           virConnectListAllNWFilterBindingsCheckACL);
 }
 
 

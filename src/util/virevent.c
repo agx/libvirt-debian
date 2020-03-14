@@ -26,6 +26,7 @@
 #include "virlog.h"
 #include "virerror.h"
 
+#define VIR_FROM_THIS VIR_FROM_EVENT
 
 VIR_LOG_INIT("util.event");
 
@@ -58,6 +59,13 @@ static virEventRemoveTimeoutFunc removeTimeoutImpl;
  * Register a callback for monitoring file handle events.  This function
  * requires that an event loop has previously been registered with
  * virEventRegisterImpl() or virEventRegisterDefaultImpl().
+ *
+ * @fd must always always be a C runtime file descriptor. On Windows
+ * if the caller only has a HANDLE, the _open_osfhandle() method can
+ * be used to open an associated C runtime file descriptor for use
+ * with this API. After opening a runtime file descriptor, CloseHandle()
+ * must not be used, instead close() will close the runtime file
+ * descriptor and its original associated HANDLE.
  *
  * Returns -1 if the file handle cannot be registered, otherwise a handle
  * watch number to be used for updating and unregistering for events.
@@ -251,6 +259,27 @@ void virEventRegisterImpl(virEventAddHandleFunc addHandle,
     removeTimeoutImpl = removeTimeout;
 }
 
+
+/**
+ * virEventRequireImpl:
+ *
+ * Require that there is an event loop implementation
+ * registered.
+ *
+ * Returns: -1 if no event loop is registered, 0 otherwise
+ */
+int virEventRequireImpl(void)
+{
+    if (!addHandleImpl || !addTimeoutImpl) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("An event loop implementation must be registered"));
+        return -1;
+    }
+
+    return 0;
+}
+
+
 /**
  * virEventRegisterDefaultImpl:
  *
@@ -275,6 +304,8 @@ void virEventRegisterImpl(virEventAddHandleFunc addHandle,
 int virEventRegisterDefaultImpl(void)
 {
     VIR_DEBUG("registering default event implementation");
+
+    virInitialize();
 
     virResetLastError();
 

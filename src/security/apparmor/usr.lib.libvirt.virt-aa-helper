@@ -17,6 +17,9 @@ profile virt-aa-helper /usr/{lib,lib64}/libvirt/virt-aa-helper {
   owner @{PROC}/[0-9]*/status r,
   @{PROC}/filesystems r,
 
+  # Used when internally running another command (namely apparmor_parser)
+  @{PROC}/@{pid}/fd/ r,
+
   /etc/libnl-3/classid r,
 
   # for gl enabled graphics

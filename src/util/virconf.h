@@ -80,6 +80,7 @@ virConfPtr virConfReadFile(const char *filename, unsigned int flags);
 virConfPtr virConfReadString(const char *memory,
                              unsigned int flags);
 int virConfFree(virConfPtr conf);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virConf, virConfFree);
 void virConfFreeValue(virConfValuePtr val);
 virConfValuePtr virConfGetValue(virConfPtr conf,
                                 const char *setting);

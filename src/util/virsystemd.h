@@ -57,6 +57,8 @@ int virSystemdTerminateMachine(const char *name);
 
 void virSystemdNotifyStartup(void);
 
+int virSystemdHasLogind(void);
+
 int virSystemdCanSuspend(bool *result);
 
 int virSystemdCanHibernate(bool *result);
@@ -79,6 +81,6 @@ void virSystemdActivationClaimFDs(virSystemdActivationPtr act,
                                   int **fds,
                                   size_t *nfds);
 
-void virSystemdActivationFree(virSystemdActivationPtr *act);
+void virSystemdActivationFree(virSystemdActivationPtr act);
 
-#define virSystemdActivationAutoPtrFree virSystemdActivationFree
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virSystemdActivation, virSystemdActivationFree);

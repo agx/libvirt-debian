@@ -139,8 +139,7 @@ virLockDaemonUnlock(virLockDaemonPtr lockd)
     virMutexUnlock(&lockd->lock);
 }
 
-static void virLockDaemonLockSpaceDataFree(void *data,
-                                           const void *key ATTRIBUTE_UNUSED)
+static void virLockDaemonLockSpaceDataFree(void *data)
 {
     virLockSpaceFree(data);
 }
@@ -209,7 +208,7 @@ virLockDaemonNew(virLockDaemonConfigPtr config, bool privileged)
 
 
 static virNetServerPtr
-virLockDaemonNewServerPostExecRestart(virNetDaemonPtr dmn ATTRIBUTE_UNUSED,
+virLockDaemonNewServerPostExecRestart(virNetDaemonPtr dmn G_GNUC_UNUSED,
                                       const char *name,
                                       virJSONValuePtr object,
                                       void *opaque)
@@ -314,7 +313,7 @@ virLockDaemonNewPostExecRestart(virJSONValuePtr object, bool privileged)
     }
 
     if (!(lockd->dmn = virNetDaemonNewPostExecRestart(child,
-                                                      ARRAY_CARDINALITY(serverNames),
+                                                      G_N_ELEMENTS(serverNames),
                                                       serverNames,
                                                       virLockDaemonNewServerPostExecRestart,
                                                       (void*)(intptr_t)(privileged ? 0x1 : 0x0))))
@@ -447,42 +446,31 @@ virLockDaemonUnixSocketPaths(bool privileged,
                              char **adminSockfile)
 {
     if (privileged) {
-        if (VIR_STRDUP(*sockfile, LOCALSTATEDIR "/run/libvirt/virtlockd-sock") < 0 ||
-            VIR_STRDUP(*adminSockfile, LOCALSTATEDIR "/run/libvirt/virtlockd-admin-sock") < 0)
-            goto error;
+        *sockfile = g_strdup(RUNSTATEDIR "/libvirt/virtlockd-sock");
+        *adminSockfile = g_strdup(RUNSTATEDIR "/libvirt/virtlockd-admin-sock");
     } else {
-        char *rundir = NULL;
+        g_autofree char *rundir = NULL;
         mode_t old_umask;
 
-        if (!(rundir = virGetUserRuntimeDirectory()))
-            goto error;
+        rundir = virGetUserRuntimeDirectory();
 
         old_umask = umask(077);
         if (virFileMakePath(rundir) < 0) {
-            VIR_FREE(rundir);
             umask(old_umask);
-            goto error;
+            return -1;
         }
         umask(old_umask);
 
-        if (virAsprintf(sockfile, "%s/virtlockd-sock", rundir) < 0 ||
-            virAsprintf(adminSockfile, "%s/virtlockd-admin-sock", rundir) < 0) {
-            VIR_FREE(rundir);
-            goto error;
-        }
-
-        VIR_FREE(rundir);
+        *sockfile = g_strdup_printf("%s/virtlockd-sock", rundir);
+        *adminSockfile = g_strdup_printf("%s/virtlockd-admin-sock", rundir);
     }
     return 0;
-
- error:
-    return -1;
 }
 
 
 static void
-virLockDaemonErrorHandler(void *opaque ATTRIBUTE_UNUSED,
-                          virErrorPtr err ATTRIBUTE_UNUSED)
+virLockDaemonErrorHandler(void *opaque G_GNUC_UNUSED,
+                          virErrorPtr err G_GNUC_UNUSED)
 {
     /* Don't do anything, since logging infrastructure already
      * took care of reporting the error */
@@ -532,8 +520,7 @@ virLockDaemonSetupLogging(virLockDaemonConfigPtr config,
     /* Define the default output. This is only applied if there was no setting
      * from either the config or the environment.
      */
-    if (virLogSetDefaultOutput("virtlockd", godaemon, privileged) < 0)
-        return -1;
+    virLogSetDefaultOutput("virtlockd", godaemon, privileged);
 
     if (virLogGetNbOutputs() == 0)
         virLogSetOutputs(virLogGetDefaultOutput());
@@ -552,16 +539,16 @@ virLockDaemonVersion(const char *argv0)
 
 static void
 virLockDaemonShutdownHandler(virNetDaemonPtr dmn,
-                             siginfo_t *sig ATTRIBUTE_UNUSED,
-                             void *opaque ATTRIBUTE_UNUSED)
+                             siginfo_t *sig G_GNUC_UNUSED,
+                             void *opaque G_GNUC_UNUSED)
 {
     virNetDaemonQuit(dmn);
 }
 
 static void
 virLockDaemonExecRestartHandler(virNetDaemonPtr dmn,
-                                siginfo_t *sig ATTRIBUTE_UNUSED,
-                                void *opaque ATTRIBUTE_UNUSED)
+                                siginfo_t *sig G_GNUC_UNUSED,
+                                void *opaque G_GNUC_UNUSED)
 {
     execRestart = true;
     virNetDaemonQuit(dmn);
@@ -590,7 +577,7 @@ struct virLockDaemonClientReleaseData {
 
 static int
 virLockDaemonClientReleaseLockspace(void *payload,
-                                    const void *name ATTRIBUTE_UNUSED,
+                                    const void *name G_GNUC_UNUSED,
                                     void *opaque)
 {
     virLockSpacePtr lockspace = payload;
@@ -657,7 +644,7 @@ virLockDaemonClientFree(void *opaque)
                     VIR_WARN("Failed to kill off pid %lld",
                              (unsigned long long)priv->clientPid);
                 }
-                usleep(200 * 1000);
+                g_usleep(200 * 1000);
             }
         }
     }
@@ -760,8 +747,7 @@ virLockDaemonClientNewPostExecRestart(virNetServerClientPtr client,
                        _("Missing ownerName data in JSON document"));
         goto error;
     }
-    if (VIR_STRDUP(priv->ownerName, ownerName) < 0)
-        goto error;
+    priv->ownerName = g_strdup(ownerName);
     if (!(ownerUUID = virJSONValueObjectGetString(object, "ownerUUID"))) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                        _("Missing ownerUUID data in JSON document"));
@@ -781,7 +767,7 @@ virLockDaemonClientNewPostExecRestart(virNetServerClientPtr client,
 
 
 static virJSONValuePtr
-virLockDaemonClientPreExecRestart(virNetServerClientPtr client ATTRIBUTE_UNUSED,
+virLockDaemonClientPreExecRestart(virNetServerClientPtr client G_GNUC_UNUSED,
                                   void *opaque)
 {
     virLockDaemonClientPtr priv = opaque;
@@ -831,35 +817,24 @@ virLockDaemonExecRestartStatePath(bool privileged,
                                   char **state_file)
 {
     if (privileged) {
-        if (VIR_STRDUP(*state_file, LOCALSTATEDIR "/run/virtlockd-restart-exec.json") < 0)
-            goto error;
+        *state_file = g_strdup(RUNSTATEDIR "/virtlockd-restart-exec.json");
     } else {
-        char *rundir = NULL;
+        g_autofree char *rundir = NULL;
         mode_t old_umask;
 
-        if (!(rundir = virGetUserRuntimeDirectory()))
-            goto error;
+        rundir = virGetUserRuntimeDirectory();
 
         old_umask = umask(077);
         if (virFileMakePath(rundir) < 0) {
             umask(old_umask);
-            VIR_FREE(rundir);
-            goto error;
+            return -1;
         }
         umask(old_umask);
 
-        if (virAsprintf(state_file, "%s/virtlockd-restart-exec.json", rundir) < 0) {
-            VIR_FREE(rundir);
-            goto error;
-        }
-
-        VIR_FREE(rundir);
+        *state_file = g_strdup_printf("%s/virtlockd-restart-exec.json", rundir);
     }
 
     return 0;
-
- error:
-    return -1;
 }
 
 
@@ -868,7 +843,7 @@ virLockDaemonGetExecRestartMagic(void)
 {
     char *ret;
 
-    ignore_value(virAsprintf(&ret, "%lld", (long long int)getpid()));
+    ret = g_strdup_printf("%lld", (long long int)getpid());
     return ret;
 }
 
@@ -1062,14 +1037,14 @@ virLockDaemonUsage(const char *argv0, bool privileged)
                   "      %s/libvirt/virtlockd.conf\n"
                   "\n"
                   "    Sockets:\n"
-                  "      %s/run/libvirt/virtlockd-sock\n"
+                  "      %s/libvirt/virtlockd-sock\n"
                   "\n"
                   "    PID file (unless overridden by -p):\n"
-                  "      %s/run/virtlockd.pid\n"
+                  "      %s/virtlockd.pid\n"
                   "\n"),
                 SYSCONFDIR,
-                LOCALSTATEDIR,
-                LOCALSTATEDIR);
+                RUNSTATEDIR,
+                RUNSTATEDIR);
     } else {
         fprintf(stderr, "%s",
                 _("\n"
@@ -1124,7 +1099,6 @@ int main(int argc, char **argv) {
     privileged = geteuid() == 0;
 
     if (virGettextInitialize() < 0 ||
-        virThreadInitialize() < 0 ||
         virErrorInitialize() < 0) {
         fprintf(stderr, _("%s: initialization failed\n"), argv[0]);
         exit(EXIT_FAILURE);
@@ -1163,14 +1137,12 @@ int main(int argc, char **argv) {
 
         case 'p':
             VIR_FREE(pid_file);
-            if (VIR_STRDUP_QUIET(pid_file, optarg) < 0)
-                goto no_memory;
+            pid_file = g_strdup(optarg);
             break;
 
         case 'f':
             VIR_FREE(remote_config_file);
-            if (VIR_STRDUP_QUIET(remote_config_file, optarg) < 0)
-                goto no_memory;
+            remote_config_file = g_strdup(optarg);
             break;
 
         case 'V':
@@ -1188,7 +1160,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    virFileActivateDirOverride(argv[0]);
+    virFileActivateDirOverrideForProg(argv[0]);
 
     if (!(config = virLockDaemonConfigNew(privileged))) {
         VIR_ERROR(_("Can't create initial configuration"));
@@ -1221,7 +1193,7 @@ int main(int argc, char **argv) {
 
     if (!pid_file &&
         virPidFileConstructPath(privileged,
-                                LOCALSTATEDIR,
+                                RUNSTATEDIR,
                                 "virtlockd",
                                 &pid_file) < 0) {
         VIR_ERROR(_("Can't determine pid file path."));
@@ -1248,13 +1220,9 @@ int main(int argc, char **argv) {
 
     /* Ensure the rundir exists (on tmpfs on some systems) */
     if (privileged) {
-        if (VIR_STRDUP_QUIET(run_dir, LOCALSTATEDIR "/run/libvirt") < 0)
-            goto no_memory;
+        run_dir = g_strdup(RUNSTATEDIR "/libvirt");
     } else {
-        if (!(run_dir = virGetUserRuntimeDirectory())) {
-            VIR_ERROR(_("Can't determine user directory"));
-            goto cleanup;
-        }
+        run_dir = virGetUserRuntimeDirectory();
     }
 
     if (privileged)
@@ -1284,7 +1252,7 @@ int main(int argc, char **argv) {
      * (but still need to add @lockProgram into @srv). rv == 0 means that no
      * saved state is present, therefore initialize from scratch here. */
     if (rv == 0) {
-        VIR_AUTOPTR(virSystemdActivation) act = NULL;
+        g_autoptr(virSystemdActivation) act = NULL;
         virSystemdActivationMap actmap[] = {
             { .name = "virtlockd.socket", .family = AF_UNIX, .path = sock_file },
             { .name = "virtlockd-admin.socket", .family = AF_UNIX, .path = admin_sock_file },
@@ -1318,7 +1286,7 @@ int main(int argc, char **argv) {
         }
 
         if (virSystemdGetActivation(actmap,
-                                    ARRAY_CARDINALITY(actmap),
+                                    G_N_ELEMENTS(actmap),
                                     &act) < 0) {
             ret = VIR_LOCK_DAEMON_ERR_NETWORK;
             goto cleanup;
@@ -1449,8 +1417,4 @@ int main(int argc, char **argv) {
     VIR_FREE(run_dir);
     virLockDaemonConfigFree(config);
     return ret;
-
- no_memory:
-    VIR_ERROR(_("Can't allocate memory"));
-    exit(EXIT_FAILURE);
 }

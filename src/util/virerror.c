@@ -144,6 +144,7 @@ VIR_ENUM_IMPL(virErrorDomain,
               "Domain Checkpoint",
 
               "TPM", /* 70 */
+              "BPF",
 );
 
 
@@ -187,8 +188,7 @@ virErrorGenericFailure(virErrorPtr err)
     err->code = VIR_ERR_INTERNAL_ERROR;
     err->domain = VIR_FROM_NONE;
     err->level = VIR_ERR_ERROR;
-    ignore_value(VIR_STRDUP_QUIET(err->message,
-                                  _("An error occurred, but the cause is unknown")));
+    err->message = g_strdup(_("An error occurred, but the cause is unknown"));
 }
 
 
@@ -208,14 +208,10 @@ virCopyError(virErrorPtr from,
     to->code = from->code;
     to->domain = from->domain;
     to->level = from->level;
-    if (VIR_STRDUP_QUIET(to->message, from->message) < 0)
-        ret = -1;
-    if (VIR_STRDUP_QUIET(to->str1, from->str1) < 0)
-        ret = -1;
-    if (VIR_STRDUP_QUIET(to->str2, from->str2) < 0)
-        ret = -1;
-    if (VIR_STRDUP_QUIET(to->str3, from->str3) < 0)
-        ret = -1;
+    to->message = g_strdup(from->message);
+    to->str1 = g_strdup(from->str1);
+    to->str2 = g_strdup(from->str2);
+    to->str3 = g_strdup(from->str3);
     to->int1 = from->int1;
     to->int2 = from->int2;
     /*
@@ -831,11 +827,11 @@ virRaiseErrorFull(const char *filename,
      * formats the message; drop message on OOM situations
      */
     if (fmt == NULL) {
-        ignore_value(VIR_STRDUP_QUIET(str, _("No error message provided")));
+        str = g_strdup(_("No error message provided"));
     } else {
         va_list ap;
         va_start(ap, fmt);
-        ignore_value(virVasprintfQuiet(&str, fmt, ap));
+        str = g_strdup_vprintf(fmt, ap);
         va_end(ap);
     }
 
@@ -850,9 +846,9 @@ virRaiseErrorFull(const char *filename,
     to->code = code;
     to->message = str;
     to->level = level;
-    ignore_value(VIR_STRDUP_QUIET(to->str1, str1));
-    ignore_value(VIR_STRDUP_QUIET(to->str2, str2));
-    ignore_value(VIR_STRDUP_QUIET(to->str3, str3));
+    to->str1 = g_strdup(str1);
+    to->str2 = g_strdup(str2);
+    to->str3 = g_strdup(str3);
     to->int1 = int1;
     to->int2 = int2;
 
@@ -914,7 +910,7 @@ typedef struct {
 } virErrorMsgTuple;
 
 
-const virErrorMsgTuple virErrorMsgStrings[VIR_ERR_NUMBER_LAST] = {
+static const virErrorMsgTuple virErrorMsgStrings[] = {
     [VIR_ERR_OK] = { NULL, NULL },
     [VIR_ERR_INTERNAL_ERROR] = {
         N_("internal error"),
@@ -1239,6 +1235,8 @@ const virErrorMsgTuple virErrorMsgStrings[VIR_ERR_NUMBER_LAST] = {
         N_("network port not found: %s") },
 };
 
+G_STATIC_ASSERT(G_N_ELEMENTS(virErrorMsgStrings) == VIR_ERR_NUMBER_LAST);
+
 
 /**
  * virErrorMsg:
@@ -1293,7 +1291,7 @@ void virReportErrorHelper(int domcode,
 
     if (fmt) {
         va_start(args, fmt);
-        vsnprintf(errorMessage, sizeof(errorMessage)-1, fmt, args);
+        g_vsnprintf(errorMessage, sizeof(errorMessage)-1, fmt, args);
         va_end(args);
     } else {
         errorMessage[0] = '\0';
@@ -1322,8 +1320,11 @@ const char *virStrerror(int theerrno, char *errBuf, size_t errBufLen)
 {
     int save_errno = errno;
     const char *ret;
+    const char *str = g_strerror(theerrno);
+    size_t len = strlen(str);
 
-    strerror_r(theerrno, errBuf, errBufLen);
+    memcpy(errBuf, str, MIN(len, errBufLen));
+    errBuf[errBufLen-1] = '\0';
     ret = errBuf;
     errno = save_errno;
     return ret;
@@ -1349,11 +1350,9 @@ void virReportSystemErrorFull(int domcode,
                               const char *fmt, ...)
 {
     int save_errno = errno;
-    char strerror_buf[VIR_ERROR_MAX_LENGTH];
     char msgDetailBuf[VIR_ERROR_MAX_LENGTH];
 
-    const char *errnoDetail = virStrerror(theerrno, strerror_buf,
-                                          sizeof(strerror_buf));
+    const char *errnoDetail = g_strerror(theerrno);
     const char *msg = virErrorMsg(VIR_ERR_SYSTEM_ERROR, fmt);
     const char *msgDetail = NULL;
 
@@ -1362,13 +1361,14 @@ void virReportSystemErrorFull(int domcode,
         int n;
 
         va_start(args, fmt);
-        n = vsnprintf(msgDetailBuf, sizeof(msgDetailBuf), fmt, args);
+        n = g_vsnprintf(msgDetailBuf, sizeof(msgDetailBuf), fmt, args);
         va_end(args);
 
         size_t len = strlen(errnoDetail);
         if (0 <= n && n + 2 + len < sizeof(msgDetailBuf)) {
-          char *p = msgDetailBuf + n;
-          stpcpy(stpcpy(p, ": "), errnoDetail);
+          strcpy(msgDetailBuf + n, ": ");
+          n += 2;
+          strcpy(msgDetailBuf + n, errnoDetail);
           msgDetail = msgDetailBuf;
         }
     }
@@ -1479,25 +1479,21 @@ virLastErrorPrefixMessage(const char *fmt, ...)
 {
     int save_errno = errno;
     virErrorPtr err = virGetLastError();
-    VIR_AUTOFREE(char *) fmtmsg = NULL;
-    VIR_AUTOFREE(char *) newmsg = NULL;
+    g_autofree char *fmtmsg = NULL;
+    g_autofree char *newmsg = NULL;
     va_list args;
 
     if (!err)
         return;
 
     va_start(args, fmt);
+    fmtmsg = g_strdup_vprintf(fmt, args);
+    va_end(args);
 
-    if (virVasprintfQuiet(&fmtmsg, fmt, args) < 0)
-        goto cleanup;
-
-    if (virAsprintfQuiet(&newmsg, "%s: %s", fmtmsg, err->message) < 0)
-        goto cleanup;
+    newmsg = g_strdup_printf("%s: %s", fmtmsg, err->message);
 
     VIR_FREE(err->message);
-    VIR_STEAL_PTR(err->message, newmsg);
+    err->message = g_steal_pointer(&newmsg);
 
- cleanup:
-    va_end(args);
     errno = save_errno;
 }

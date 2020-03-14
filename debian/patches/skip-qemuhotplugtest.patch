@@ -1,0 +1,25 @@
+Description: skip failing tests in qemuhotplugtest
+ Due to the fact that some Debian/Ubuntu build environments run with
+ $HOME set to a non existing paths some tests fail.
+ For now let us skip those few sub-tests.
+Forwarded: yes (https://www.redhat.com/archives/libvir-list/2020-January/msg00705.html)
+Author: Christian Ehrhardt <christian.ehrhardt@canonical.com>
+Last-Update: 2020-01-29
+--- a/tests/qemuhotplugtest.c
++++ b/tests/qemuhotplugtest.c
+@@ -803,6 +803,7 @@ mymain(void)
+                    "human-monitor-command", HMP("OK\\r\\n"),
+                    "device_add", QMP_OK);
+ 
++    /* Disabled as it is failing in Debian/Ubuntu build environments for now
+     DO_TEST_ATTACH("base-live", "hostdev-pci", false, true,
+                    "device_add", QMP_OK);
+     DO_TEST_DETACH("base-live", "hostdev-pci", false, false,
+@@ -811,6 +812,7 @@ mymain(void)
+                    "device_add", QMP_OK);
+     DO_TEST_DETACH("pseries-base-live", "hostdev-pci", false, false,
+                    "device_del", QMP_DEVICE_DELETED("hostdev0") QMP_OK);
++    */
+ 
+     DO_TEST_ATTACH("base-live", "watchdog", false, true,
+                    "watchdog-set-action", QMP_OK,

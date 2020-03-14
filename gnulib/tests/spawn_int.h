@@ -1,4 +1,4 @@
-/* Copyright (C) 2000, 2008-2019 Free Software Foundation, Inc.
+/* Copyright (C) 2000, 2008-2020 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 
    This program is free software: you can redistribute it and/or modify
@@ -24,7 +24,8 @@ struct __spawn_action
     spawn_do_close,
     spawn_do_dup2,
     spawn_do_open,
-    spawn_do_chdir
+    spawn_do_chdir,
+    spawn_do_fchdir
   } tag;
 
   union
@@ -41,14 +42,18 @@ struct __spawn_action
     struct
     {
       int fd;
-      const char *path;
+      char *path;
       int oflag;
       mode_t mode;
     } open_action;
     struct
     {
-      const char *path;
+      char *path;
     } chdir_action;
+    struct
+    {
+      int fd;
+    } fchdir_action;
   } action;
 };
 

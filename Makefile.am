@@ -16,14 +16,18 @@
 ## License along with this library.  If not, see
 ## <http://www.gnu.org/licenses/>.
 
+LCOV = lcov
+GENHTML = genhtml
+
+# when building from tarball -Werror isn't auto enabled
+# so force it explicitly
+DISTCHECK_CONFIGURE_FLAGS = --enable-werror
+
 SUBDIRS = . gnulib/lib include/libvirt src tools docs gnulib/tests \
   tests po examples
 
 XZ_OPT ?= -v -T0
 export XZ_OPT
-
-# have gnulib 'make coverage' output to 'cov' dir
-COVERAGE_OUT = "cov"
 
 ACLOCAL_AMFLAGS = -I m4
 
@@ -35,22 +39,44 @@ EXTRA_DIST = \
   libvirt-qemu.pc.in \
   libvirt-lxc.pc.in \
   libvirt-admin.pc.in \
-  Makefile.ci \
   Makefile.nonreentrant \
   autogen.sh \
-  cfg.mk \
+  GNUmakefile \
   run.in \
   README.md \
   AUTHORS.in \
-  build-aux/augeas-gentest.pl \
+  scripts/apibuild.py \
+  scripts/augeas-gentest.py \
   build-aux/check-spacing.pl \
-  build-aux/gitlog-to-changelog \
-  build-aux/header-ifdef.pl \
-  build-aux/minimize-po.pl \
-  build-aux/mock-noinline.pl \
-  build-aux/prohibit-duplicate-header.pl \
+  scripts/check-aclperms.py \
+  scripts/check-aclrules.py \
+  scripts/check-drivername.py \
+  scripts/check-driverimpls.py \
+  scripts/check-file-access.py \
+  scripts/check-remote-protocol.py \
+  scripts/check-symfile.py \
+  scripts/check-symsorting.py \
+  scripts/dtrace2systemtap.py \
+  scripts/esx_vi_generator.py \
+  scripts/genaclperms.py \
+  scripts/genpolkit.py \
+  scripts/gensystemtap.py \
+  scripts/group-qemu-caps.py \
+  scripts/header-ifdef.py \
+  scripts/hvsupport.py \
+  scripts/hyperv_wmi_generator.py \
+  scripts/minimize-po.py \
+  scripts/mock-noinline.py \
+  scripts/prohibit-duplicate-header.py \
+  scripts/reformat-news.py \
+  scripts/test-wrap-argv.py \
+  build-aux/syntax-check.mk \
   build-aux/useless-if-before-free \
   build-aux/vc-list-files \
+  ci/Makefile \
+  ci/build.sh \
+  ci/list-images.sh \
+  ci/prepare.sh \
   $(NULL)
 
 pkgconfigdir = $(libdir)/pkgconfig
@@ -59,7 +85,7 @@ pkgconfig_DATA = libvirt.pc libvirt-qemu.pc libvirt-lxc.pc libvirt-admin.pc
 NEWS: \
 	  $(srcdir)/docs/news.xml \
 	  $(srcdir)/docs/news-ascii.xsl \
-	  $(srcdir)/docs/reformat-news.py
+	  $(top_srcdir)/scripts/reformat-news.py
 	$(AM_V_GEN) \
 	if [ -x $(XSLTPROC) ]; then \
 	  $(XSLTPROC) --nonet \
@@ -67,14 +93,14 @@ NEWS: \
 	    $(srcdir)/docs/news.xml \
 	  >$@-tmp \
 	    || { rm -f $@-tmp; exit 1; }; \
-	  $(PYTHON) $(srcdir)/docs/reformat-news.py $@-tmp >$@ \
+	  $(RUNUTF8) $(PYTHON) $(top_srcdir)/scripts/reformat-news.py $@-tmp >$@ \
 	    || { rm -f $@-tmp; exit 1; }; \
 	  rm -f $@-tmp; \
 	fi
 EXTRA_DIST += \
 	$(srcdir)/docs/news.xml \
 	$(srcdir)/docs/news-ascii.xsl \
-	$(srcdir)/docs/reformat-news.py
+	$(NULL)
 
 rpm: clean
 	@(unset CDPATH ; $(MAKE) dist && rpmbuild -ta $(distdir).tar.xz)
@@ -87,7 +113,25 @@ check-local: all tests
 check-access: all
 	@($(MAKE) $(AM_MAKEFLAGS) -C tests check-access)
 
+cov: clean-cov
+	$(MKDIR_P) $(top_builddir)/coverage
+	$(LCOV) -c -o $(top_builddir)/coverage/libvirt.info.tmp \
+	  -d $(top_builddir)/src \
+	  -d $(top_builddir)/tests
+	$(LCOV) -r $(top_builddir)/coverage/libvirt.info.tmp \
+	  -o $(top_builddir)/coverage/libvirt.info
+	rm $(top_builddir)/coverage/libvirt.info.tmp
+	$(GENHTML) --show-details -t "libvirt" -o $(top_builddir)/coverage \
+	  --legend $(top_builddir)/coverage/libvirt.info
+
+clean-cov:
+	rm -rf $(top_builddir)/coverage
+
 MAINTAINERCLEANFILES = .git-module-status
+
+distclean-local: clean-GNUmakefile
+clean-GNUmakefile:
+	test '$(srcdir)' = . || rm -f $(top_builddir)/GNUmakefile
 
 dist-hook: gen-AUTHORS
 
@@ -109,4 +153,4 @@ gen-AUTHORS:
 	fi
 
 ci-%:
-	$(MAKE) -f Makefile.ci $@
+	$(MAKE) -C $(srcdir)/ci/ $@

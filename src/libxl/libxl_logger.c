@@ -47,14 +47,14 @@ struct xentoollog_logger_libvirt {
 };
 
 static void
-libxlLoggerFileFree(void *payload, const void *key ATTRIBUTE_UNUSED)
+libxlLoggerFileFree(void *payload)
 {
     FILE *file = payload;
     VIR_FORCE_FCLOSE(file);
     file = NULL;
 }
 
-ATTRIBUTE_FMT_PRINTF(5, 0) static void
+G_GNUC_PRINTF(5, 0) static void
 libvirt_vmessage(xentoollog_logger *logger_in,
                  xentoollog_level level,
                  int errnoval,
@@ -74,8 +74,7 @@ libvirt_vmessage(xentoollog_logger *logger_in,
     if (level < lg->minLevel)
         return;
 
-    if (virVasprintf(&message, format, args) < 0)
-        return;
+    message = g_strdup_vprintf(format, args);
 
     /* Should we print to a domain-specific log file? */
     if ((start = strstr(message, ": Domain ")) &&
@@ -114,12 +113,12 @@ libvirt_vmessage(xentoollog_logger *logger_in,
 }
 
 static void
-libvirt_progress(xentoollog_logger *logger_in ATTRIBUTE_UNUSED,
-                 const char *context ATTRIBUTE_UNUSED,
-                 const char *doingwhat ATTRIBUTE_UNUSED,
-                 int percent ATTRIBUTE_UNUSED,
-                 unsigned long done ATTRIBUTE_UNUSED,
-                 unsigned long total ATTRIBUTE_UNUSED)
+libvirt_progress(xentoollog_logger *logger_in G_GNUC_UNUSED,
+                 const char *context G_GNUC_UNUSED,
+                 const char *doingwhat G_GNUC_UNUSED,
+                 int percent G_GNUC_UNUSED,
+                 unsigned long done G_GNUC_UNUSED,
+                 unsigned long total G_GNUC_UNUSED)
 {
     /* This function purposedly does nothing: it's no logging info */
 }
@@ -158,8 +157,7 @@ libxlLoggerNew(const char *logDir, virLogPriority minLevel)
     if ((logger.files = virHashCreate(3, libxlLoggerFileFree)) == NULL)
         return NULL;
 
-    if (virAsprintf(&path, "%s/libxl-driver.log", logDir) < 0)
-        goto error;
+    path = g_strdup_printf("%s/libxl-driver.log", logDir);
 
     if ((logger.defaultLogFile = fopen(path, "a")) == NULL)
         goto error;
@@ -196,9 +194,8 @@ libxlLoggerOpenFile(libxlLoggerPtr logger,
     char *domidstr = NULL;
     char ebuf[1024];
 
-    if (virAsprintf(&path, "%s/%s.log", logger->logDir, name) < 0 ||
-        virAsprintf(&domidstr, "%d", id) < 0)
-        goto cleanup;
+    path = g_strdup_printf("%s/%s.log", logger->logDir, name);
+    domidstr = g_strdup_printf("%d", id);
 
     if (!(logFile = fopen(path, "a"))) {
         VIR_WARN("Failed to open log file %s: %s",
@@ -222,8 +219,7 @@ void
 libxlLoggerCloseFile(libxlLoggerPtr logger, int id)
 {
     char *domidstr = NULL;
-    if (virAsprintf(&domidstr, "%d", id) < 0)
-        return;
+    domidstr = g_strdup_printf("%d", id);
 
     ignore_value(virHashRemoveEntry(logger->files, domidstr));
 

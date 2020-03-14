@@ -53,6 +53,9 @@ typedef string remote_nonnull_string<REMOTE_STRING_MAX>;
 /* A long string, which may be NULL. */
 typedef remote_nonnull_string *remote_string;
 
+/* Upper limit on identity parameters */
+const REMOTE_CONNECT_IDENTITY_PARAMS_MAX = 20;
+
 /* Upper limit on lists of domains. */
 const REMOTE_DOMAIN_LIST_MAX = 16384;
 
@@ -268,6 +271,9 @@ const REMOTE_NODE_SEV_INFO_MAX = 64;
 
 /* Upper limit on number of launch security information entries */
 const REMOTE_DOMAIN_LAUNCH_SECURITY_INFO_PARAMS_MAX = 64;
+
+/* Upper limit on number of parameters describing a guest */
+const REMOTE_DOMAIN_GUEST_INFO_PARAMS_MAX = 2048;
 
 /*
  * Upper limit on list of network port parameters
@@ -3723,6 +3729,48 @@ struct remote_domain_checkpoint_delete_args {
     unsigned int flags;
 };
 
+struct remote_domain_get_guest_info_args {
+    remote_nonnull_domain dom;
+    unsigned int types;
+    unsigned int flags;
+};
+
+struct remote_domain_get_guest_info_ret {
+    remote_typed_param params<REMOTE_DOMAIN_GUEST_INFO_PARAMS_MAX>;
+};
+
+struct remote_connect_set_identity_args {
+    remote_typed_param params<REMOTE_CONNECT_IDENTITY_PARAMS_MAX>;
+    unsigned int flags;
+};
+
+struct remote_domain_agent_set_response_timeout_args {
+    remote_nonnull_domain dom;
+    int timeout;
+    unsigned int flags;
+};
+
+struct remote_domain_agent_set_response_timeout_ret {
+    int result;
+};
+
+
+struct remote_domain_backup_begin_args {
+    remote_nonnull_domain dom;
+    remote_nonnull_string backup_xml;
+    remote_string checkpoint_xml;
+    unsigned int flags;
+};
+
+struct remote_domain_backup_get_xml_desc_args {
+    remote_nonnull_domain dom;
+    unsigned int flags;
+};
+
+struct remote_domain_backup_get_xml_desc_ret {
+    remote_nonnull_string xml;
+};
+
 /*----- Protocol. -----*/
 
 /* Define the program number, protocol version and procedure numbers here. */
@@ -6584,5 +6632,37 @@ enum remote_procedure {
      * @generate: both
      * @acl: domain:checkpoint
      */
-    REMOTE_PROC_DOMAIN_CHECKPOINT_DELETE = 417
+    REMOTE_PROC_DOMAIN_CHECKPOINT_DELETE = 417,
+
+    /**
+     * @generate: none
+     * @acl: domain:write
+     */
+    REMOTE_PROC_DOMAIN_GET_GUEST_INFO = 418,
+
+    /**
+     * @generate: client
+     * @acl: connect:write
+     */
+    REMOTE_PROC_CONNECT_SET_IDENTITY = 419,
+
+    /**
+     * @generate: both
+     * @acl: domain:write
+     */
+    REMOTE_PROC_DOMAIN_AGENT_SET_RESPONSE_TIMEOUT = 420,
+
+    /**
+     * @generate: both
+     * @acl: domain:checkpoint
+     * @acl: domain:block_write
+     */
+    REMOTE_PROC_DOMAIN_BACKUP_BEGIN = 421,
+
+    /**
+     * @generate: both
+     * @priority: high
+     * @acl: domain:read
+     */
+    REMOTE_PROC_DOMAIN_BACKUP_GET_XML_DESC = 422
 };

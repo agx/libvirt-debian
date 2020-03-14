@@ -64,20 +64,18 @@ struct _virLogSource {
     const char *name;
     unsigned int priority;
     unsigned int serial;
-    unsigned int flags;
 };
 
 /*
- * ATTRIBUTE_UNUSED is to make gcc keep quiet if all the
+ * G_GNUC_UNUSED is to make gcc keep quiet if all the
  * log statements in a file are conditionally disabled
  * at compile time due to configure options.
  */
 #define VIR_LOG_INIT(n) \
-    static ATTRIBUTE_UNUSED virLogSource virLogSelf = { \
+    static G_GNUC_UNUSED virLogSource virLogSelf = { \
         .name = "" n "", \
         .priority = VIR_LOG_ERROR, \
         .serial = 0, \
-        .flags = 0, \
     }
 
 /*
@@ -144,7 +142,6 @@ typedef virLogFilter *virLogFilterPtr;
  * @funcname: the function emitting the message
  * @timestamp: zero terminated string with timestamp of the message
  * @metadata: NULL or metadata array, terminated by an item with NULL key
- * @flags: flags associated with the message
  * @rawstr: the unformatted message to log, zero terminated
  * @str: the message to log, preformatted and zero terminated
  * @data: extra output logging data
@@ -158,7 +155,6 @@ typedef void (*virLogOutputFunc) (virLogSourcePtr src,
                                   const char *funcname,
                                   const char *timestamp,
                                   virLogMetadataPtr metadata,
-                                  unsigned int flags,
                                   const char *rawstr,
                                   const char *str,
                                   void *data);
@@ -170,10 +166,6 @@ typedef void (*virLogOutputFunc) (virLogSourcePtr src,
  * Callback function used to close a log output
  */
 typedef void (*virLogCloseFunc) (void *data);
-
-typedef enum {
-    VIR_LOG_STACK_TRACE = (1 << 0),
-} virLogFilterFlags;
 
 int virLogGetNbFilters(void);
 int virLogGetNbOutputs(void);
@@ -189,7 +181,7 @@ void virLogFilterListFree(virLogFilterPtr *list, int count);
 int virLogSetOutputs(const char *outputs);
 int virLogSetFilters(const char *filters);
 char *virLogGetDefaultOutput(void);
-int virLogSetDefaultOutput(const char *fname, bool godaemon, bool privileged);
+void virLogSetDefaultOutput(const char *fname, bool godaemon, bool privileged);
 
 /*
  * Internal logging API
@@ -206,7 +198,7 @@ void virLogMessage(virLogSourcePtr source,
                    int linenr,
                    const char *funcname,
                    virLogMetadataPtr metadata,
-                   const char *fmt, ...) ATTRIBUTE_FMT_PRINTF(7, 8);
+                   const char *fmt, ...) G_GNUC_PRINTF(7, 8);
 void virLogVMessage(virLogSourcePtr source,
                     virLogPriority priority,
                     const char *filename,
@@ -214,7 +206,7 @@ void virLogVMessage(virLogSourcePtr source,
                     const char *funcname,
                     virLogMetadataPtr metadata,
                     const char *fmt,
-                    va_list vargs) ATTRIBUTE_FMT_PRINTF(7, 0);
+                    va_list vargs) G_GNUC_PRINTF(7, 0);
 
 bool virLogProbablyLogMessage(const char *str);
 virLogOutputPtr virLogOutputNew(virLogOutputFunc f,
@@ -224,8 +216,7 @@ virLogOutputPtr virLogOutputNew(virLogOutputFunc f,
                                 virLogDestination dest,
                                 const char *name) ATTRIBUTE_NONNULL(1);
 virLogFilterPtr virLogFilterNew(const char *match,
-                                virLogPriority priority,
-                                unsigned int flags) ATTRIBUTE_NONNULL(1);
+                                virLogPriority priority) ATTRIBUTE_NONNULL(1);
 int virLogFindOutput(virLogOutputPtr *outputs, size_t noutputs,
                      virLogDestination dest, const void *opaque);
 int virLogDefineOutputs(virLogOutputPtr *outputs,

@@ -22,7 +22,6 @@
 
 #include "internal.h"
 #include "domain_conf.h"
-#include "virautoclean.h"
 #include "virenum.h"
 
 typedef const char * (*virDomainCapsValToStr)(int value);
@@ -98,6 +97,14 @@ struct _virDomainCapsDeviceHostdev {
     /* add new fields here */
 };
 
+typedef struct _virDomainCapsDeviceRNG virDomainCapsDeviceRNG;
+typedef virDomainCapsDeviceRNG *virDomainCapsDeviceRNGPtr;
+struct _virDomainCapsDeviceRNG {
+    virTristateBool supported;
+    virDomainCapsEnum model;   /* virDomainRNGModel */
+    virDomainCapsEnum backendModel;   /* virDomainRNGBackend */
+};
+
 typedef struct _virDomainCapsFeatureGIC virDomainCapsFeatureGIC;
 typedef virDomainCapsFeatureGIC *virDomainCapsFeatureGICPtr;
 struct _virDomainCapsFeatureGIC {
@@ -132,6 +139,8 @@ struct _virDomainCapsCPUModels {
     virDomainCapsCPUModelPtr models;
 };
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virDomainCapsCPUModels, virObjectUnref);
+
 typedef struct _virDomainCapsCPU virDomainCapsCPU;
 typedef virDomainCapsCPU *virDomainCapsCPUPtr;
 struct _virDomainCapsCPU {
@@ -149,6 +158,16 @@ struct _virSEVCapability {
     unsigned int reduced_phys_bits;
 };
 
+typedef enum {
+    VIR_DOMAIN_CAPS_FEATURE_IOTHREADS = 0,
+    VIR_DOMAIN_CAPS_FEATURE_VMCOREINFO,
+    VIR_DOMAIN_CAPS_FEATURE_GENID,
+    VIR_DOMAIN_CAPS_FEATURE_BACKING_STORE_INPUT,
+    VIR_DOMAIN_CAPS_FEATURE_BACKUP,
+
+    VIR_DOMAIN_CAPS_FEATURE_LAST
+} virDomainCapsFeature;
+
 struct _virDomainCaps {
     virObjectLockable parent;
 
@@ -159,7 +178,6 @@ struct _virDomainCaps {
 
     /* Some machine specific info */
     int maxvcpus;
-    virTristateBool iothreads;  /* Whether I/O threads are supported or not. */
 
     virDomainCapsOS os;
     virDomainCapsCPU cpu;
@@ -167,14 +185,18 @@ struct _virDomainCaps {
     virDomainCapsDeviceGraphics graphics;
     virDomainCapsDeviceVideo video;
     virDomainCapsDeviceHostdev hostdev;
+    virDomainCapsDeviceRNG rng;
     /* add new domain devices here */
 
     virDomainCapsFeatureGIC gic;
-    virTristateBool vmcoreinfo;
-    virTristateBool genid;
     virSEVCapabilityPtr sev;
     /* add new domain features here */
+
+    virTristateBool features[VIR_DOMAIN_CAPS_FEATURE_LAST];
 };
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virDomainCaps, virObjectUnref);
+
 
 virDomainCapsPtr virDomainCapsNew(const char *path,
                                   const char *machine,
@@ -183,16 +205,8 @@ virDomainCapsPtr virDomainCapsNew(const char *path,
 
 virDomainCapsCPUModelsPtr virDomainCapsCPUModelsNew(size_t nmodels);
 virDomainCapsCPUModelsPtr virDomainCapsCPUModelsCopy(virDomainCapsCPUModelsPtr old);
-virDomainCapsCPUModelsPtr virDomainCapsCPUModelsFilter(virDomainCapsCPUModelsPtr old,
-                                                       const char **models,
-                                                       const char **blacklist);
-int virDomainCapsCPUModelsAddSteal(virDomainCapsCPUModelsPtr cpuModels,
-                                   char **name,
-                                   virDomainCapsCPUUsable usable,
-                                   char ***blockers);
 int virDomainCapsCPUModelsAdd(virDomainCapsCPUModelsPtr cpuModels,
                               const char *name,
-                              ssize_t nameLen,
                               virDomainCapsCPUUsable usable,
                               char **blockers);
 virDomainCapsCPUModelPtr
@@ -203,10 +217,11 @@ virDomainCapsCPUModelsGet(virDomainCapsCPUModelsPtr cpuModels,
 #define VIR_DOMAIN_CAPS_ENUM_SET(capsEnum, ...) \
     do { \
         unsigned int __values[] = {__VA_ARGS__}; \
-        size_t __nvalues = ARRAY_CARDINALITY(__values); \
+        size_t __nvalues = G_N_ELEMENTS(__values); \
         virDomainCapsEnumSet(&(capsEnum), #capsEnum, \
                              __nvalues, __values); \
     } while (0)
+
 
 int virDomainCapsEnumSet(virDomainCapsEnumPtr capsEnum,
                          const char *capsEnumName,
@@ -214,9 +229,13 @@ int virDomainCapsEnumSet(virDomainCapsEnumPtr capsEnum,
                          unsigned int *values);
 void virDomainCapsEnumClear(virDomainCapsEnumPtr capsEnum);
 
-char * virDomainCapsFormat(virDomainCapsPtr const caps);
+char * virDomainCapsFormat(const virDomainCaps *caps);
+
+int virDomainCapsDeviceDefValidate(const virDomainCaps *caps,
+                                   const virDomainDeviceDef *dev,
+                                   const virDomainDef *def);
 
 void
 virSEVCapabilitiesFree(virSEVCapability *capabilities);
 
-VIR_DEFINE_AUTOPTR_FUNC(virSEVCapability, virSEVCapabilitiesFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virSEVCapability, virSEVCapabilitiesFree);

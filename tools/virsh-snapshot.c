@@ -197,7 +197,7 @@ cmdSnapshotCreate(vshControl *ctl, const vshCmd *cmd)
     if (vshCommandOptStringReq(ctl, cmd, "xmlfile", &from) < 0)
         goto cleanup;
     if (!from) {
-        buffer = vshStrdup(ctl, "<domainsnapshot/>");
+        buffer = g_strdup("<domainsnapshot/>");
     } else {
         if (virFileReadAll(from, VSH_MAX_XML_FILE, &buffer) < 0) {
             vshSaveLibvirtError();
@@ -444,11 +444,6 @@ cmdSnapshotCreateAs(vshControl *ctl, const vshCmd *cmd)
     }
     virBufferAdjustIndent(&buf, -2);
     virBufferAddLit(&buf, "</domainsnapshot>\n");
-
-    if (virBufferError(&buf)) {
-        vshError(ctl, "%s", _("Out of memory"));
-        goto cleanup;
-    }
 
     buffer = virBufferContentAndReset(&buf);
 
@@ -755,7 +750,7 @@ virshGetSnapshotParent(vshControl *ctl, virDomainSnapshotPtr snapshot,
         parent = virDomainSnapshotGetParent(snapshot, 0);
         if (parent) {
             /* API works, and virDomainSnapshotGetName will succeed */
-            *parent_name = vshStrdup(ctl, virDomainSnapshotGetName(parent));
+            *parent_name = g_strdup(virDomainSnapshotGetName(parent));
             ret = 0;
             goto cleanup;
         }
@@ -1236,7 +1231,7 @@ virshSnapshotListCollect(vshControl *ctl, virDomainPtr dom,
                                                        count - 1, flags);
             if (count >= 0) {
                 count++;
-                names[0] = vshStrdup(ctl, fromname);
+                names[0] = g_strdup(fromname);
             }
         } else {
             count = virDomainSnapshotListChildrenNames(from, names,
@@ -1380,7 +1375,7 @@ virshSnapshotListCollect(vshControl *ctl, virDomainPtr dom,
               virshSnapSorter);
     snaplist->nsnaps -= deleted;
 
-    VIR_STEAL_PTR(ret, snaplist);
+    ret = g_steal_pointer(&snaplist);
 
  cleanup:
     virshSnapshotListFree(snaplist);

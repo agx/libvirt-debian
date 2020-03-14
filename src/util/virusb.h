@@ -22,7 +22,6 @@
 
 #include "internal.h"
 #include "virobject.h"
-#include "virautoclean.h"
 
 #define USB_DEVFS "/dev/bus/usb/"
 
@@ -30,6 +29,9 @@ typedef struct _virUSBDevice virUSBDevice;
 typedef virUSBDevice *virUSBDevicePtr;
 typedef struct _virUSBDeviceList virUSBDeviceList;
 typedef virUSBDeviceList *virUSBDeviceListPtr;
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virUSBDeviceList, virObjectUnref);
+
 
 virUSBDevicePtr virUSBDeviceNew(unsigned int bus,
                                 unsigned int devno,
@@ -95,4 +97,4 @@ void virUSBDeviceListDel(virUSBDeviceListPtr list,
 virUSBDevicePtr virUSBDeviceListFind(virUSBDeviceListPtr list,
                                      virUSBDevicePtr dev);
 
-VIR_DEFINE_AUTOPTR_FUNC(virUSBDevice, virUSBDeviceFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virUSBDevice, virUSBDeviceFree);

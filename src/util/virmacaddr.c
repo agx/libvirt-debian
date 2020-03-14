@@ -21,7 +21,6 @@
 #include <config.h>
 
 
-#include "c-ctype.h"
 #include "virmacaddr.h"
 #include "virrandom.h"
 #include "virutil.h"
@@ -38,12 +37,12 @@ virMacAddrCompare(const char *p, const char *q)
 {
     unsigned char c, d;
     do {
-        while (*p == '0' && c_isxdigit(p[1]))
+        while (*p == '0' && g_ascii_isxdigit(p[1]))
             ++p;
-        while (*q == '0' && c_isxdigit(q[1]))
+        while (*q == '0' && g_ascii_isxdigit(q[1]))
             ++q;
-        c = c_tolower(*p);
-        d = c_tolower(*q);
+        c = g_ascii_tolower(*p);
+        d = g_ascii_tolower(*q);
 
         if (c == 0 || d == 0)
             break;
@@ -153,7 +152,7 @@ virMacAddrParse(const char* str, virMacAddrPtr addr)
         /* This is solely to avoid accepting the leading
          * space or "+" that strtoul would otherwise accept.
          */
-        if (!c_isxdigit(*str))
+        if (!g_ascii_isxdigit(*str))
             break;
 
         result = strtoul(str, &end_ptr, 16); /* exempt from syntax-check */
@@ -187,10 +186,10 @@ const char *
 virMacAddrFormat(const virMacAddr *addr,
                  char *str)
 {
-    snprintf(str, VIR_MAC_STRING_BUFLEN,
-             "%02x:%02x:%02x:%02x:%02x:%02x",
-             addr->addr[0], addr->addr[1], addr->addr[2],
-             addr->addr[3], addr->addr[4], addr->addr[5]);
+    g_snprintf(str, VIR_MAC_STRING_BUFLEN,
+               "%02x:%02x:%02x:%02x:%02x:%02x",
+               addr->addr[0], addr->addr[1], addr->addr[2],
+               addr->addr[3], addr->addr[4], addr->addr[5]);
     str[VIR_MAC_STRING_BUFLEN-1] = '\0';
     return str;
 }

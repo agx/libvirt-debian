@@ -16,8 +16,10 @@ NETWORK_LEASES_HELPER_SOURCES = \
 	network/leaseshelper.c \
 	$(NULL)
 
-DRIVER_SOURCE_FILES += $(NETWORK_DRIVER_SOURCES)
-STATEFUL_DRIVER_SOURCE_FILES += $(NETWORK_DRIVER_SOURCES)
+DRIVER_SOURCE_FILES += $(addprefix $(srcdir)/,$(NETWORK_DRIVER_SOURCES))
+STATEFUL_DRIVER_SOURCE_FILES += \
+	$(addprefix $(srcdir)/,$(NETWORK_DRIVER_SOURCES))
+
 EXTRA_DIST += \
 	$(NETWORK_DRIVER_SOURCES) \
 	$(NETWORK_DRIVER_PLATFORM_INC) \
@@ -32,6 +34,7 @@ libvirt_driver_network_la_SOURCES =
 libvirt_driver_network_la_LIBADD = \
 	libvirt_driver_network_impl.la \
 	libvirt.la \
+	$(GLIB_LIBS) \
 	../gnulib/lib/libgnu.la \
 	$(LIBNL_LIBS) \
 	$(DBUS_LIBS) \
@@ -43,11 +46,87 @@ libvirt_driver_network_impl_la_CFLAGS = \
 	$(LIBNL_CFLAGS) \
 	$(DBUS_CFLAGS) \
 	-I$(srcdir)/access \
+	-I$(builddir)/access \
 	-I$(srcdir)/conf \
 	$(AM_CFLAGS) \
 	$(NULL)
 libvirt_driver_network_impl_la_SOURCES = $(NETWORK_DRIVER_SOURCES)
 libvirt_driver_network_impl_la_LIBADD  = $(DBUS_LIBS) $(LIBXML_LIBS)
+
+sbin_PROGRAMS += virtnetworkd
+
+nodist_conf_DATA += network/virtnetworkd.conf
+augeas_DATA += network/virtnetworkd.aug
+augeastest_DATA += network/test_virtnetworkd.aug
+CLEANFILES += network/virtnetworkd.aug
+
+virtnetworkd_SOURCES = $(REMOTE_DAEMON_SOURCES)
+nodist_virtnetworkd_SOURCES = $(REMOTE_DAEMON_GENERATED)
+virtnetworkd_CFLAGS = \
+       $(REMOTE_DAEMON_CFLAGS) \
+       -DDAEMON_NAME="\"virtnetworkd\"" \
+       -DMODULE_NAME="\"network\"" \
+       $(NULL)
+virtnetworkd_LDFLAGS = $(REMOTE_DAEMON_LD_FLAGS)
+virtnetworkd_LDADD = $(REMOTE_DAEMON_LD_ADD)
+
+SYSTEMD_UNIT_FILES += \
+	virtnetworkd.service \
+	virtnetworkd.socket \
+	virtnetworkd-ro.socket \
+	virtnetworkd-admin.socket \
+	$(NULL)
+SYSTEMD_UNIT_FILES_IN += \
+	network/virtnetworkd.service.in \
+	$(NULL)
+
+OPENRC_INIT_FILES += \
+	virtnetworkd.init \
+	$(NULL)
+OPENRC_INIT_FILES_IN += \
+	network/virtnetworkd.init.in \
+	$(NULL)
+
+VIRTNETWORKD_UNIT_VARS = \
+	$(VIRTD_UNIT_VARS) \
+	-e 's|[@]name[@]|Libvirt network|g' \
+	-e 's|[@]service[@]|virtnetworkd|g' \
+	-e 's|[@]sockprefix[@]|virtnetworkd|g' \
+	$(NULL)
+
+virtnetworkd.init: network/virtnetworkd.init.in $(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(LIBVIRTD_INIT_VARS) $< > $@-t && mv $@-t $@
+
+virtnetworkd.service: network/virtnetworkd.service.in \
+		$(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(VIRTNETWORKD_UNIT_VARS) $< > $@-t && mv $@-t $@
+
+virtnetwork%.socket: remote/libvirt%.socket.in \
+		$(top_builddir)/config.status
+	$(AM_V_GEN)$(SED) $(VIRTNETWORKD_UNIT_VARS) $< > $@-t && mv $@-t $@
+
+network/virtnetworkd.conf: remote/libvirtd.conf.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtnetworkd/' \
+		$< > $@
+
+network/virtnetworkd.aug: remote/libvirtd.aug.in
+	$(AM_V_GEN)$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtnetworkd/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtnetworkd/' \
+		$< > $@
+
+network/test_virtnetworkd.aug: remote/test_libvirtd.aug.in \
+		network/virtnetworkd.conf $(AUG_GENTEST_SCRIPT)
+	$(AM_V_GEN)$(AUG_GENTEST) network/virtnetworkd.conf \
+		$(srcdir)/remote/test_libvirtd.aug.in | \
+		$(SED) \
+		-e '/[@]CUT_ENABLE_IP[@]/,/[@]END[@]/d' \
+		-e 's/[@]DAEMON_NAME[@]/virtnetworkd/' \
+		-e 's/[@]DAEMON_NAME_UC[@]/Virtnetworkd/' \
+		> $@ || rm -f $@
 
 libexec_PROGRAMS += libvirt_leaseshelper
 libvirt_leaseshelper_SOURCES = $(NETWORK_LEASES_HELPER_SOURCES)
@@ -57,6 +136,7 @@ libvirt_leaseshelper_LDFLAGS = \
 	$(NULL)
 libvirt_leaseshelper_LDADD = \
 	libvirt.la \
+	$(GLIB_LIBS) \
 	../gnulib/lib/libgnu.la
 if WITH_DTRACE_PROBES
 libvirt_leaseshelper_LDADD += libvirt_probes.lo
@@ -74,7 +154,7 @@ UUID=$(shell uuidgen 2>/dev/null)
 install-data-network:
 	$(MKDIR_P) "$(DESTDIR)$(localstatedir)/lib/libvirt/network"
 	$(MKDIR_P) "$(DESTDIR)$(localstatedir)/lib/libvirt/dnsmasq"
-	$(MKDIR_P) "$(DESTDIR)$(localstatedir)/run/libvirt/network"
+	$(MKDIR_P) "$(DESTDIR)$(runstatedir)/libvirt/network"
 	$(MKDIR_P) "$(DESTDIR)$(confdir)/qemu/networks/autostart"
 	$(INSTALL_DATA) $(srcdir)/network/default.xml \
 	  $(DESTDIR)$(confdir)/qemu/networks/default.xml
@@ -101,7 +181,7 @@ uninstall-data-network:
 	rmdir "$(DESTDIR)$(confdir)/qemu/networks/autostart" || :
 	rmdir "$(DESTDIR)$(confdir)/qemu/networks" || :
 	rmdir "$(DESTDIR)$(localstatedir)/lib/libvirt/network" ||:
-	rmdir "$(DESTDIR)$(localstatedir)/run/libvirt/network" ||:
+	rmdir "$(DESTDIR)$(runstatedir)/libvirt/network" ||:
 if WITH_FIREWALLD_ZONE
 	rm -f  $(DESTDIR)$(prefix)/lib/firewalld/zones/libvirt.xml
 endif WITH_FIREWALLD_ZONE

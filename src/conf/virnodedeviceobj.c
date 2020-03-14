@@ -199,7 +199,7 @@ virNodeDeviceObjListSearch(virNodeDeviceObjListPtr devs,
 
 static int
 virNodeDeviceObjListFindBySysfsPathCallback(const void *payload,
-                                            const void *name ATTRIBUTE_UNUSED,
+                                            const void *name G_GNUC_UNUSED,
                                             const void *opaque)
 {
     virNodeDeviceObjPtr obj = (virNodeDeviceObjPtr) payload;
@@ -256,7 +256,7 @@ struct virNodeDeviceObjListFindByWWNsData {
 
 static int
 virNodeDeviceObjListFindByWWNsCallback(const void *payload,
-                                       const void *name ATTRIBUTE_UNUSED,
+                                       const void *name G_GNUC_UNUSED,
                                        const void *opaque)
 {
     virNodeDeviceObjPtr obj = (virNodeDeviceObjPtr) payload;
@@ -292,7 +292,7 @@ virNodeDeviceObjListFindByWWNs(virNodeDeviceObjListPtr devs,
 
 static int
 virNodeDeviceObjListFindByFabricWWNCallback(const void *payload,
-                                            const void *name ATTRIBUTE_UNUSED,
+                                            const void *name G_GNUC_UNUSED,
                                             const void *opaque)
 {
     virNodeDeviceObjPtr obj = (virNodeDeviceObjPtr) payload;
@@ -322,7 +322,7 @@ virNodeDeviceObjListFindByFabricWWN(virNodeDeviceObjListPtr devs,
 
 static int
 virNodeDeviceObjListFindByCapCallback(const void *payload,
-                                      const void *name ATTRIBUTE_UNUSED,
+                                      const void *name G_GNUC_UNUSED,
                                       const void *opaque)
 {
     virNodeDeviceObjPtr obj = (virNodeDeviceObjPtr) payload;
@@ -354,7 +354,7 @@ struct virNodeDeviceObjListFindSCSIHostByWWNsData {
 
 static int
 virNodeDeviceObjListFindSCSIHostByWWNsCallback(const void *payload,
-                                               const void *name ATTRIBUTE_UNUSED,
+                                               const void *name G_GNUC_UNUSED,
                                                const void *opaque)
 {
     virNodeDeviceObjPtr obj = (virNodeDeviceObjPtr) payload;
@@ -694,7 +694,7 @@ struct virNodeDeviceCountData {
 
 static int
 virNodeDeviceObjListNumOfDevicesCallback(void *payload,
-                                         const void *name ATTRIBUTE_UNUSED,
+                                         const void *name G_GNUC_UNUSED,
                                          void *opaque)
 {
     virNodeDeviceObjPtr obj = payload;
@@ -742,7 +742,7 @@ struct virNodeDeviceGetNamesData {
 
 static int
 virNodeDeviceObjListGetNamesCallback(void *payload,
-                                     const void *name ATTRIBUTE_UNUSED,
+                                     const void *name G_GNUC_UNUSED,
                                      void *opaque)
 {
     virNodeDeviceObjPtr obj = payload;
@@ -761,14 +761,10 @@ virNodeDeviceObjListGetNamesCallback(void *payload,
 
     if ((!filter || filter(data->conn, def)) &&
         (!data->matchstr || virNodeDeviceObjHasCapStr(obj, data->matchstr))) {
-        if (VIR_STRDUP(data->names[data->nnames], def->name) < 0) {
-            data->error = true;
-            goto cleanup;
-        }
+        data->names[data->nnames] = g_strdup(def->name);
         data->nnames++;
      }
 
- cleanup:
     virObjectUnlock(obj);
     return 0;
 }
@@ -852,7 +848,7 @@ struct _virNodeDeviceObjListExportData {
 
 static int
 virNodeDeviceObjListExportCallback(void *payload,
-                                   const void *name ATTRIBUTE_UNUSED,
+                                   const void *name G_GNUC_UNUSED,
                                    void *opaque)
 {
     virNodeDeviceObjPtr obj = payload;
@@ -869,12 +865,12 @@ virNodeDeviceObjListExportCallback(void *payload,
     if ((!data->filter || data->filter(data->conn, def)) &&
         virNodeDeviceObjMatch(obj, data->flags)) {
         if (data->devices) {
-            if (!(device = virGetNodeDevice(data->conn, def->name)) ||
-                VIR_STRDUP(device->parentName, def->parent) < 0) {
+            if (!(device = virGetNodeDevice(data->conn, def->name))) {
                 virObjectUnref(device);
                 data->error = true;
                 goto cleanup;
             }
+            device->parentName = g_strdup(def->parent);
             data->devices[data->ndevices] = device;
         }
         data->ndevices++;

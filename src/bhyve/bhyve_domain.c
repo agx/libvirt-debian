@@ -20,6 +20,7 @@
 
 #include <config.h>
 
+#include "bhyve_driver.h"
 #include "bhyve_conf.h"
 #include "bhyve_device.h"
 #include "bhyve_domain.h"
@@ -27,16 +28,12 @@
 #include "viralloc.h"
 #include "virlog.h"
 
-#include <libxml/xpathInternals.h>
-
 #define VIR_FROM_THIS VIR_FROM_BHYVE
 
 VIR_LOG_INIT("bhyve.bhyve_domain");
 
-#define BHYVE_NAMESPACE_HREF "http://libvirt.org/schemas/domain/bhyve/1.0"
-
 static void *
-bhyveDomainObjPrivateAlloc(void *opaque ATTRIBUTE_UNUSED)
+bhyveDomainObjPrivateAlloc(void *opaque G_GNUC_UNUSED)
 {
     bhyveDomainObjPrivatePtr priv;
 
@@ -78,11 +75,20 @@ bhyveDomainDefNeedsISAController(virDomainDefPtr def)
 
 static int
 bhyveDomainDefPostParse(virDomainDefPtr def,
-                        virCapsPtr caps ATTRIBUTE_UNUSED,
-                        unsigned int parseFlags ATTRIBUTE_UNUSED,
-                        void *opaque ATTRIBUTE_UNUSED,
-                        void *parseOpaque ATTRIBUTE_UNUSED)
+                        unsigned int parseFlags G_GNUC_UNUSED,
+                        void *opaque,
+                        void *parseOpaque G_GNUC_UNUSED)
 {
+    bhyveConnPtr driver = opaque;
+    g_autoptr(virCaps) caps = bhyveDriverGetCapabilities(driver);
+    if (!caps)
+        return -1;
+
+    if (!virCapabilitiesDomainSupported(caps, def->os.type,
+                                        def->os.arch,
+                                        def->virtType))
+        return -1;
+
     /* Add an implicit PCI root controller */
     if (virDomainDefMaybeAddController(def, VIR_DOMAIN_CONTROLLER_TYPE_PCI, 0,
                                        VIR_DOMAIN_CONTROLLER_MODEL_PCI_ROOT) < 0)
@@ -94,7 +100,7 @@ bhyveDomainDefPostParse(virDomainDefPtr def,
 static int
 bhyveDomainDiskDefAssignAddress(bhyveConnPtr driver,
                                 virDomainDiskDefPtr def,
-                                const virDomainDef *vmdef ATTRIBUTE_UNUSED)
+                                const virDomainDef *vmdef G_GNUC_UNUSED)
 {
     int idx = virDiskNameToIndex(def->dst);
 
@@ -126,10 +132,9 @@ bhyveDomainDiskDefAssignAddress(bhyveConnPtr driver,
 static int
 bhyveDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
                               const virDomainDef *def,
-                              virCapsPtr caps ATTRIBUTE_UNUSED,
-                              unsigned int parseFlags ATTRIBUTE_UNUSED,
+                              unsigned int parseFlags G_GNUC_UNUSED,
                               void *opaque,
-                              void *parseOpaque ATTRIBUTE_UNUSED)
+                              void *parseOpaque G_GNUC_UNUSED)
 {
     bhyveConnPtr driver = opaque;
 
@@ -160,10 +165,9 @@ bhyveDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
 
 static int
 bhyveDomainDefAssignAddresses(virDomainDef *def,
-                              virCapsPtr caps ATTRIBUTE_UNUSED,
-                              unsigned int parseFlags ATTRIBUTE_UNUSED,
-                              void *opaque ATTRIBUTE_UNUSED,
-                              void *parseOpaque ATTRIBUTE_UNUSED)
+                              unsigned int parseFlags G_GNUC_UNUSED,
+                              void *opaque G_GNUC_UNUSED,
+                              void *parseOpaque G_GNUC_UNUSED)
 {
     if (bhyveDomainAssignAddresses(def, NULL) < 0)
         return -1;
@@ -196,9 +200,7 @@ bhyveDomainDefNamespaceFree(void *nsdata)
 }
 
 static int
-bhyveDomainDefNamespaceParse(xmlDocPtr xml ATTRIBUTE_UNUSED,
-                             xmlNodePtr root ATTRIBUTE_UNUSED,
-                             xmlXPathContextPtr ctxt,
+bhyveDomainDefNamespaceParse(xmlXPathContextPtr ctxt,
                              void **data)
 {
     bhyveDomainCmdlineDefPtr cmd = NULL;
@@ -206,13 +208,6 @@ bhyveDomainDefNamespaceParse(xmlDocPtr xml ATTRIBUTE_UNUSED,
     int n;
     size_t i;
     int ret = -1;
-
-    if (xmlXPathRegisterNs(ctxt, BAD_CAST "bhyve", BAD_CAST BHYVE_NAMESPACE_HREF) < 0) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("Failed to register xml namespace '%s'"),
-                       BHYVE_NAMESPACE_HREF);
-        return -1;
-    }
 
     if (VIR_ALLOC(cmd) < 0)
         return -1;
@@ -236,7 +231,7 @@ bhyveDomainDefNamespaceParse(xmlDocPtr xml ATTRIBUTE_UNUSED,
         cmd->num_args++;
     }
 
-    VIR_STEAL_PTR(*data, cmd);
+    *data = g_steal_pointer(&cmd);
     ret = 0;
 
  cleanup:
@@ -269,15 +264,11 @@ bhyveDomainDefNamespaceFormatXML(virBufferPtr buf,
     return 0;
 }
 
-static const char *
-bhyveDomainDefNamespaceHref(void)
-{
-    return "xmlns:bhyve='" BHYVE_NAMESPACE_HREF "'";
-}
-
-virDomainXMLNamespace virBhyveDriverDomainXMLNamespace = {
+virXMLNamespace virBhyveDriverDomainXMLNamespace = {
     .parse = bhyveDomainDefNamespaceParse,
     .free = bhyveDomainDefNamespaceFree,
     .format = bhyveDomainDefNamespaceFormatXML,
-    .href = bhyveDomainDefNamespaceHref,
+    .prefix = "bhyve",
+    .uri = "http://libvirt.org/schemas/domain/bhyve/1.0",
+
 };

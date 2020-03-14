@@ -52,19 +52,12 @@ struct virNetlinkEventHandle {
     int deleted;
 };
 
-# ifdef HAVE_LIBNL1
-#  define virNetlinkAlloc nl_handle_alloc
-#  define virNetlinkSetBufferSize nl_set_buffer_size
-#  define virNetlinkFree nl_handle_destroy
-typedef struct nl_handle virNetlinkHandle;
-# else
-#  define virNetlinkAlloc nl_socket_alloc
-#  define virNetlinkSetBufferSize nl_socket_set_buffer_size
-#  define virNetlinkFree nl_socket_free
+# define virNetlinkAlloc nl_socket_alloc
+# define virNetlinkSetBufferSize nl_socket_set_buffer_size
+# define virNetlinkFree nl_socket_free
 typedef struct nl_sock virNetlinkHandle;
-# endif
 
-VIR_DEFINE_AUTOPTR_FUNC(virNetlinkHandle, virNetlinkFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virNetlinkHandle, virNetlinkFree);
 
 typedef struct _virNetlinkEventSrvPrivate virNetlinkEventSrvPrivate;
 typedef virNetlinkEventSrvPrivate *virNetlinkEventSrvPrivatePtr;
@@ -191,16 +184,14 @@ virNetlinkCreateSocket(int protocol)
     }
     nl_socket_enable_msg_peek(nlhandle);
 
- cleanup:
     return nlhandle;
 
  error:
     if (nlhandle) {
         nl_close(nlhandle);
         virNetlinkFree(nlhandle);
-        nlhandle = NULL;
     }
-    goto cleanup;
+    return NULL;
 }
 
 static virNetlinkHandle *
@@ -253,7 +244,7 @@ virNetlinkSendRequest(struct nl_msg *nl_msg, uint32_t src_pid,
     fds[0].fd = fd;
     fds[0].events = POLLIN;
 
-    n = poll(fds, ARRAY_CARDINALITY(fds), NETLINK_ACK_TIMEOUT_S);
+    n = poll(fds, G_N_ELEMENTS(fds), NETLINK_ACK_TIMEOUT_S);
     if (n <= 0) {
         if (n < 0)
             virReportSystemError(errno, "%s",
@@ -296,8 +287,8 @@ int virNetlinkCommand(struct nl_msg *nl_msg,
             .nl_groups = 0,
     };
     struct pollfd fds[1];
-    VIR_AUTOFREE(struct nlmsghdr *) temp_resp = NULL;
-    VIR_AUTOPTR(virNetlinkHandle) nlhandle = NULL;
+    g_autofree struct nlmsghdr *temp_resp = NULL;
+    g_autoptr(virNetlinkHandle) nlhandle = NULL;
     int len = 0;
 
     memset(fds, 0, sizeof(fds));
@@ -317,7 +308,7 @@ int virNetlinkCommand(struct nl_msg *nl_msg,
         return -1;
     }
 
-    VIR_STEAL_PTR(*resp, temp_resp);
+    *resp = g_steal_pointer(&temp_resp);
     *respbuflen = len;
     return 0;
 }
@@ -338,14 +329,14 @@ virNetlinkDumpCommand(struct nl_msg *nl_msg,
             .nl_pid    = dst_pid,
             .nl_groups = 0,
     };
-    VIR_AUTOPTR(virNetlinkHandle) nlhandle = NULL;
+    g_autoptr(virNetlinkHandle) nlhandle = NULL;
 
     if (!(nlhandle = virNetlinkSendRequest(nl_msg, src_pid, nladdr,
                                            protocol, groups)))
         return -1;
 
     while (!end) {
-        VIR_AUTOFREE(struct nlmsghdr *) resp = NULL;
+        g_autofree struct nlmsghdr *resp = NULL;
 
         len = nl_recv(nlhandle, &nladdr, (unsigned char **)&resp, NULL);
         VIR_WARNINGS_NO_CAST_ALIGN
@@ -396,8 +387,8 @@ virNetlinkDumpLink(const char *ifname, int ifindex,
         .ifi_index  = ifindex
     };
     unsigned int recvbuflen;
-    VIR_AUTOPTR(virNetlinkMsg) nl_msg = NULL;
-    VIR_AUTOFREE(struct nlmsghdr *) resp = NULL;
+    g_autoptr(virNetlinkMsg) nl_msg = NULL;
+    g_autofree struct nlmsghdr *resp = NULL;
 
     if (ifname && ifindex <= 0 && virNetDevGetIndex(ifname, &ifindex) < 0)
         return -1;
@@ -466,7 +457,7 @@ virNetlinkDumpLink(const char *ifname, int ifindex,
         goto malformed_resp;
     }
 
-    VIR_STEAL_PTR(*nlData, resp);
+    *nlData = g_steal_pointer(&resp);
     return 0;
 
  malformed_resp:
@@ -507,8 +498,8 @@ virNetlinkNewLink(const char *ifname,
     struct nlattr *infodata = NULL;
     unsigned int buflen;
     struct ifinfomsg ifinfo = { .ifi_family = AF_UNSPEC };
-    VIR_AUTOPTR(virNetlinkMsg) nl_msg = NULL;
-    VIR_AUTOFREE(struct nlmsghdr *) resp = NULL;
+    g_autoptr(virNetlinkMsg) nl_msg = NULL;
+    g_autofree struct nlmsghdr *resp = NULL;
 
     *error = 0;
 
@@ -548,9 +539,14 @@ virNetlinkNewLink(const char *ifname,
     NETLINK_MSG_NEST_END(nl_msg, linkinfo);
 
     if (extra_args) {
-        NETLINK_MSG_PUT(nl_msg, IFLA_LINK,
+        if (extra_args->ifindex) {
+            NETLINK_MSG_PUT(nl_msg, IFLA_LINK,
                         sizeof(uint32_t), extra_args->ifindex);
-        NETLINK_MSG_PUT(nl_msg, IFLA_ADDRESS, VIR_MAC_BUFLEN, extra_args->mac);
+        }
+        if (extra_args->mac) {
+            NETLINK_MSG_PUT(nl_msg, IFLA_ADDRESS,
+                            VIR_MAC_BUFLEN, extra_args->mac);
+        }
     }
 
     if (virNetlinkCommand(nl_msg, &resp, &buflen, 0, 0, NETLINK_ROUTE, 0) < 0)
@@ -613,8 +609,8 @@ virNetlinkDelLink(const char *ifname, virNetlinkDelLinkFallback fallback)
     struct nlmsgerr *err;
     struct ifinfomsg ifinfo = { .ifi_family = AF_UNSPEC };
     unsigned int recvbuflen;
-    VIR_AUTOPTR(virNetlinkMsg) nl_msg = NULL;
-    VIR_AUTOFREE(struct nlmsghdr *) resp = NULL;
+    g_autoptr(virNetlinkMsg) nl_msg = NULL;
+    g_autofree struct nlmsghdr *resp = NULL;
 
     nl_msg = nlmsg_alloc_simple(RTM_DELLINK,
                                 NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL);
@@ -697,8 +693,8 @@ virNetlinkGetNeighbor(void **nlData, uint32_t src_pid, uint32_t dst_pid)
         .ndm_family = AF_UNSPEC,
     };
     unsigned int recvbuflen;
-    VIR_AUTOPTR(virNetlinkMsg) nl_msg = NULL;
-    VIR_AUTOFREE(struct nlmsghdr *) resp = NULL;
+    g_autoptr(virNetlinkMsg) nl_msg = NULL;
+    g_autofree struct nlmsghdr *resp = NULL;
 
     nl_msg = nlmsg_alloc_simple(RTM_GETNEIGH, NLM_F_DUMP | NLM_F_REQUEST);
     if (!nl_msg) {
@@ -737,7 +733,7 @@ virNetlinkGetNeighbor(void **nlData, uint32_t src_pid, uint32_t dst_pid)
         goto malformed_resp;
     }
 
-    VIR_STEAL_PTR(*nlData, resp);
+    *nlData = g_steal_pointer(&resp);
     return recvbuflen;
 
  malformed_resp:
@@ -838,8 +834,8 @@ virNetlinkEventRemoveClientPrimitive(size_t i, unsigned int protocol)
 
 static void
 virNetlinkEventCallback(int watch,
-                        int fd ATTRIBUTE_UNUSED,
-                        int events ATTRIBUTE_UNUSED,
+                        int fd G_GNUC_UNUSED,
+                        int events G_GNUC_UNUSED,
                         void *opaque)
 {
     virNetlinkEventSrvPrivatePtr srv = opaque;
@@ -848,7 +844,7 @@ virNetlinkEventCallback(int watch,
     size_t i;
     int length;
     bool handled = false;
-    VIR_AUTOFREE(struct nlmsghdr *) msg = NULL;
+    g_autofree struct nlmsghdr *msg = NULL;
 
     length = nl_recv(srv->netlinknh, &peer,
                      (unsigned char **)&msg, &creds);
@@ -1238,38 +1234,38 @@ virNetlinkShutdown(void)
     return;
 }
 
-int virNetlinkCommand(struct nl_msg *nl_msg ATTRIBUTE_UNUSED,
-                      struct nlmsghdr **resp ATTRIBUTE_UNUSED,
-                      unsigned int *respbuflen ATTRIBUTE_UNUSED,
-                      uint32_t src_pid ATTRIBUTE_UNUSED,
-                      uint32_t dst_pid ATTRIBUTE_UNUSED,
-                      unsigned int protocol ATTRIBUTE_UNUSED,
-                      unsigned int groups ATTRIBUTE_UNUSED)
+int virNetlinkCommand(struct nl_msg *nl_msg G_GNUC_UNUSED,
+                      struct nlmsghdr **resp G_GNUC_UNUSED,
+                      unsigned int *respbuflen G_GNUC_UNUSED,
+                      uint32_t src_pid G_GNUC_UNUSED,
+                      uint32_t dst_pid G_GNUC_UNUSED,
+                      unsigned int protocol G_GNUC_UNUSED,
+                      unsigned int groups G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return -1;
 }
 
 int
-virNetlinkDumpCommand(struct nl_msg *nl_msg ATTRIBUTE_UNUSED,
-                      virNetlinkDumpCallback callback ATTRIBUTE_UNUSED,
-                      uint32_t src_pid ATTRIBUTE_UNUSED,
-                      uint32_t dst_pid ATTRIBUTE_UNUSED,
-                      unsigned int protocol ATTRIBUTE_UNUSED,
-                      unsigned int groups ATTRIBUTE_UNUSED,
-                      void *opaque ATTRIBUTE_UNUSED)
+virNetlinkDumpCommand(struct nl_msg *nl_msg G_GNUC_UNUSED,
+                      virNetlinkDumpCallback callback G_GNUC_UNUSED,
+                      uint32_t src_pid G_GNUC_UNUSED,
+                      uint32_t dst_pid G_GNUC_UNUSED,
+                      unsigned int protocol G_GNUC_UNUSED,
+                      unsigned int groups G_GNUC_UNUSED,
+                      void *opaque G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return -1;
 }
 
 int
-virNetlinkDumpLink(const char *ifname ATTRIBUTE_UNUSED,
-                   int ifindex ATTRIBUTE_UNUSED,
-                   void **nlData ATTRIBUTE_UNUSED,
-                   struct nlattr **tb ATTRIBUTE_UNUSED,
-                   uint32_t src_pid ATTRIBUTE_UNUSED,
-                   uint32_t dst_pid ATTRIBUTE_UNUSED)
+virNetlinkDumpLink(const char *ifname G_GNUC_UNUSED,
+                   int ifindex G_GNUC_UNUSED,
+                   void **nlData G_GNUC_UNUSED,
+                   struct nlattr **tb G_GNUC_UNUSED,
+                   uint32_t src_pid G_GNUC_UNUSED,
+                   uint32_t dst_pid G_GNUC_UNUSED)
 {
     virReportSystemError(ENOSYS, "%s",
                          _("Unable to dump link info on this platform"));
@@ -1278,8 +1274,8 @@ virNetlinkDumpLink(const char *ifname ATTRIBUTE_UNUSED,
 
 
 int
-virNetlinkDelLink(const char *ifname ATTRIBUTE_UNUSED,
-                  virNetlinkDelLinkFallback fallback ATTRIBUTE_UNUSED)
+virNetlinkDelLink(const char *ifname G_GNUC_UNUSED,
+                  virNetlinkDelLinkFallback fallback G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return -1;
@@ -1287,10 +1283,10 @@ virNetlinkDelLink(const char *ifname ATTRIBUTE_UNUSED,
 
 
 int
-virNetlinkNewLink(const char *ifname ATTRIBUTE_UNUSED,
-                  const char *type ATTRIBUTE_UNUSED,
-                  virNetlinkNewLinkDataPtr extra_args ATTRIBUTE_UNUSED,
-                  int *error ATTRIBUTE_UNUSED)
+virNetlinkNewLink(const char *ifname G_GNUC_UNUSED,
+                  const char *type G_GNUC_UNUSED,
+                  virNetlinkNewLinkDataPtr extra_args G_GNUC_UNUSED,
+                  int *error G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return -1;
@@ -1298,9 +1294,9 @@ virNetlinkNewLink(const char *ifname ATTRIBUTE_UNUSED,
 
 
 int
-virNetlinkGetNeighbor(void **nlData ATTRIBUTE_UNUSED,
-                      uint32_t src_pid ATTRIBUTE_UNUSED,
-                      uint32_t dst_pid ATTRIBUTE_UNUSED)
+virNetlinkGetNeighbor(void **nlData G_GNUC_UNUSED,
+                      uint32_t src_pid G_GNUC_UNUSED,
+                      uint32_t dst_pid G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return -1;
@@ -1311,7 +1307,7 @@ virNetlinkGetNeighbor(void **nlData ATTRIBUTE_UNUSED,
  * stopNetlinkEventServer: stop the monitor to receive netlink
  * messages for libvirtd
  */
-int virNetlinkEventServiceStop(unsigned int protocol ATTRIBUTE_UNUSED)
+int virNetlinkEventServiceStop(unsigned int protocol G_GNUC_UNUSED)
 {
     VIR_DEBUG("%s", _(unsupported));
     return 0;
@@ -1331,8 +1327,8 @@ int virNetlinkEventServiceStopAll(void)
  * startNetlinkEventServer: start a monitor to receive netlink
  * messages for libvirtd
  */
-int virNetlinkEventServiceStart(unsigned int protocol ATTRIBUTE_UNUSED,
-                                unsigned int groups ATTRIBUTE_UNUSED)
+int virNetlinkEventServiceStart(unsigned int protocol G_GNUC_UNUSED,
+                                unsigned int groups G_GNUC_UNUSED)
 {
     VIR_DEBUG("%s", _(unsupported));
     return 0;
@@ -1342,13 +1338,13 @@ int virNetlinkEventServiceStart(unsigned int protocol ATTRIBUTE_UNUSED,
  * virNetlinkEventServiceIsRunning: returns if the netlink event
  * service is running.
  */
-bool virNetlinkEventServiceIsRunning(unsigned int protocol ATTRIBUTE_UNUSED)
+bool virNetlinkEventServiceIsRunning(unsigned int protocol G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return 0;
 }
 
-int virNetlinkEventServiceLocalPid(unsigned int protocol ATTRIBUTE_UNUSED)
+int virNetlinkEventServiceLocalPid(unsigned int protocol G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return -1;
@@ -1358,11 +1354,11 @@ int virNetlinkEventServiceLocalPid(unsigned int protocol ATTRIBUTE_UNUSED)
  * virNetlinkEventAddClient: register a callback for handling of
  * netlink messages
  */
-int virNetlinkEventAddClient(virNetlinkEventHandleCallback handleCB ATTRIBUTE_UNUSED,
-                             virNetlinkEventRemoveCallback removeCB ATTRIBUTE_UNUSED,
-                             void *opaque ATTRIBUTE_UNUSED,
-                             const virMacAddr *macaddr ATTRIBUTE_UNUSED,
-                             unsigned int protocol ATTRIBUTE_UNUSED)
+int virNetlinkEventAddClient(virNetlinkEventHandleCallback handleCB G_GNUC_UNUSED,
+                             virNetlinkEventRemoveCallback removeCB G_GNUC_UNUSED,
+                             void *opaque G_GNUC_UNUSED,
+                             const virMacAddr *macaddr G_GNUC_UNUSED,
+                             unsigned int protocol G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return -1;
@@ -1371,9 +1367,9 @@ int virNetlinkEventAddClient(virNetlinkEventHandleCallback handleCB ATTRIBUTE_UN
 /**
  * virNetlinkEventRemoveClient: unregister a callback from a netlink monitor
  */
-int virNetlinkEventRemoveClient(int watch ATTRIBUTE_UNUSED,
-                                const virMacAddr *macaddr ATTRIBUTE_UNUSED,
-                                unsigned int protocol ATTRIBUTE_UNUSED)
+int virNetlinkEventRemoveClient(int watch G_GNUC_UNUSED,
+                                const virMacAddr *macaddr G_GNUC_UNUSED,
+                                unsigned int protocol G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return -1;
@@ -1381,8 +1377,8 @@ int virNetlinkEventRemoveClient(int watch ATTRIBUTE_UNUSED,
 
 
 int
-virNetlinkGetErrorCode(struct nlmsghdr *resp ATTRIBUTE_UNUSED,
-                       unsigned int recvbuflen ATTRIBUTE_UNUSED)
+virNetlinkGetErrorCode(struct nlmsghdr *resp G_GNUC_UNUSED,
+                       unsigned int recvbuflen G_GNUC_UNUSED)
 {
     virReportError(VIR_ERR_INTERNAL_ERROR, "%s", _(unsupported));
     return -EINVAL;

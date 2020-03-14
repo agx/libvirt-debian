@@ -28,10 +28,6 @@
 #include "cpu/cpu.h"
 #include "util/virgic.h"
 
-int qemuMonitorJSONTransactionAdd(virJSONValuePtr actions,
-                                  const char *cmdname,
-                                  ...);
-
 int qemuMonitorJSONIOProcessLine(qemuMonitorPtr mon,
                                  const char *line,
                                  qemuMonitorMessagePtr msg);
@@ -41,10 +37,9 @@ int qemuMonitorJSONIOProcess(qemuMonitorPtr mon,
                              size_t len,
                              qemuMonitorMessagePtr msg);
 
-int qemuMonitorJSONHumanCommandWithFd(qemuMonitorPtr mon,
-                                      const char *cmd,
-                                      int scm_fd,
-                                      char **reply);
+int qemuMonitorJSONHumanCommand(qemuMonitorPtr mon,
+                                const char *cmd,
+                                char **reply);
 
 int qemuMonitorJSONSetCapabilities(qemuMonitorPtr mon);
 
@@ -92,6 +87,12 @@ int qemuMonitorJSONBlockStatsUpdateCapacity(qemuMonitorPtr mon,
 int qemuMonitorJSONBlockStatsUpdateCapacityBlockdev(qemuMonitorPtr mon,
                                                     virHashTablePtr stats);
 
+virHashTablePtr
+qemuMonitorJSONBlockGetNamedNodeDataJSON(virJSONValuePtr nodes);
+
+virHashTablePtr
+qemuMonitorJSONBlockGetNamedNodeData(qemuMonitorPtr mon);
+
 int qemuMonitorJSONBlockResize(qemuMonitorPtr mon,
                                const char *device,
                                const char *nodename,
@@ -119,11 +120,11 @@ int qemuMonitorJSONChangeMedia(qemuMonitorPtr mon,
 
 int qemuMonitorJSONSaveVirtualMemory(qemuMonitorPtr mon,
                                      unsigned long long offset,
-                                     size_t length,
+                                     unsigned long long length,
                                      const char *path);
 int qemuMonitorJSONSavePhysicalMemory(qemuMonitorPtr mon,
                                       unsigned long long offset,
-                                      size_t length,
+                                      unsigned long long length,
                                       const char *path);
 
 int qemuMonitorJSONSetMigrationSpeed(qemuMonitorPtr mon,
@@ -203,12 +204,9 @@ int qemuMonitorJSONRemovePCIDevice(qemuMonitorPtr mon,
 int qemuMonitorJSONSendFileHandle(qemuMonitorPtr mon,
                                   const char *fdname,
                                   int fd);
-int qemuMonitorJSONAddFd(qemuMonitorPtr mon, int fdset, int fd,
-                         const char *name);
 
 int qemuMonitorJSONCloseFileHandle(qemuMonitorPtr mon,
                                    const char *fdname);
-int qemuMonitorJSONRemoveFd(qemuMonitorPtr mon, int fdset, int fd);
 
 int qemuMonitorJSONAddNetdev(qemuMonitorPtr mon,
                              const char *netdevstr);
@@ -290,8 +288,7 @@ char *qemuMonitorJSONDiskNameLookup(qemuMonitorPtr mon,
 
 int qemuMonitorJSONArbitraryCommand(qemuMonitorPtr mon,
                                     const char *cmd_str,
-                                    char **reply_str,
-                                    bool hmp);
+                                    char **reply_str);
 
 int qemuMonitorJSONInjectNMI(qemuMonitorPtr mon);
 
@@ -385,15 +382,28 @@ int qemuMonitorJSONGetMachines(qemuMonitorPtr mon,
     ATTRIBUTE_NONNULL(2);
 
 int qemuMonitorJSONGetCPUDefinitions(qemuMonitorPtr mon,
-                                     qemuMonitorCPUDefInfoPtr **cpus)
+                                     qemuMonitorCPUDefsPtr *cpuDefs)
     ATTRIBUTE_NONNULL(2);
 
 int qemuMonitorJSONGetCPUModelExpansion(qemuMonitorPtr mon,
                                         qemuMonitorCPUModelExpansionType type,
-                                        const char *model_name,
+                                        virCPUDefPtr cpu,
                                         bool migratable,
+                                        bool fail_no_props,
                                         qemuMonitorCPUModelInfoPtr *model_info)
-    ATTRIBUTE_NONNULL(3) ATTRIBUTE_NONNULL(5);
+    ATTRIBUTE_NONNULL(3) ATTRIBUTE_NONNULL(6);
+
+int qemuMonitorJSONGetCPUModelBaseline(qemuMonitorPtr mon,
+                                       virCPUDefPtr cpu_a,
+                                       virCPUDefPtr cpu_b,
+                                       qemuMonitorCPUModelInfoPtr *baseline)
+    ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(3) ATTRIBUTE_NONNULL(4);
+
+int qemuMonitorJSONGetCPUModelComparison(qemuMonitorPtr mon,
+                                         virCPUDefPtr cpu_a,
+                                         virCPUDefPtr cpu_b,
+                                         char **result)
+    ATTRIBUTE_NONNULL(2) ATTRIBUTE_NONNULL(3);
 
 int qemuMonitorJSONGetCommands(qemuMonitorPtr mon,
                                char ***commands)
@@ -620,20 +630,52 @@ int
 qemuMonitorJSONGetCurrentMachineInfo(qemuMonitorPtr mon,
                                      qemuMonitorCurrentMachineInfoPtr info)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(2);
-int qemuMonitorJSONAddBitmap(qemuMonitorPtr mon,
-                             const char *node,
-                             const char *bitmap,
-                             bool persistent);
 
-int qemuMonitorJSONEnableBitmap(qemuMonitorPtr mon,
-                                const char *node,
-                                const char *bitmap);
+int
+qemuMonitorJSONTransactionBitmapAdd(virJSONValuePtr actions,
+                                    const char *node,
+                                    const char *name,
+                                    bool persistent,
+                                    bool disabled,
+                                    unsigned long long granularity);
+int
+qemuMonitorJSONTransactionBitmapRemove(virJSONValuePtr actions,
+                                       const char *node,
+                                       const char *name);
+int
+qemuMonitorJSONTransactionBitmapEnable(virJSONValuePtr actions,
+                                       const char *node,
+                                       const char *name);
+int
+qemuMonitorJSONTransactionBitmapDisable(virJSONValuePtr actions,
+                                        const char *node,
+                                        const char *name);
+int
+qemuMonitorJSONTransactionBitmapMerge(virJSONValuePtr actions,
+                                      const char *node,
+                                      const char *target,
+                                      virJSONValuePtr *sources);
 
-int qemuMonitorJSONMergeBitmaps(qemuMonitorPtr mon,
-                                const char *node,
-                                const char *dst,
-                                virJSONValuePtr *src);
+int
+qemuMonitorJSONTransactionBitmapMergeSourceAddBitmap(virJSONValuePtr sources,
+                                                     const char *sourcenode,
+                                                     const char *sourcebitmap);
 
-int qemuMonitorJSONDeleteBitmap(qemuMonitorPtr mon,
-                                const char *node,
-                                const char *bitmap);
+int
+qemuMonitorJSONTransactionSnapshotLegacy(virJSONValuePtr actions,
+                                         const char *device,
+                                         const char *path,
+                                         const char *format,
+                                         bool existing);
+int
+qemuMonitorJSONTransactionSnapshotBlockdev(virJSONValuePtr actions,
+                                           const char *node,
+                                           const char *overlay);
+
+int
+qemuMonitorJSONTransactionBackup(virJSONValuePtr actions,
+                                 const char *device,
+                                 const char *jobname,
+                                 const char *target,
+                                 const char *bitmap,
+                                 qemuMonitorTransactionBackupSyncMode syncmode);

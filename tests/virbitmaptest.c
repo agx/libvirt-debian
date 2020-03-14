@@ -27,7 +27,7 @@
 #include "virbitmap.h"
 
 static int
-test1(const void *data ATTRIBUTE_UNUSED)
+test1(const void *data G_GNUC_UNUSED)
 {
     virBitmapPtr bitmap;
     int size;
@@ -82,7 +82,7 @@ testBit(virBitmapPtr bitmap,
 }
 
 static int
-test2(const void *data ATTRIBUTE_UNUSED)
+test2(const void *data G_GNUC_UNUSED)
 {
     const char *bitsString1 = "1-32,50,88-99,1021-1023";
     char *bitsString2 = NULL;
@@ -145,7 +145,7 @@ test2(const void *data ATTRIBUTE_UNUSED)
 }
 
 static int
-test3(const void *data ATTRIBUTE_UNUSED)
+test3(const void *data G_GNUC_UNUSED)
 {
     virBitmapPtr bitmap = NULL;
     int ret = -1;
@@ -173,7 +173,7 @@ test3(const void *data ATTRIBUTE_UNUSED)
 
 /* test for virBitmapNextSetBit, virBitmapLastSetBit, virBitmapNextClearBit */
 static int
-test4(const void *data ATTRIBUTE_UNUSED)
+test4(const void *data G_GNUC_UNUSED)
 {
     const char *bitsString = "0, 2-4, 6-10, 12, 14-18, 20, 22, 25";
     int size = 40;
@@ -188,7 +188,7 @@ test4(const void *data ATTRIBUTE_UNUSED)
     virBitmapPtr bitmap = NULL;
     ssize_t i, j;
 
-    if (ARRAY_CARDINALITY(bitsPos) + ARRAY_CARDINALITY(bitsPosInv) != size)
+    if (G_N_ELEMENTS(bitsPos) + G_N_ELEMENTS(bitsPosInv) != size)
         goto error;
 
     /* 0. empty set */
@@ -243,7 +243,7 @@ test4(const void *data ATTRIBUTE_UNUSED)
     j = 0;
     i = -1;
 
-    while (j < ARRAY_CARDINALITY(bitsPos)) {
+    while (j < G_N_ELEMENTS(bitsPos)) {
         i = virBitmapNextSetBit(bitmap, i);
         if (i != bitsPos[j++])
             goto error;
@@ -260,7 +260,7 @@ test4(const void *data ATTRIBUTE_UNUSED)
     j = 0;
     i = -1;
 
-    while (j < ARRAY_CARDINALITY(bitsPosInv)) {
+    while (j < G_N_ELEMENTS(bitsPosInv)) {
         i = virBitmapNextClearBit(bitmap, i);
         if (i != bitsPosInv[j++])
             goto error;
@@ -296,7 +296,7 @@ test4(const void *data ATTRIBUTE_UNUSED)
 
 /* test for virBitmapNewData/ToData/DataFormat */
 static int
-test5(const void *v ATTRIBUTE_UNUSED)
+test5(const void *v G_GNUC_UNUSED)
 {
     char data[] = {0x01, 0x02, 0x00, 0x00, 0x04};
     unsigned char *data2 = NULL;
@@ -357,7 +357,7 @@ test5(const void *v ATTRIBUTE_UNUSED)
 
 /* test for virBitmapFormat */
 static int
-test6(const void *v ATTRIBUTE_UNUSED)
+test6(const void *v G_GNUC_UNUSED)
 {
     virBitmapPtr bitmap = NULL;
     char *str = NULL;
@@ -439,7 +439,7 @@ test6(const void *v ATTRIBUTE_UNUSED)
 }
 
 static int
-test7(const void *v ATTRIBUTE_UNUSED)
+test7(const void *v G_GNUC_UNUSED)
 {
     virBitmapPtr bitmap;
     size_t i;
@@ -479,7 +479,7 @@ test7(const void *v ATTRIBUTE_UNUSED)
 }
 
 static int
-test8(const void *v ATTRIBUTE_UNUSED)
+test8(const void *v G_GNUC_UNUSED)
 {
     virBitmapPtr bitmap = NULL;
     char data[108] = {0x00,};
@@ -507,7 +507,7 @@ test8(const void *v ATTRIBUTE_UNUSED)
 
 /* test out of bounds conditions on virBitmapParse */
 static int
-test9(const void *opaque ATTRIBUTE_UNUSED)
+test9(const void *opaque G_GNUC_UNUSED)
 {
     int ret = -1;
     virBitmapPtr bitmap = NULL;
@@ -538,7 +538,7 @@ test9(const void *opaque ATTRIBUTE_UNUSED)
 }
 
 static int
-test10(const void *opaque ATTRIBUTE_UNUSED)
+test10(const void *opaque G_GNUC_UNUSED)
 {
     int ret = -1;
     virBitmapPtr b1 = NULL, b2 = NULL, b3 = NULL, b4 = NULL;
@@ -630,7 +630,7 @@ test11(const void *opaque)
 
 /* test self-expanding bitmap APIs */
 static int
-test12(const void *opaque ATTRIBUTE_UNUSED)
+test12(const void *opaque G_GNUC_UNUSED)
 {
     virBitmapPtr map = NULL;
     int ret = -1;
@@ -672,7 +672,7 @@ test12(const void *opaque ATTRIBUTE_UNUSED)
 
 /* virBitmap(New/To)String */
 static int
-test13(const void *opaque ATTRIBUTE_UNUSED)
+test13(const void *opaque G_GNUC_UNUSED)
 {
     virBitmapPtr map = NULL;
     const char *strings[] = { "1234feebee", "000c0fefe" };
@@ -680,11 +680,13 @@ test13(const void *opaque ATTRIBUTE_UNUSED)
     size_t i = 0;
     int ret = -1;
 
-    for (i = 0; i < ARRAY_CARDINALITY(strings); i++) {
+    for (i = 0; i < G_N_ELEMENTS(strings); i++) {
         map = virBitmapNewString(strings[i]);
-        str = virBitmapToString(map, false, true);
+        if (!map)
+            goto cleanup;
 
-        if (!map || !str)
+        str = virBitmapToString(map, false, true);
+        if (!str)
             goto cleanup;
 
         if (STRNEQ(strings[i], str)) {
@@ -745,9 +747,9 @@ static int
 test15(const void *opaque)
 {
     const struct testBinaryOpData *data = opaque;
-    VIR_AUTOPTR(virBitmap) amap = NULL;
-    VIR_AUTOPTR(virBitmap) bmap = NULL;
-    VIR_AUTOPTR(virBitmap) resmap = NULL;
+    g_autoptr(virBitmap) amap = NULL;
+    g_autoptr(virBitmap) bmap = NULL;
+    g_autoptr(virBitmap) resmap = NULL;
 
     if (!(amap = virBitmapParseUnlimited(data->a)) ||
         !(bmap = virBitmapParseUnlimited(data->b)) ||

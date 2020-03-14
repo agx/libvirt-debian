@@ -18,14 +18,20 @@ build-debian-package:
     - apt-get -y install build-essential git-buildpackage pristine-tar
     - apt-get -y build-dep .
     - rm -f ../* || true
+    - git config user.email 'libvirt@exmple.com'
+    - git config user.name 'Gitlab CI'
   script:
-    - gbp dch -S -a --ignore-branch
+    - 'UPSTREAM_BRANCH=$(gbp config dch.upstream-branch)'
+    - git branch "${UPSTREAM_BRANCH}" "origin/${UPSTREAM_BRANCH}"
+    - gbp dch --git-author -S -a --ignore-branch
     - mkdir -p "${LV_WORKING_DIR}/tarballs"
     - gbp export-orig --tarball-dir="${LV_WORKING_DIR}/tarballs"
                       --pristine-tar
+    - git add debian/changelog
     - gbp buildpackage --git-ignore-new
                        --git-ignore-branch
                        --git-export-dir="${LV_WORKING_DIR}/"
+                       --git-export=INDEX
                        --git-tarball-dir="${LV_WORKING_DIR}/tarballs"
                         -j -b -uc -us > "${LV_WORKING_DIR}/build.log"
   artifacts:
@@ -38,6 +44,7 @@ build-debian-package:
 
 lint-debian-package:
   image: ${LV_DOCKER_IMAGE}
+  stage: test
   dependencies:
     - build-debian-package
   before_script:
@@ -48,3 +55,20 @@ lint-debian-package:
   script:
     - ls "${LV_WORKING_DIR}"
     - lintian ${LV_LINTIAN_OPTS} ${LV_WORKING_DIR}/*.changes
+
+autopkgtest-debian-package:
+  image: ${LV_DOCKER_IMAGE}
+  stage: test
+  dependencies:
+    - build-debian-package
+  before_script:
+    - echo "man-db man-db/auto-update boolean false" | debconf-set-selections
+    - export DEBIAN_FRONTEND=noninteractive
+    - apt-get -y update
+    - apt-get -y install autopkgtest
+  script:
+    - ls "${LV_WORKING_DIR}"
+    - RET=0;
+      autopkgtest -U ${LV_WORKING_DIR}/*.changes -- autopkgtest-virt-null || RET=$?;
+      echo "Autopkgtest exited with ${RET}";
+      [ "${RET}" -eq 8 ] && exit 0 || exit "${RET}"

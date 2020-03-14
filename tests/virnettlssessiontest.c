@@ -239,7 +239,7 @@ mymain(void)
 {
     int ret = 0;
 
-    setenv("GNUTLS_FORCE_FIPS_MODE", "2", 1);
+    g_setenv("GNUTLS_FORCE_FIPS_MODE", "2", TRUE);
 
     testTLSInit(KEYFILE);
 
@@ -456,7 +456,7 @@ mymain(void)
 
     testTLSWriteCertChain("cacertchain-sess.pem",
                           certchain,
-                          ARRAY_CARDINALITY(certchain));
+                          G_N_ELEMENTS(certchain));
 
     DO_SESS_TEST("cacertchain-sess.pem", servercertlevel3areq.filename, clientcertlevel2breq.filename,
                  false, false, "libvirt.org", NULL);
@@ -484,7 +484,7 @@ mymain(void)
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-VIR_TEST_MAIN_PRELOAD(mymain, abs_builddir "/.libs/virrandommock.so")
+VIR_TEST_MAIN_PRELOAD(mymain, VIR_TEST_MOCK("virrandom"))
 
 #else
 

@@ -81,7 +81,6 @@ ppc64CheckCompatibilityMode(const char *host_model,
     int host;
     int compat;
     char *tmp;
-    virCPUCompareResult ret = VIR_CPU_COMPARE_ERROR;
 
     if (!compat_mode)
         return VIR_CPU_COMPARE_IDENTICAL;
@@ -94,7 +93,7 @@ ppc64CheckCompatibilityMode(const char *host_model,
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        "%s",
                        _("Host CPU does not support compatibility modes"));
-        goto out;
+        return VIR_CPU_COMPARE_ERROR;
     }
 
     /* Valid compatibility modes: power6, power7, power8, power9 */
@@ -105,17 +104,14 @@ ppc64CheckCompatibilityMode(const char *host_model,
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("Unknown compatibility mode %s"),
                        compat_mode);
-        goto out;
+        return VIR_CPU_COMPARE_ERROR;
     }
 
     /* Version check */
     if (compat > host)
-        ret = VIR_CPU_COMPARE_INCOMPATIBLE;
-    else
-        ret = VIR_CPU_COMPARE_IDENTICAL;
+        return VIR_CPU_COMPARE_INCOMPATIBLE;
 
- out:
-    return ret;
+    return VIR_CPU_COMPARE_IDENTICAL;
 }
 
 static void
@@ -188,8 +184,7 @@ ppc64ModelCopy(const struct ppc64_model *model)
     if (VIR_ALLOC(copy) < 0)
         goto error;
 
-    if (VIR_STRDUP(copy->name, model->name) < 0)
-        goto error;
+    copy->name = g_strdup(model->name);
 
     if (ppc64DataCopy(&copy->data, &model->data) < 0)
         goto error;
@@ -276,7 +271,7 @@ ppc64MapFree(struct ppc64_map *map)
 }
 
 static int
-ppc64VendorParse(xmlXPathContextPtr ctxt ATTRIBUTE_UNUSED,
+ppc64VendorParse(xmlXPathContextPtr ctxt G_GNUC_UNUSED,
                  const char *name,
                  void *data)
 {
@@ -287,8 +282,7 @@ ppc64VendorParse(xmlXPathContextPtr ctxt ATTRIBUTE_UNUSED,
     if (VIR_ALLOC(vendor) < 0)
         return -1;
 
-    if (VIR_STRDUP(vendor->name, name) < 0)
-        goto cleanup;
+    vendor->name = g_strdup(name);
 
     if (ppc64VendorFind(map, vendor->name)) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
@@ -324,8 +318,7 @@ ppc64ModelParse(xmlXPathContextPtr ctxt,
     if (VIR_ALLOC(model) < 0)
         goto cleanup;
 
-    if (VIR_STRDUP(model->name, name) < 0)
-        goto cleanup;
+    model->name = g_strdup(name);
 
     if (ppc64ModelFind(map, model->name)) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
@@ -452,7 +445,7 @@ ppc64Compute(virCPUDefPtr host,
     if (cpu->arch != VIR_ARCH_NONE) {
         bool found = false;
 
-        for (i = 0; i < ARRAY_CARDINALITY(archs); i++) {
+        for (i = 0; i < G_N_ELEMENTS(archs); i++) {
             if (archs[i] == cpu->arch) {
                 found = true;
                 break;
@@ -462,11 +455,9 @@ ppc64Compute(virCPUDefPtr host,
         if (!found) {
             VIR_DEBUG("CPU arch %s does not match host arch",
                       virArchToString(cpu->arch));
-            if (message &&
-                virAsprintf(message,
-                            _("CPU arch %s does not match host arch"),
-                            virArchToString(cpu->arch)) < 0)
-                goto cleanup;
+            if (message)
+                *message = g_strdup_printf(_("CPU arch %s does not match host arch"),
+                                           virArchToString(cpu->arch));
 
             ret = VIR_CPU_COMPARE_INCOMPATIBLE;
             goto cleanup;
@@ -480,12 +471,11 @@ ppc64Compute(virCPUDefPtr host,
         (!host->vendor || STRNEQ(cpu->vendor, host->vendor))) {
         VIR_DEBUG("host CPU vendor does not match required CPU vendor %s",
                   cpu->vendor);
-        if (message &&
-            virAsprintf(message,
-                        _("host CPU vendor does not match required "
-                        "CPU vendor %s"),
-                        cpu->vendor) < 0)
-            goto cleanup;
+        if (message) {
+            *message = g_strdup_printf(_("host CPU vendor does not match required "
+                                         "CPU vendor %s"),
+                                       cpu->vendor);
+        }
 
         ret = VIR_CPU_COMPARE_INCOMPATIBLE;
         goto cleanup;
@@ -510,7 +500,7 @@ ppc64Compute(virCPUDefPtr host,
                 ret = tmp;
                 goto cleanup;
             }
-            ATTRIBUTE_FALLTHROUGH;
+            G_GNUC_FALLTHROUGH;
 
         case VIR_CPU_MODE_HOST_PASSTHROUGH:
             /* host-model and host-passthrough:
@@ -535,12 +525,11 @@ ppc64Compute(virCPUDefPtr host,
     if (STRNEQ(guest_model->name, host_model->name)) {
         VIR_DEBUG("host CPU model does not match required CPU model %s",
                   guest_model->name);
-        if (message &&
-            virAsprintf(message,
-                        _("host CPU model does not match required "
-                        "CPU model %s"),
-                        guest_model->name) < 0)
-            goto cleanup;
+        if (message) {
+            *message = g_strdup_printf(_("host CPU model does not match required "
+                                         "CPU model %s"),
+                                       guest_model->name);
+        }
 
         ret = VIR_CPU_COMPARE_INCOMPATIBLE;
         goto cleanup;
@@ -620,10 +609,9 @@ ppc64DriverDecode(virCPUDefPtr cpu,
         goto cleanup;
     }
 
-    if (VIR_STRDUP(cpu->model, model->name) < 0 ||
-        (model->vendor && VIR_STRDUP(cpu->vendor, model->vendor->name) < 0)) {
-        goto cleanup;
-    }
+    cpu->model = g_strdup(model->name);
+    if (model->vendor)
+        cpu->vendor = g_strdup(model->vendor->name);
 
     ret = 0;
 
@@ -678,7 +666,7 @@ virCPUppc64GetHost(virCPUDefPtr cpu,
 
 static int
 virCPUppc64Update(virCPUDefPtr guest,
-                  const virCPUDef *host ATTRIBUTE_UNUSED)
+                  const virCPUDef *host G_GNUC_UNUSED)
 {
     /*
      * - host-passthrough doesn't even get here
@@ -697,9 +685,9 @@ virCPUppc64Update(virCPUDefPtr guest,
 static virCPUDefPtr
 virCPUppc64Baseline(virCPUDefPtr *cpus,
                     unsigned int ncpus,
-                    virDomainCapsCPUModelsPtr models ATTRIBUTE_UNUSED,
-                    const char **features ATTRIBUTE_UNUSED,
-                    bool migratable ATTRIBUTE_UNUSED)
+                    virDomainCapsCPUModelsPtr models G_GNUC_UNUSED,
+                    const char **features G_GNUC_UNUSED,
+                    bool migratable G_GNUC_UNUSED)
 {
     struct ppc64_map *map;
     const struct ppc64_model *model;
@@ -765,12 +753,12 @@ virCPUppc64Baseline(virCPUDefPtr *cpus,
         }
     }
 
-    if (VIR_ALLOC(cpu) < 0 ||
-        VIR_STRDUP(cpu->model, model->name) < 0)
-        goto error;
+    cpu = virCPUDefNew();
 
-    if (vendor && VIR_STRDUP(cpu->vendor, vendor->name) < 0)
-        goto error;
+    cpu->model = g_strdup(model->name);
+
+    if (vendor)
+        cpu->vendor = g_strdup(vendor->name);
 
     cpu->type = VIR_CPU_TYPE_GUEST;
     cpu->match = VIR_CPU_MATCH_EXACT;
@@ -801,10 +789,8 @@ virCPUppc64DriverGetModels(char ***models)
         if (VIR_ALLOC_N(*models, map->nmodels + 1) < 0)
             goto error;
 
-        for (i = 0; i < map->nmodels; i++) {
-            if (VIR_STRDUP((*models)[i], map->models[i]->name) < 0)
-                goto error;
-        }
+        for (i = 0; i < map->nmodels; i++)
+            (*models)[i] = g_strdup(map->models[i]->name);
     }
 
     ret = map->nmodels;
@@ -824,7 +810,7 @@ virCPUppc64DriverGetModels(char ***models)
 struct cpuArchDriver cpuDriverPPC64 = {
     .name       = "ppc64",
     .arch       = archs,
-    .narch      = ARRAY_CARDINALITY(archs),
+    .narch      = G_N_ELEMENTS(archs),
     .compare    = virCPUppc64Compare,
     .decode     = ppc64DriverDecode,
     .encode     = NULL,

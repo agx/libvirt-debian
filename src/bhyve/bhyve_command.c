@@ -58,12 +58,10 @@ bhyveBuildNetArgStr(virConnectPtr conn,
     virDomainNetType actualType = virDomainNetGetActualType(net);
 
     if (net->model == VIR_DOMAIN_NET_MODEL_VIRTIO) {
-        if (VIR_STRDUP(nic_model, "virtio-net") < 0)
-            return -1;
+        nic_model = g_strdup("virtio-net");
     } else if (net->model == VIR_DOMAIN_NET_MODEL_E1000) {
         if ((bhyveDriverGetCaps(conn) & BHYVE_CAP_NET_E1000) != 0) {
-            if (VIR_STRDUP(nic_model, "e1000") < 0)
-                return -1;
+            nic_model = g_strdup("e1000");
         } else {
             virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
                            _("NIC model 'e1000' is not supported "
@@ -77,8 +75,7 @@ bhyveBuildNetArgStr(virConnectPtr conn,
     }
 
     if (actualType == VIR_DOMAIN_NET_TYPE_BRIDGE) {
-        if (VIR_STRDUP(brname, virDomainNetGetActualBridgeName(net)) < 0)
-            goto cleanup;
+        brname = g_strdup(virDomainNetGetActualBridgeName(net));
     } else {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Network type %d is not supported"),
@@ -90,8 +87,7 @@ bhyveBuildNetArgStr(virConnectPtr conn,
         STRPREFIX(net->ifname, VIR_NET_GENERATED_TAP_PREFIX) ||
         strchr(net->ifname, '%')) {
         VIR_FREE(net->ifname);
-        if (VIR_STRDUP(net->ifname, VIR_NET_GENERATED_TAP_PREFIX "%d") < 0)
-            goto cleanup;
+        net->ifname = g_strdup(VIR_NET_GENERATED_TAP_PREFIX "%d");
     }
 
     if (!dryRun) {
@@ -117,8 +113,7 @@ bhyveBuildNetArgStr(virConnectPtr conn,
         if (virNetDevSetOnline(net->ifname, true) != 0)
             goto cleanup;
     } else {
-        if (VIR_STRDUP(realifname, "tap0") < 0)
-            goto cleanup;
+        realifname = g_strdup("tap0");
     }
 
 
@@ -232,9 +227,6 @@ bhyveBuildAHCIControllerArgStr(const virDomainDef *def,
         virBufferFreeAndReset(&device);
     }
 
-    if (virBufferCheckError(&buf) < 0)
-        goto error;
-
     virCommandAddArg(cmd, "-s");
     virCommandAddArgFormat(cmd, "%d:0,ahci%s",
                            controller->info.addr.pci.slot,
@@ -286,7 +278,7 @@ bhyveBuildUSBControllerArgStr(const virDomainDef *def,
 }
 
 static int
-bhyveBuildVirtIODiskArgStr(const virDomainDef *def ATTRIBUTE_UNUSED,
+bhyveBuildVirtIODiskArgStr(const virDomainDef *def G_GNUC_UNUSED,
                      virDomainDiskDefPtr disk,
                      virCommandPtr cmd)
 {
@@ -319,7 +311,7 @@ bhyveBuildVirtIODiskArgStr(const virDomainDef *def ATTRIBUTE_UNUSED,
 }
 
 static int
-bhyveBuildLPCArgStr(const virDomainDef *def ATTRIBUTE_UNUSED,
+bhyveBuildLPCArgStr(const virDomainDef *def G_GNUC_UNUSED,
                     virCommandPtr cmd)
 {
     virCommandAddArgList(cmd, "-s", "1,lpc", NULL);
@@ -643,7 +635,7 @@ virBhyveProcessBuildBhyveCmd(virConnectPtr conn,
 }
 
 virCommandPtr
-virBhyveProcessBuildDestroyCmd(bhyveConnPtr driver ATTRIBUTE_UNUSED,
+virBhyveProcessBuildDestroyCmd(bhyveConnPtr driver G_GNUC_UNUSED,
                                virDomainDefPtr def)
 {
     virCommandPtr cmd = virCommandNew(BHYVECTL);

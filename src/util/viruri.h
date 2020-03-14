@@ -24,7 +24,6 @@
 
 #include "internal.h"
 #include "virconf.h"
-#include "virautoclean.h"
 
 typedef struct _virURI virURI;
 typedef virURI *virURIPtr;
@@ -60,7 +59,7 @@ char *virURIFormat(virURIPtr uri)
 char *virURIFormatParams(virURIPtr uri);
 
 void virURIFree(virURIPtr uri);
-VIR_DEFINE_AUTOPTR_FUNC(virURI, virURIFree);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virURI, virURIFree);
 int virURIResolveAlias(virConfPtr conf, const char *alias, char **uri);
 
 #define VIR_URI_SERVER(uri) ((uri) && (uri)->server ? (uri)->server : "localhost")

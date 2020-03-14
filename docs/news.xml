@@ -25,33 +25,775 @@
     <section title="New features">
     </section>
     <section title="Improvements">
-      <change>
-        <summary>
-          Remember original owners and SELinux labels of files
-        </summary>
-        <description>
-          When a domain is starting up libvirt changes DAC and
-          SELinux labels so that domain can access it. However,
-          it never remembered the original labels and therefore
-          the file was returned back to <code>root:root</code>.
-          With this release, the original labels are remembered
-          and restored properly.
-        </description>
-      </change>
     </section>
     <section title="Bug fixes">
     </section>
   </release>
 
-    If relevant for a given release, add a section for removed
-    features too
+    If relevant for a given release, add a section for these too:
 
+    <section title="Packaging changes">
+    </section>
     <section title="Removed features">
+    </section>
+    <section title="Security">
     </section>
 
      -->
 
 <libvirt>
+  <release version="v6.0.0" date="2020-01-15">
+    <section title="Packaging changes">
+      <change>
+        <summary>
+          support for python2 is removed
+        </summary>
+        <description>
+          Libvirt is no longer able to be built using the
+          Python 2 binary. Python 3 must be used instead.
+        </description>
+      </change>
+      <change>
+        <summary>
+          docs: the python docutils toolset is now required
+        </summary>
+        <description>
+          The use of rst2html has been introduced for the
+          website build process since docs are now being
+          written in the RST as an alternative to HTML.
+        </description>
+      </change>
+    </section>
+    <section title="New features">
+      <change>
+        <summary>
+          new PCI hostdev address type: unassigned
+        </summary>
+        <description>
+          A new PCI hostdev address type 'unassigned' is introduced. An
+          unassigned PCI hostdev behaves like any regular PCI hostdev
+          inside Libvirt, but it is not usable by the guest. This gives
+          the user a new option to manage the binding of PCI devices
+          via Libvirt, declaring PCI hostdevs in the domain XML
+          but allowing just a subset of them to be assigned to the
+          guest.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Provide init scripts for sub-deaemons
+        </summary>
+        <description>
+          So far libvirt shipped systemd unit files for sub-daemons. With this
+          release, init scripts are available too. Package maintainers can
+          choose which one to install via <code>--with-init-script</code>
+          configure option.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Support cold-unplug of sound devices
+        </summary>
+      </change>
+      <change>
+        <summary>
+          qemu: Implement VIR_MIGRATE_PARAM_TLS_DESTINATION
+        </summary>
+        <description>
+          This flag, which can be enabled using <code>virsh</code>'s
+          <code>--tls-destination</code> option, allows migration to succeed
+          in situations where there is a mismatch between the destination's
+          hostname and the information stored in its TLS certificate.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Support reporting memory bandwidth usage stats
+        </summary>
+        <description>
+          Implement Intel RDT-MBM in libvirt. The stats can be obtained via
+          <code>virsh domstats --memory</code>.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Allow accessing NVMe disks directly
+        </summary>
+        <description>
+          Before this release there were two ways to configure a NVMe disk for
+          a domain. The first was using &lt;disk/&gt; with the &lt;source/&gt;
+          pointing to the <code>/dev/nvmeXXXX</code>. The other was using PCI
+          assignment via &lt;hostdev/&gt; element. Both have their
+          disadvantages: the former adds latency of file system and block
+          layers of the host kernel, the latter prohibits domain migration. In
+          this release the third way of configuring NVMe disk is added which
+          combines the advantages and drops disadvantages of the previous two
+          ways. It's accessible via &lt;disk type='nvme'/&gt;.
+        </description>
+      </change>
+    </section>
+    <section title="Removed features">
+      <change>
+        <summary>
+          'phyp' Power Hypervisor driver removed
+        </summary>
+        <description>
+          The 'phyp' Power Hypervisor driver has not seen active development
+          since 2011 and does not seem to have any real world usage. It
+          has now been removed.
+        </description>
+      </change>
+    </section>
+    <section title="Improvements">
+      <change>
+        <summary>
+          qemu: xz save image compression is faster
+        </summary>
+        <description>
+          When using the xz format to compressed virtual
+          machine saved state images, the "-3" compression
+          level preset is now used. This results in slightly
+          larger files, but with a massively reduced time
+          to compress. The xz format offers the best compression
+          level for saved state images, albeit still with the
+          slowest running time. For the fastest possible
+          running time, at cost of the larest compressed size,
+          lzop should be used.
+        </description>
+      </change>
+      <change>
+        <summary>
+          domain: Improve job stat handling
+        </summary>
+        <description>
+          It is now possible to retrieve stats for completed and failed jobs.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Don't hold monitor and agent job at the same time
+        </summary>
+        <description>
+          Before this change, a malicious (or buggy)
+          <code>qemu-guest-agent</code> running in the guest could make other
+          libvirt APIs unavailable for an unbounded amount of time.
+        </description>
+      </change>
+    </section>
+    <section title="Bug fixes">
+      <change>
+        <summary>
+          qemu: Report error if backing image format is not specified explicitly
+        </summary>
+        <description>
+          For a long time libvirt was assuming that a backing file is RAW when
+          the format was not specified. This didn't pose a problem until blockdev
+          support was enabled in last release. Libvirt now requires that
+          the format is specified in the image metadata or domain XML and the
+          VM will refuse to start otherwise. Additionally the error message
+          now links to the knowledge base which summarizes how to fix the images.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Fix non-shared storage migration over NBD
+        </summary>
+      </change>
+      <change>
+        <summary>
+          qemu: Generate a single MAC address for hotplugged network devices
+        </summary>
+        <description>
+          Since libvirt 4.6.0, when hotplugging a network device that didn't
+          have a MAC address already assigned by the user, two separate
+          addresses would be generated: one for the live configuration, which
+          would show up immediately, and one for the inactive configuration,
+          which would show up after the first reboot. This situation was
+          clearly undesirable, so a single MAC address is now generated and
+          used both for the live configuration and the inactive one.
+        </description>
+      </change>
+    </section>
+  </release>
+  <release version="v5.10.0" date="2019-12-02">
+    <section title="New features">
+      <change>
+        <summary>
+          qemu: Introduce support for ARM CPU features
+        </summary>
+        <description>
+          The only features supported at the moment are SVE vector lengths,
+          which were introduced in QEMU 4.2.0.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Support boot display for GPU mediated devices
+        </summary>
+        <description>
+          Until now, GPU mediated devices generally did not show any output
+          until the guest OS had initialized the vGPU. By specifying the
+          <code>ramfb</code> attribute, QEMU can be configured to use ramfb as
+          a boot display for the device: this allows for display of firmware
+          messages, boot loader menu, and other output before the guest OS has
+          initialized the vGPU.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Add API to change the response timeout for guest agent commands
+        </summary>
+        <description>
+          By default, when a command is sent to the guest agent, libvirt waits
+          forever for a response from the guest agent. If the guest is
+          unresponsive for any reason, this can block the calling thread
+          indefinitely. By setting a custom timeout using
+          <code>virDomainAgentSetResponseTimeout()</code>, API users can change
+          this behavior.
+        </description>
+      </change>
+    </section>
+    <section title="Improvements">
+      <change>
+        <summary>
+          Devices CGroup v2 support
+        </summary>
+        <description>
+          Libvirt supported all controllers of CGroup v2 but the devices
+          controller which is implemented in this release.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Cold plug of sound device
+        </summary>
+        <description>
+          The QEMU driver now can handle cold plug of
+          <code>&lt;sound/&gt;</code> devices.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Probe for default CPU types
+        </summary>
+        <description>
+          With QEMU 4.2.0 we can probe for the default CPU model used by QEMU
+          for a particular machine type and store it in the domain XML. This
+          way the chosen CPU model is more visible to users and libvirt will
+          make sure the guest will see the exact same CPU after migration.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Adaptation to qemu's blockdev
+        </summary>
+        <description>
+          QEMU introduced a new way of specifying disks on the command line
+          which enables fine-grained control over the block stack. Libvirt has
+          adapted to this.
+        </description>
+      </change>
+    </section>
+    <section title="Refactors">
+      <change>
+        <summary>
+          More GLib integration
+        </summary>
+        <description>
+          More patches were merged that replace our internal functions with
+          GLib ones. Also some effort was invested in replacing gnulib modules
+          with GLib functions.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Rewrite of Perl scripts into Python
+        </summary>
+        <description>
+          Libvirt used Perl scripts to check for coding style, generate some
+          code and things like that. To bring the number of languages used
+          down, these scripts were rewritten into Python.
+        </description>
+      </change>
+    </section>
+    <section title="Bug fixes">
+      <change>
+        <summary>
+          Warn verbosely if using old loader:nvram pairs
+        </summary>
+        <description>
+          Some distributions still use <code>--with-loader-nvram</code> or
+          <code>nvram</code> variable in qemu.conf. This is now discouraged in
+          favour of FW descriptors. However, instead of silently ignoring user's
+          config, libvirt warns if outdated config is detected.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Drop pconfig from Icelake-Server CPU model
+        </summary>
+        <description>
+          The pconfig feature was enabled in QEMU by accident in 3.1.0. All
+          other newer versions do not support it and it was removed from the
+          Icelake-Server CPU model in QEMU.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Wait longer for device removal confirmation on PPC64
+        </summary>
+        <description>
+          After sending device hot unplug request to QEMU, libvirt waits up to
+          5 seconds for qemu to confirm the device removal. On some
+          architectures (like PPC64) this can take longer time and libvirt now
+          reflects that.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Forcibly create nodes in domain's namespace
+        </summary>
+        <description>
+          The QEMU driver starts a domain in a namepsace with private
+          <code>/dev</code> and creates only those nodes there which the domain
+          is configured to have. However, it may have happened that if a node
+          changed its minor number this change wasn't propagated to the
+          namespace.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Various AppArmor bugfixes
+        </summary>
+        <description>
+          The AppArmor driver now knows how to handle
+          <code>&lt;shmem/&gt;</code> devices and also snapshotting more disks
+          at once.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Improved video model autoselection
+        </summary>
+        <description>
+          If a graphics device was added to XML that had no video device,
+          libvirt automatically added a video device which was always of type
+          'cirrus' on x86_64, even if the underlying qemu didn't support
+          cirrus. Libvirt now bases the decision on qemu's capabilities.
+        </description>
+      </change>
+    </section>
+  </release>
+  <release version="v5.9.0" date="2019-11-05">
+    <section title="Packaging changes">
+      <change>
+        <summary>
+          Start linking against GLib and using its features
+        </summary>
+        <description>
+          Up until now, libvirt has been dealing with platform portability and
+          the lack of certain features in libc by using gnulib and implementing
+          its own functions and data structures respectively; going forward, it
+          will prefer the facilities offered by GLib instead.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Stop distributing generated documentation
+        </summary>
+        <description>
+          Most downstreams already patch the libvirt source to some extent, so
+          this change will probably not affect them.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Rewrite several Perl scripts in Python
+        </summary>
+        <description>
+          Phasing out Perl usage is part of the project strategy.
+        </description>
+      </change>
+    </section>
+    <section title="New features">
+      <change>
+        <summary>
+          qemu: Introduce a new video model of type 'ramfb'
+        </summary>
+        <description>
+          Introduce a new video model type to the domain XML that supports the
+          <code>ramfb</code> standalone device in qemu.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Implement the ccf-assist pSeries feature
+        </summary>
+        <description>
+          Users can now decide whether ccf-assist (Count Cache Flush Assist)
+          support should be available to pSeries guests.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Xen: Support specifying ACPI firmware path
+        </summary>
+        <description>
+          The libxl driver now supports specifying an ACPI firmware path
+          using the <code>acpi</code> element.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Support specifying resolution for video devices
+        </summary>
+      </change>
+    </section>
+    <section title="Removed features">
+      <change>
+        <summary>
+          logging: Drop support for including stack traces
+        </summary>
+        <description>
+          This feature was intended to aid debugging, but in practice it
+          resulted in logs that were too verbose to be useful and also resulted
+          in a significant performance penalty.
+        </description>
+      </change>
+    </section>
+    <section title="Improvements">
+      <change>
+        <summary>
+          qemu: Implement CPU comparison/baseline on s390x
+        </summary>
+        <description>
+          This functionality has been historically limited to x86_64, but it's
+          now available on s390x too.
+        </description>
+      </change>
+    </section>
+    <section title="Bug fixes">
+      <change>
+        <summary>
+          lib: autostart objects exactly once
+        </summary>
+        <description>
+          If libvirtd or any of the sub-daemons is started with socket
+          activation then objects might be autostarted more than once.
+          For instance, if a domain under <code> qemu:///session </code>
+          URI is mark as autostarted and the session daemon is started then the
+          domain is started with it. If user shuts the domain down and the
+          session daemon is started again, the user's wish to keep the
+          domain shut off is ignored and the domain is autostarted again.
+          This is now fixed.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Properly advertise bochs-display availability
+        </summary>
+        <description>
+          Support for <code>bochs-display</code> was introduced in libvirt
+          5.6.0, but until now the model was not listed in the domain
+          capabilities.
+        </description>
+      </change>
+      <change>
+        <summary>
+          security: Don't remember labels for TPM devices
+        </summary>
+        <description>
+          Due to the way they're implemented in the kernel, trying to remember
+          labels for TPM devices makes it impossible to use them.
+        </description>
+      </change>
+      <change>
+        <summary>
+          security: Properly rollback after failure in a stacked driver
+        </summary>
+        <description>
+          When multiple security drivers are involved, failure in one of them
+          would result in only the corresponding changes being rolled back,
+          leaving the ones performed by drivers that had been activated earlier
+          in place. All changes are rolled back now.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Fix build with musl libc
+        </summary>
+      </change>
+      <change>
+        <summary>
+          Improve compatibility with non-bash shells
+        </summary>
+      </change>
+    </section>
+  </release>
+  <release version="v5.8.0" date="2019-10-05">
+    <section title="New features">
+      <change>
+        <summary>
+          qemu: Support use of precreated tap/macvtap devices by unprivileged libvirtd
+        </summary>
+        <description>
+          It is now possible for an unprivileged libvirtd to make use
+          of tap and macvtap devices that were previously created by
+          some other entity. This is done by setting
+          <code>managed='no'</code> along with the device name in the
+          <code>target</code> subelement of <code>&lt;interface
+          type='ethernet'&gt;</code>.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Support vhost-user-gpu
+        </summary>
+        <description>
+          Support for running virtio GPUs in separate processes with vhost-user
+          backend. It requires QEMU newer than 4.1.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Introduce virConnectSetIdentity API
+        </summary>
+        <description>
+          When split daemons are in use, this API is used to forward uid,
+          gid and SELinux info from <code>virproxyd</code> to other driver
+          daemons such as <code>virtqemud</code>.
+        </description>
+      </change>
+    </section>
+    <section title="Improvements">
+      <change>
+        <summary>
+          qemu: Support running SLIRP networking in a separate process
+        </summary>
+        <description>
+          User can configure the slirp-helper path in <code>qemu.conf</code>.
+          It will start a slirp-helper process to provide SLIRP networking
+          when the VM is started with network interface "user". That will allow
+          stricter security policies for QEMU SLIRP network.
+        </description>
+      </change>
+    </section>
+    <section title="Removed features">
+      <change>
+        <summary>
+          Remove xenapi driver
+        </summary>
+        <description>
+          The xenapi driver is removed since it has not received any significant
+          development since its initial contribution nine years ago and has no
+          known user base.
+        </description>
+      </change>
+    </section>
+  </release>
+  <release version="v5.7.0" date="2019-09-03">
+    <section title="New features">
+      <change>
+        <summary>
+          qemu: Support Direct Mode for Hyper-V Synthetic timers
+        </summary>
+        <description>
+          The QEMU driver now supports Direct Mode for Hyper-V Synthetic timers
+          for Hyper-V guests.
+        </description>
+      </change>
+      <change>
+        <summary>
+          lib: Add virDomainGetGuestInfo()
+        </summary>
+        <description>
+          This API is intended to aggregate several guest agent information
+          queries and is inspired by stats API
+          <code>virDomainListGetStats()</code>. It is anticipated that this
+          information will be provided by a guest agent
+          running within the domain. It's exposed as <code>virsh
+          guestinfo</code>.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Experimental split of libvirtd into separate daemons
+        </summary>
+        <description>
+          The big monolithic libvirtd daemon can now be replaced by smaller
+          per-driver daemons. The new split daemons are considered experimental
+          at this time and distributions are encouraged to continue using the
+          traditional libvirtd by default.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Support kvm-hint-dedicated performance hint
+        </summary>
+        <description>
+          With <code>&lt;hint-dedicated state='on'/&gt;</code> and
+          <code>&lt;cpu mode='host-passthrough'/&gt;</code>, it
+          allows a guest to enable optimizations when running on dedicated
+          vCPUs. QEMU newer than 2.12.0 and kernel newer than 4.17
+          are required.
+        </description>
+      </change>
+    </section>
+    <section title="Removed features">
+      <change>
+        <summary>
+          Remove KVM assignment support
+        </summary>
+        <description>
+          The KVM style of PCI device assignment was removed from
+          the kernel in version 4.12.0 after being deprecated since 4.2.0.
+          Libvirt defaults to VFIO for a long time. Remove support for
+          KVM device assignment from libvirt too.
+        </description>
+      </change>
+      <change>
+        <summary>
+          libxml: min required libxml is now 2.9.1
+        </summary>
+        <description>
+          Support for building with libxml versions older than 2.9.1
+          has been dropped.
+        </description>
+      </change>
+    </section>
+    <section title="Improvements">
+      <change>
+        <summary>
+          virsh: Support setting bandwidth in migrate subcommand
+        </summary>
+        <description>
+          In addition to postcopy bandwidth, the <code>virsh migrate</code>
+          subcommand now supports specifying precopy bandwidth with the
+          <code>--bandwidth</code> parameter.
+        </description>
+      </change>
+      <change>
+        <summary>
+          libxl: Implement domain metadata getter/setter
+        </summary>
+        <description>
+          The libxl driver now supports <code>virDomainGetMetadata()</code> and
+          <code>virDomainSetMetadata()</code> APIs.
+        </description>
+      </change>
+      <change>
+        <summary>
+          test driver: Expand API coverage
+        </summary>
+        <description>
+          Additional APIs have been implemented in the test driver.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Report RNG device in domain capabilities XML
+        </summary>
+        <description>
+          Libvirt now reports if RNG devices are supported by the underlying
+          hypervisor in the domain capabilities XML.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Stop linking NSS plugins with libvirt.so
+        </summary>
+        <description>
+          This reduces the amount of code and 3rd party libraries are that
+          loaded into all processes.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Split the setuid virt-login-shell binary into two pieces
+        </summary>
+        <description>
+          The setuid virt-login-shell binary is now a tiny shim that
+          sanitizes the process execution environment variables and
+          arguments, before launching the trusted virt-login-shell-helper
+          binary.
+        </description>
+      </change>
+      <change>
+        <summary>
+          qemu: Allow migration with disk cache on
+        </summary>
+        <description>
+          When QEMU supports flushing caches at the end of migration, we can
+          safely allow migration even if <code>disk/driver/@cache</code> is
+          neither <code>none</code> nor <code>directsync</code>.
+        </description>
+      </change>
+    </section>
+    <section title="Bug fixes">
+      <change>
+        <summary>
+          Various security label remembering fixes
+        </summary>
+        <description>
+          In the previous release libvirt introduced remembering of original
+          owners and SELinux labels on files. However, the feature did not work
+          properly with snapshots, on migrations or on network filesystems.
+          This is now fixed.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Allow greater PCI domain numbers
+        </summary>
+        <description>
+          Libvirt used to require PCI domain number to be not greater than
+          0xFFFF. The code was changed to allow 32 bits long numbers.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Various D-Bus fixes
+        </summary>
+        <description>
+          When D-Bus is not available, libvirt was reporting random errors.
+          These are now gone.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Prefer read-only opening of PCI config files
+        </summary>
+        <description>
+          When enumerating PCI bus, libvirt opens config files under
+          <code>sysfs</code> mount and parses them to learn various aspects of
+          the device (e.g. its capabilities). Only in a very limited number of
+          cases it is actually writing into the file. However, it used to open
+          the file also for writing even if it was only reading from it.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Fix AppArmor profile
+        </summary>
+        <description>
+          Since the <code>5.6.0</code> release, libvirt uses
+          <code>procfs</code> to learn the list of opened file descriptors when
+          spawning a command. However, our AppArmor profile was not allowing
+          such access.
+        </description>
+      </change>
+      <change>
+        <summary>
+          Don't block storage driver when starting or building a pool
+        </summary>
+        <description>
+          Starting or building a storage pool can take a long time to finish.
+          During this time the storage driver was blocked and thus no other API
+          involving the storage driver could run. This is now fixed.
+        </description>
+      </change>
+    </section>
+  </release>
   <release version="v5.6.0" date="2019-08-05">
     <section title="New features">
       <change>
