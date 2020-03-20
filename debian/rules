@@ -138,7 +138,6 @@ LIBVIRT_SYSTEM_SERVICES = \
 	libvirtd.socket \
 	libvirtd-ro.socket \
 	libvirtd-admin.socket \
-	libvirt-guests.service \
 	virtlogd.socket \
 	virtlogd-admin.socket \
 	virtlogd.service \
@@ -243,6 +242,7 @@ override_dh_installinit:
 override_dh_installsystemd:
 	dh_installsystemd -p libvirt-daemon-system --restart-after-upgrade libvirtd.service
 	dh_installsystemd -p libvirt-daemon-system --no-stop-on-upgrade $(LIBVIRT_SYSTEM_SERVICES)
+	dh_installsystemd -p libvirt-daemon-system --no-start libvirt-guests.service
 
 override_dh_installdocs:
 	dh_installdocs -plibvirt-doc --doc-main-package libvirt-doc
