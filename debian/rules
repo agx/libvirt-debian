@@ -233,7 +233,7 @@ override_dh_installinit:
 	dh_installinit -p libvirt-daemon-system-sysv --name=virtlogd --no-stop-on-upgrade
 	dh_installinit -p libvirt-daemon-system-sysv --name=virtlockd --no-stop-on-upgrade
 	dh_installinit -p libvirt-daemon-system-sysv --name=libvirtd --restart-after-upgrade -- defaults 28 72
-	dh_installinit -p libvirt-daemon-system-sysv --name=libvirt-guests --no-stop-on-upgrade -- defaults 29 71
+	dh_installinit -p libvirt-daemon-system-sysv --name=libvirt-guests --no-start -- defaults 29 71
 	# install /etc/default/* files that are shared between sysv and systemd packages
 	dh_installinit -p libvirt-daemon-system --name=virtlockd --no-scripts
 	dh_installinit -p libvirt-daemon-system --name=virtlogd --no-scripts
