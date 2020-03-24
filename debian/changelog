@@ -1,3 +1,10 @@
+libvirt (6.0.0-4) unstable; urgency=medium
+
+  * [d7df842] Don't restart libvirt-guests on upgrade
+    (Closes: #954921)
+
+ -- Guido Günther <agx@sigxcpu.org>  Tue, 24 Mar 2020 15:10:20 +0100
+
 libvirt (6.0.0-3) unstable; urgency=medium
 
   * [de68a4b] Bump Breaks/conflicts.
