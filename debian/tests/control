@@ -4,7 +4,7 @@ Restrictions: allow-stderr
 
 Tests: smoke-qemu-session
 Depends: libvirt-daemon, libvirt-clients, libxml2-utils, qemu-system, qemu-kvm
-Restrictions: allow-stderr, isolation-container
+Restrictions: allow-stderr, isolation-container, skippable, skip-not-installable
 
 Tests: smoke-lxc
 Depends: libvirt-daemon-system, libvirt-daemon-driver-lxc, libvirt-clients, libxml2-utils

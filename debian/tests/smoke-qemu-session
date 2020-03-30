@@ -19,12 +19,12 @@ trap cleanup EXIT
 
 if [ ! -f /vmlinuz ] || [ ! -f /initrd.img ]; then
    echo "Kernel or initrd not found...skipping".
-   exit 0
+   exit 77
 fi
 
 if [ $(uname -m) != "x86_64" ]; then
    echo "Not on x86_64...skipping"
-   exit 0
+   exit 77
 fi
 
 echo echo "Running as $USER"
