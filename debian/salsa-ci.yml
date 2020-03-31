@@ -71,4 +71,4 @@ autopkgtest-debian-package:
     - RET=0;
       autopkgtest -U ${LV_WORKING_DIR}/*.changes -- autopkgtest-virt-null || RET=$?;
       echo "Autopkgtest exited with ${RET}";
-      [ "${RET}" -eq 8 ] && exit 0 || exit "${RET}"
+      [ "${RET}" -eq 8 -o "${RET}" -eq 2 ] && exit 0 || exit "${RET}"
