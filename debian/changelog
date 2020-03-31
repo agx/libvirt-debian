@@ -1,6 +1,18 @@
+libvirt (6.0.0-5) unstable; urgency=medium
+
+  [ Guido Günther ]
+  * [421e865] systemd: Don't restart libvirt-guests on upgrade
+    (Closes: #955216)
+
+  [ Laurent Bigonville ]
+  * [5f72035] Only run qemu test on amd64
+    (Closes: #955278)
+
+ -- Guido Günther <agx@sigxcpu.org>  Tue, 31 Mar 2020 09:39:40 +0200
+
 libvirt (6.0.0-4) unstable; urgency=medium
 
-  * [d7df842] Don't restart libvirt-guests on upgrade
+  * [d7df842] sysv: Don't restart libvirt-guests on upgrade
     (Closes: #954921)
 
  -- Guido Günther <agx@sigxcpu.org>  Tue, 24 Mar 2020 15:10:20 +0100
