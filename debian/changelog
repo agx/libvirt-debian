@@ -1,3 +1,22 @@
+libvirt (6.0.0-6) unstable; urgency=medium
+
+  [ Laurent Bigonville ]
+  * [ea7b8b7] autopkgtest exits with 2 when there are skipped tests do not
+    consider that as fatal
+
+  [ Guido Günther ]
+  * [100e8aa] Don't start or restart socket units on package upgrades.
+    Changes get picked up when the corresponding system unit is being restarted.
+    This avoids problems when socket and service units of the same service get
+    restarted together. See #955483 for details.
+  * [ff981d5] Pass --no-auto to dh_instalsystemd.
+    This avoids generation of restart snippets for services listed in `Also=`
+    sections of the service units. Otherwise these get restarted but we want
+    to avoid that and let systemd figure it out all by itself.
+    See: #955483, #841095
+
+ -- Guido Günther <agx@sigxcpu.org>  Wed, 08 Apr 2020 17:04:11 +0200
+
 libvirt (6.0.0-5) unstable; urgency=medium
 
   [ Guido Günther ]
